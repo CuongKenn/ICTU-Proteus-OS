@@ -69,6 +69,8 @@ async def ensure_tenant_mattermost_team(
         "alerts_channel_id": alerts["id"],
     }
     await tenant_repo.upsert_integration_config(tenant_id, "mattermost", config)
+    if hasattr(tenant_repo, "commit"):
+        await tenant_repo.commit()
     logger.info(
         "Đảm bảo Mattermost team cho tenant",
         extra={"tenant_id": str(tenant_id), "team": team["name"]},

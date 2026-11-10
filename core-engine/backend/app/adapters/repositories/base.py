@@ -273,6 +273,11 @@ class AbstractTenantRepository(ABC):
         """Cập nhật config integration nếu có, ngược lại tạo mới."""
         ...
 
+    @abstractmethod
+    async def commit(self) -> None:
+        """Commit transaction."""
+        ...
+
 
 class AbstractUserRepository(ABC):
     """Port: Giao tiếp với User data store."""

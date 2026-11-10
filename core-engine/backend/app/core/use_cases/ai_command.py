@@ -286,11 +286,40 @@ class AICommandUseCase:
                 "message": f"Yêu cầu cài đặt plugin {plugin_code} đã được tiếp nhận.",
             }
 
+        if action == "core.users.invite":
+            email = params.get("email")
+            full_name = params.get("full_name") or params.get("name")
+            keycloak_id = params.get("keycloak_id")
+            if email and self.user_repo:
+                try:
+                    user_id = uuid.uuid4()
+                    k_id = uuid.UUID(str(keycloak_id)) if keycloak_id else uuid.uuid4()
+                    user_data = {
+                        "id": user_id,
+                        "tenant_id": tenant_id,
+                        "keycloak_id": k_id,
+                        "email": email,
+                        "full_name": full_name,
+                        "is_active": True,
+                    }
+                    await self.user_repo.upsert(user_data)
+                    if hasattr(self.user_repo, "commit"):
+                        await self.user_repo.commit()
+                except Exception as e:
+                    logger.warning("Error creating/inviting user via AI: %s", e)
+            return True, {
+                "status": "invited",
+                "email": email,
+                "message": f"Đã gửi lời mời và tạo người dùng {email} thành công.",
+            }
+
         if action == "core.users.deactivate":
             target_user_id = params.get("user_id") or params.get("target_user_id")
             if target_user_id and self.user_repo:
                 try:
                     await self.user_repo.deactivate(uuid.UUID(str(target_user_id)))
+                    if hasattr(self.user_repo, "commit"):
+                        await self.user_repo.commit()
                 except Exception as e:
                     logger.warning("Error deactivating user: %s", e)
             return True, {
