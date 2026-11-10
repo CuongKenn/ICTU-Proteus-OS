@@ -4,9 +4,12 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+import uuid
+from app.core.domain.entities import TenantContext
+from app.entrypoints.dependencies import get_current_tenant_context
 from app.infrastructure.database import get_db_readonly, get_db_transactional
 from main import app
 
@@ -24,7 +27,8 @@ async def test_plugin_install_e2e(async_db_engine, db_session):
     app.dependency_overrides[get_db_readonly] = lambda: db_session
     app.dependency_overrides[get_db_transactional] = lambda: db_session
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         # 1. Tạo Tenant mới
         tenant_id = "00000000-0000-0000-0000-000000000001"
         async with async_db_engine.begin() as conn:
@@ -49,10 +53,14 @@ async def test_plugin_install_e2e(async_db_engine, db_session):
             }
 
             plugin_id = "00000000-0000-0000-0000-000000000010"
-            # 2. Cài đặt hr-module
-            headers = {"X-Tenant-ID": tenant_id}
+            # 2. Cài đặt hr-module qua route chuẩn v1
+            app.dependency_overrides[get_current_tenant_context] = lambda: TenantContext(
+                tenant_id=uuid.UUID(tenant_id),
+                user_id=uuid.uuid4(),
+                roles=["tenant_admin"],
+            )
             res_install = await ac.post(
-                "/api/plugins/install", json={"plugin_id": plugin_id}, headers=headers
+                f"/api/v1/plugins/{plugin_id}/install", json={}
             )
             assert res_install.status_code == 202
             data = res_install.json()
@@ -71,9 +79,9 @@ async def test_plugin_install_e2e(async_db_engine, db_session):
                 assert "employee_code" in columns
                 assert "tenant_id" in columns  # Plugin Manager tự inject
 
-            # 4. Gỡ cài đặt
+            # 4. Gỡ cài đặt qua route chuẩn v1
             res_uninstall = await ac.post(
-                "/api/plugins/uninstall", json={"plugin_id": plugin_id}, headers=headers
+                f"/api/v1/plugins/{plugin_id}/uninstall", json={}
             )
             assert res_uninstall.status_code == 200
             data_un = res_uninstall.json()
@@ -104,7 +112,8 @@ async def test_plugin_install_fail_dirty(async_db_engine, db_session):
     app.dependency_overrides[get_db_readonly] = lambda: db_session
     app.dependency_overrides[get_db_transactional] = lambda: db_session
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         tenant_id = "00000000-0000-0000-0000-000000000002"
         async with async_db_engine.begin() as conn:
             await conn.execute(

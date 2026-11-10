@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.core.domain.entities import TenantContext
 from app.core.domain.role_templates import TEMPLATES, list_templates
@@ -78,7 +78,8 @@ async def test_router_templates_and_apply(override_auth):
     }
     app.dependency_overrides[get_role_use_case] = lambda: mock_uc
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         r1 = await client.get(
             "/api/v1/roles/templates", headers={"Authorization": "Bearer x"}
         )
@@ -102,3 +103,13 @@ async def test_router_templates_and_apply(override_auth):
         assert r3.status_code == 400
 
     app.dependency_overrides.pop(get_role_use_case, None)
+
+def test_roles_router_uses_transactional_db():
+    """Verify that get_role_use_case uses get_db_transactional dependency (Issue #741 / #754)."""
+    import inspect
+    from app.entrypoints.dependencies import get_db_transactional
+    from app.entrypoints.routers.roles import get_role_use_case
+
+    sig = inspect.signature(get_role_use_case)
+    session_param = sig.parameters["session"]
+    assert session_param.default.dependency == get_db_transactional
