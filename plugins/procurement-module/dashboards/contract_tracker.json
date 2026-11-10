@@ -1,31 +1,31 @@
-﻿{
-  "_license": "Copyright (c) 2026 CuongKenn & ICTU Team | SPDX-License-Identifier: AGPL-3.0-or-later",
-  "name": "Contract Tracker",
-  "description": "Metabase dashboard for Contract Tracker",
-  "cards": [
-    {
-      "name": "Hợp Đồng Đang Hiệu Lực",
-      "display": "scalar",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COUNT(*) FROM pro_contracts WHERE status = 'ACTIVE' AND deleted_at IS NULL",
-          "template-tags": {"tenant_id": {"type": "text", "required": true}}
-        }
-      }
-    },
-    {
-      "name": "Hợp Đồng Hết Hạn Trong 30 Ngày",
-      "display": "table",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT contract_number, title, end_date, total_value FROM pro_contracts WHERE status = 'ACTIVE' AND end_date BETWEEN NOW() AND NOW() + INTERVAL '30 days' AND deleted_at IS NULL ORDER BY end_date",
-          "template-tags": {"tenant_id": {"type": "text", "required": true}}
-        }
-      }
-    }
-  ],
-  "collection": "procurement-module",
-  "parameters": [{"name": "tenant_id", "slug": "tenant_id", "type": "string", "required": true}]
-}
+﻿{
+  "_license": "Copyright (c) 2026 CuongKenn & ICTU Team | SPDX-License-Identifier: AGPL-3.0-or-later",
+  "name": "Contract Tracker",
+  "description": "Metabase dashboard for Contract Tracker",
+  "cards": [
+    {
+      "name": "Hợp Đồng Đang Hiệu Lực",
+      "display": "scalar",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT COUNT(*) FROM {{TENANT_SCHEMA}}.procurement_contracts WHERE status = 'active'",
+          "template-tags": {"tenant_id": {"type": "text", "required": true}}
+        }
+      }
+    },
+    {
+      "name": "Hợp Đồng Hết Hạn Trong 30 Ngày",
+      "display": "table",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT c.id::text as contract_number, v.name as title, c.end_date, c.value as total_value FROM {{TENANT_SCHEMA}}.procurement_contracts c LEFT JOIN {{TENANT_SCHEMA}}.procurement_vendors v ON v.id = c.vendor_id WHERE c.status = 'active' AND c.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days' ORDER BY c.end_date",
+          "template-tags": {"tenant_id": {"type": "text", "required": true}}
+        }
+      }
+    }
+  ],
+  "collection": "procurement-module",
+  "parameters": [{"name": "tenant_id", "slug": "tenant_id", "type": "string", "required": true}]
+}
