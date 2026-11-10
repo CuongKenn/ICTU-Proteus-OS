@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
+      mfe: ${{ steps.filter.outputs.mfe }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -32,6 +33,9 @@ jobs:
           filters: |
             frontend:
               - 'core-engine/frontend/**'
+              - '.github/workflows/frontend-ci.yml'
+            mfe:
+              - 'plugins/**'
               - '.github/workflows/frontend-ci.yml'
 
   lint:
@@ -148,22 +152,48 @@ jobs:
           path: core-engine/frontend/.next/
           retention-days: 3
 
+  mfe-check:
+    name: MFE Gateway Check & Build
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mfe == 'true'
+    defaults:
+      run:
+        working-directory: plugins/mfe-gateway
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: plugins/mfe-gateway/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build MFE Gateway
+        run: npm run build
+
   frontend-ci:
     name: frontend-ci
     runs-on: ubuntu-latest
     # Luôn chạy — kể cả khi không có thay đổi frontend (tránh PR stuck "waiting")
     if: always()
-    needs: [detect-changes, lint, test, build]
+    needs: [detect-changes, lint, test, build, mfe-check]
     steps:
       - name: Evaluate frontend CI result
         run: |
-          if [[ "${{ needs.detect-changes.outputs.frontend }}" == "false" ]]; then
+          if [[ "${{ needs.detect-changes.outputs.frontend }}" == "false" && "${{ needs.detect-changes.outputs.mfe }}" == "false" ]]; then
             echo "⏩ No frontend changes — skipping frontend-ci checks (pass)"
             exit 0
           fi
           if [[ "${{ needs.lint.result }}" == "failure" ||
                 "${{ needs.test.result }}" == "failure" ||
-                "${{ needs.build.result }}" == "failure" ]]; then
+                "${{ needs.build.result }}" == "failure" || "${{ needs.mfe-check.result }}" == "failure" ]]; then
             echo "❌ One or more frontend checks failed"
             exit 1
           fi
