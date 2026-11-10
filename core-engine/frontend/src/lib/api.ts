@@ -102,10 +102,10 @@ const processQueue = (error: any, token: string | null = null) => {
 
 async function handleAuthFailure(err: any) {
   processQueue(err, null);
-  // Bắt buộc đăng xuất
+  // Bắt buộc đăng xuất và chuyển hướng đến trang login thông báo hết hạn
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     const { signOut } = await import("next-auth/react");
-    await signOut({ callbackUrl: "/login" });
+    await signOut({ callbackUrl: "/login?expired=true" });
   }
 }
 
@@ -129,8 +129,8 @@ async function handle401Retry(originalRequest: any) {
     const { getSession } = await import("next-auth/react");
     const session = await getSession();
 
-    if (session && (session as any).error === "RefreshAccessTokenError") {
-      throw new Error("Refresh token expired");
+    if (!session || (session as any).error === "RefreshAccessTokenError") {
+      throw new Error("Refresh token expired or no session");
     }
 
     processQueue(null, "Success");
@@ -166,8 +166,12 @@ api.interceptors.response.use(
     const originalRequest = error?.config;
 
     // Nếu BFF trả về 401 (AccessTokenExpired hoặc token hết hạn)
-    if (error?.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      return handle401Retry(originalRequest);
+    if (error?.response?.status === 401) {
+      if (originalRequest && !originalRequest._retry) {
+        return handle401Retry(originalRequest);
+      }
+      await handleAuthFailure(error);
+      return Promise.reject(error);
     }
 
     return Promise.reject(error);

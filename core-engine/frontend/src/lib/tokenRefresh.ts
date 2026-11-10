@@ -48,11 +48,35 @@ export async function refreshAccessToken(token: JWT): Promise<JWT> {
         return { ...token, error: "RefreshAccessTokenError" };
       }
 
+      let refreshedRoles = token.roles as string[] | undefined;
+      let refreshedTenantId = token.tenant_id as string | undefined;
+      if (refreshed.access_token) {
+        try {
+          const payloadBase64 = refreshed.access_token.split(".")[1];
+          if (payloadBase64) {
+            const decoded = JSON.parse(
+              Buffer.from(payloadBase64, "base64url").toString("utf-8")
+            );
+            if (decoded?.realm_access?.roles) {
+              refreshedRoles = decoded.realm_access.roles;
+            }
+            if (decoded?.tenant_id) {
+              refreshedTenantId = decoded.tenant_id;
+            }
+          }
+        } catch {
+          // keep existing roles
+        }
+      }
+
       return {
         ...token,
         accessToken: refreshed.access_token,
         refreshToken: refreshed.refresh_token ?? token.refreshToken,
         accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+        idToken: refreshed.id_token ?? token.idToken,
+        roles: refreshedRoles ?? token.roles,
+        tenant_id: refreshedTenantId ?? token.tenant_id,
         error: undefined,
       };
     } catch {

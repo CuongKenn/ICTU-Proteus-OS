@@ -62,7 +62,22 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         className="relative w-full rounded-2xl animate-scale-in"
         style={{
-          maxWidth,
+          maxWidth: (() => {
+            const MAX_WIDTH_MAP: Record<string, string> = {
+              sm: "384px",
+              md: "448px",
+              lg: "512px",
+              xl: "576px",
+              "2xl": "672px",
+              "3xl": "768px",
+              "4xl": "896px",
+              "5xl": "1024px",
+              "6xl": "1152px",
+              "7xl": "1280px",
+              full: "100%",
+            };
+            return MAX_WIDTH_MAP[maxWidth] || maxWidth;
+          })(),
           background: "var(--paper-white)",
           border: "1px solid var(--line-hi)",
           boxShadow: "var(--shadow-modal)",
