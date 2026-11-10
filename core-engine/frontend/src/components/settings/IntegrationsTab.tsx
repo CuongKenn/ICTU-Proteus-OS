@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Plug, Plus, Loader2, Link2, CheckCircle2, XCircle, Save } from "lucide-react";
 import { useSession } from "next-auth/react";
 
-import api from "@/lib/api";
+import api, { extractErrorMessage } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 interface IntegrationData {
@@ -35,10 +35,10 @@ export const IntegrationsTab: React.FC = () => {
       try {
         const res = await api.get("/v1/tenants/me/integrations");
 
-        setIntegrations(res.data);
+        setIntegrations(Array.isArray(res.data) ? res.data : []);
       } catch (err) {
         logger.error("Failed to fetch integrations", err);
-        setError("Không thể tải danh sách kết nối.");
+        setError(extractErrorMessage(err, "Không thể tải danh sách kết nối."));
       } finally {
         setLoading(false);
       }
@@ -84,7 +84,7 @@ export const IntegrationsTab: React.FC = () => {
       setNewApiKey("");
     } catch (err) {
       logger.error("Failed to add integration", err);
-      setError("Có lỗi xảy ra khi thêm kết nối.");
+      setError(extractErrorMessage(err, "Có lỗi xảy ra khi thêm kết nối."));
     }
   };
 
@@ -200,14 +200,14 @@ export const IntegrationsTab: React.FC = () => {
         </div>
       )}
 
-      {integrations.length === 0 && !isAdding ? (
+      {!Array.isArray(integrations) || (integrations.length === 0 && !isAdding) ? (
         <div className="flex flex-col items-center justify-center h-48 bg-bg-surface/30 rounded-xl border border-border border-dashed">
           <Plug className="w-12 h-12 text-text-muted mb-3" />
           <p className="text-text-secondary">Chưa có kết nối nào được cấu hình.</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {integrations.map((integration) => (
+          {Array.isArray(integrations) && integrations.map((integration) => (
             <div key={integration.id} className="p-5 bg-bg-surface border border-border rounded-xl shadow-sm hover:border-primary/50 transition-colors flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-3">

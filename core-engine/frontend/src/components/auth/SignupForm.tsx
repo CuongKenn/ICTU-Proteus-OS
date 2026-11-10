@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useLang } from "@/components/i18n/LanguageContext";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LanguageToggle } from "@/components/i18n/LanguageToggle";
+import { extractErrorMessage } from "@/lib/api";
 
 export function SignupForm() {
   const router = useRouter();
@@ -38,6 +39,26 @@ export function SignupForm() {
       return;
     }
 
+    if (formData.password.length < 8) {
+      setError("Mật khẩu phải có ít nhất 8 ký tự.");
+      return;
+    }
+
+    if (!/[A-Z]/.test(formData.password)) {
+      setError("Mật khẩu phải có ít nhất 1 chữ hoa.");
+      return;
+    }
+
+    if (!/[a-z]/.test(formData.password)) {
+      setError("Mật khẩu phải có ít nhất 1 chữ thường.");
+      return;
+    }
+
+    if (!/[0-9]/.test(formData.password)) {
+      setError("Mật khẩu phải có ít nhất 1 chữ số.");
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/onboarding/signup", {
@@ -51,11 +72,13 @@ export function SignupForm() {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Đăng ký thất bại");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(extractErrorMessage(data.error || data.detail || data, "Đăng ký thất bại"));
+      }
       router.push("/login?signup_success=1");
     } catch (err: any) {
-      setError(err.message);
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }

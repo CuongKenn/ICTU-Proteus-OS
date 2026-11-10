@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { UserPlus, UserMinus, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
-import api from "@/lib/api";
+import api, { extractErrorMessage } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 interface User {
@@ -66,11 +66,11 @@ export const UsersTab = () => {
         api.get("/v1/users"),
         api.get("/v1/roles"),
       ]);
-      setUsers(usersRes.data);
-      setRoles(rolesRes.data);
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
+      setRoles(Array.isArray(rolesRes.data) ? rolesRes.data : []);
     } catch (err) {
       logger.error("Failed to fetch users/roles", err);
-      setError("Không thể tải danh sách người dùng. Vui lòng thử lại.");
+      setError(extractErrorMessage(err, "Không thể tải danh sách người dùng. Vui lòng thử lại."));
     } finally {
       setLoading(false);
     }
@@ -104,7 +104,7 @@ export const UsersTab = () => {
         setInviteFullName("");
       }, 2000);
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "Có lỗi xảy ra khi gửi lời mời.";
+      const detail = extractErrorMessage(err, "Có lỗi xảy ra khi gửi lời mời.");
       setInviteError(detail);
     } finally {
       setInviting(false);
@@ -122,7 +122,7 @@ export const UsersTab = () => {
         setActionSuccess("Đã gửi lại email kích hoạt thành công!");
       }
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "Không thể gửi lại email kích hoạt.";
+      const detail = extractErrorMessage(err, "Không thể gửi lại email kích hoạt.");
       setActionError(detail);
     } finally {
       setResendingId(null);
@@ -137,7 +137,7 @@ export const UsersTab = () => {
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: false } : u));
       setActionSuccess("Vô hiệu hóa tài khoản thành công!");
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "Không thể vô hiệu hóa tài khoản.";
+      const detail = extractErrorMessage(err, "Không thể vô hiệu hóa tài khoản.");
       setActionError(detail);
     }
   };
@@ -160,7 +160,7 @@ export const UsersTab = () => {
       setActionSuccess(`Gán Role thành công cho ${selectedUser.full_name || selectedUser.email}!`);
       fetchData();
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || "Không thể gán role.");
+      setActionError(extractErrorMessage(err, "Không thể gán role."));
     } finally {
       setAssigning(false);
     }
@@ -227,7 +227,7 @@ export const UsersTab = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.length === 0 ? (
+              {!Array.isArray(users) || users.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-text-secondary">
                     Chưa có nhân viên nào. Bấm &quot;Mời nhân viên&quot; để bắt đầu.

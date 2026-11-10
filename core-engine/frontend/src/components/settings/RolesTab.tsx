@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Plus, Edit2, Trash2, ShieldAlert } from "lucide-react";
-import api from "@/lib/api";
+import api, { extractErrorMessage } from "@/lib/api";
 
 export interface Role {
   id: string;
@@ -82,9 +82,9 @@ export const RolesTab = () => {
     try {
       setIsLoading(true);
       const res = await api.get("/v1/roles");
-      setRoles(res.data);
+      setRoles(Array.isArray(res.data) ? res.data : []);
     } catch (err: any) {
-      setError(err.message || "Failed to load roles");
+      setError(extractErrorMessage(err, "Failed to load roles"));
     } finally {
       setIsLoading(false);
     }
@@ -154,7 +154,7 @@ export const RolesTab = () => {
       setIsModalOpen(false);
       fetchRoles();
     } catch (err: any) {
-      alert("Failed to save role: " + err.message);
+      alert("Failed to save role: " + extractErrorMessage(err));
     }
   };
 
@@ -164,7 +164,7 @@ export const RolesTab = () => {
         await api.delete(`/v1/roles/${id}`);
         fetchRoles();
       } catch (err: any) {
-        alert("Failed to delete role: " + err.message);
+        alert("Failed to delete role: " + extractErrorMessage(err));
       }
     }
   };
@@ -188,7 +188,7 @@ export const RolesTab = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {roles.map((role) => (
+        {Array.isArray(roles) && roles.map((role) => (
           <div key={role.id} className="bg-bg-surface/50 border border-border rounded-xl p-6 backdrop-blur-glass flex flex-col h-full hover:border-primary/50 transition-colors">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">

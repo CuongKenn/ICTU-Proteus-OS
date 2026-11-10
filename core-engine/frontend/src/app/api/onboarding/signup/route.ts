@@ -6,6 +6,27 @@ import { logger } from "@/lib/logger";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
+function extractBffError(data: any): string {
+  if (!data) return "Signup failed";
+  if (typeof data === "string") return data;
+  const detail = data?.detail ?? data?.error ?? data?.message;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d: any) => (typeof d === "string" ? d : d?.msg || d?.message || JSON.stringify(d)))
+      .filter(Boolean);
+    if (msgs.length > 0) return msgs.join("; ");
+  }
+  if (typeof detail === "object" && detail !== null) {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "Signup failed";
+    }
+  }
+  return "Signup failed";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -25,8 +46,9 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       logger.error(`[BFF] Signup failed: ${response.status}`, { data });
+      const errorMessage = extractBffError(data);
       return NextResponse.json(
-        { error: data?.detail || "Signup failed" },
+        { error: errorMessage },
         { status: response.status }
       );
     }
