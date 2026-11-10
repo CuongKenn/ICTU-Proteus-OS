@@ -67,7 +67,9 @@ class AIChatUseCase:
         self.plugin_repo = plugin_repo
         self.manifest_parser = manifest_parser
 
-    async def _build_messages(self, ctx: dict, user_text: str) -> list[dict[str, str]]:
+    async def _build_messages(
+        self, ctx: Any, user_text: str, session_id: uuid.UUID | None = None
+    ) -> list[dict[str, str]]:
         try:
             tenant_id = (
                 ctx.get("tenant_id")
@@ -121,10 +123,38 @@ TUYỆT ĐỐI không gọi action nghiệp vụ cho các câu trên.
 Ví dụ:
 - Input "xin chào" → {{"action": "core.chat.reply", "effect": "read", "parameters": {{"reply": "Xin chào! Tôi là Proteus AI, trợ lý điều hành của tổ chức bạn. Tôi tra cứu nhân sự, nghỉ phép, tri thức nội bộ hoặc thực hiện tác vụ cần phê duyệt. Bạn cần gì?"}}, "approval_message": null}}
 - Input "mày làm được gì" → {{"action": "core.chat.reply", "effect": "read", "parameters": {{"reply": "Tôi có thể giúp bạn:\n🔍 Tra cứu, báo cáo (trả lời ngay): liệt kê plugin, tìm nhân sự, tra tri thức nội bộ...\n⚙️ Thực hiện (cần bạn phê duyệt): duyệt nghỉ phép, cài plugin...\nCứ hỏi cụ thể bằng tiếng Việt nhé!"}}, "approval_message": null}}"""
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_text},
-        ]
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+
+        # Nạp lịch sử hội thoại từ conversation_repo nếu có session_id (#748)
+        if self.conversation_repo is not None and session_id is not None:
+            try:
+                tenant_id = (
+                    ctx.get("tenant_id")
+                    if isinstance(ctx, dict)
+                    else getattr(ctx, "tenant_id", None)
+                )
+                user_id = (
+                    ctx.get("user_id")
+                    if isinstance(ctx, dict)
+                    else getattr(ctx, "user_id", None)
+                )
+                if tenant_id and user_id:
+                    history = await self.conversation_repo.list_messages(
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        session_id=session_id,
+                        limit=10,
+                    )
+                    for h in history:
+                        role = h.get("role")
+                        content = h.get("content")
+                        if role in ("user", "assistant") and content:
+                            messages.append({"role": role, "content": content})
+            except Exception as e:
+                logger.warning("Không thể nạp lịch sử hội thoại: %s", e)
+
+        messages.append({"role": "user", "content": user_text})
+        return messages
 
     def _single_fallback(self, dto: AIChatDTO) -> AICommandDTO:
         """Safety net khi LLM trả về parse không được (không phải fast-path)."""
@@ -597,7 +627,9 @@ CHỈ trả về JSON, không text thừa:
                 {"detail": "LLM provider is not configured."},
             )
 
-        messages = await self._build_messages(ctx, dto.natural_language_input)
+        messages = await self._build_messages(
+            ctx, dto.natural_language_input, dto.session_id
+        )
         logger.info(f"Sending natural language to LLM: {dto.natural_language_input}")
 
         try:
@@ -634,7 +666,9 @@ CHỈ trả về JSON, không text thừa:
                 "result": {"detail": "LLM provider is not configured."},
             }
             return
-        messages = await self._build_messages(ctx, dto.natural_language_input)
+        messages = await self._build_messages(
+            ctx, dto.natural_language_input, dto.session_id
+        )
         full_text: list[str] = []
         try:
             if hasattr(self.llm_port, "astream"):
