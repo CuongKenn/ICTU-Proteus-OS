@@ -250,12 +250,24 @@ export function createLiveStore(client: BffClient): DocumentStore {
     async listIncoming() {
       return (await rows<Record<string, unknown>>('document_incoming')).map(toIncoming);
     },
-    // Tạo văn bản đến đi qua workflow wf_incoming_document (tiếp nhận → phân phối).
+    // Tạo văn bản đến: ghi DB trước rồi bắn workflow wf_incoming_document
     async createIncoming(i) {
-      const row = await client.post<Record<string, unknown>>(
-        `${A}/wf_incoming_document`,
+      const created = await client.post<Record<string, unknown>>(
+        `${R}/document_incoming`,
         {
+          so_van_ban: i.so_van_ban,
+          noi_gui: i.noi_gui,
+          ngay_nhan: i.ngay_nhan,
+          trich_yeu: i.trich_yeu,
+          file_url: i.file_url || null,
+          assignee_id: i.assignee_id || null,
+          status: 'received',
+        },
+      );
+      try {
+        await client.post(`${A}/wf_incoming_document`, {
           payload: {
+            id: created.id,
             so_van_ban: i.so_van_ban,
             noi_gui: i.noi_gui,
             ngay_nhan: i.ngay_nhan,
@@ -263,9 +275,11 @@ export function createLiveStore(client: BffClient): DocumentStore {
             file_url: i.file_url || undefined,
             assignee_id: i.assignee_id || undefined,
           },
-        },
-      );
-      return toIncoming(row);
+        });
+      } catch {
+        // best-effort workflow trigger
+      }
+      return toIncoming(created);
     },
     async updateIncoming(id, p) {
       return toIncoming(await client.patch(`${R}/document_incoming/${id}`, p));

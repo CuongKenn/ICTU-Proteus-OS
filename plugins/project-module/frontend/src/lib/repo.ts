@@ -266,6 +266,29 @@ function toMilestone(r: Record<string, unknown>): Milestone {
   };
 }
 
+function toComment(r: Record<string, unknown>): TaskComment {
+  return {
+    id: String(r.id ?? ''),
+    task_id: String(r.task_id ?? ''),
+    user_id: String(r.user_id ?? ''),
+    user_name: String(r.user_name ?? r.full_name ?? r.user_id ?? 'Thành viên'),
+    content: String(r.content ?? ''),
+    created_at: String(r.created_at ?? new Date().toISOString()),
+  };
+}
+
+function toTimeLog(r: Record<string, unknown>): TimeLog {
+  return {
+    id: String(r.id ?? ''),
+    task_id: String(r.task_id ?? ''),
+    user_id: String(r.user_id ?? ''),
+    user_name: String(r.user_name ?? r.full_name ?? r.user_id ?? 'Thành viên'),
+    log_date: String(r.log_date ?? new Date().toISOString().slice(0, 10)),
+    hours: Number(r.hours ?? 0),
+    notes: String(r.notes ?? r.note ?? ''),
+  };
+}
+
 function toTask(r: Record<string, unknown>): ProjectTask {
   const assignee = String(r.assignee_name ?? r.assignee_id ?? '');
   return {
@@ -380,7 +403,7 @@ export function createLiveStore(client: BffClient): ProjectStore {
       await client.del(`${R}/project_tasks/${id}`);
     },
     async listComments(task_id) {
-      const all = await rows<TaskComment>('project_task_comments');
+      const all = (await rows<Record<string, unknown>>('project_task_comments')).map(toComment);
       return task_id ? all.filter((c) => c.task_id === task_id) : all;
     },
     async addComment(i) {
@@ -391,11 +414,12 @@ export function createLiveStore(client: BffClient): ProjectStore {
       });
     },
     async listTimeLogs(task_id) {
-      const all = await rows<TimeLog>('project_time_logs');
+      const all = (await rows<Record<string, unknown>>('project_time_logs')).map(toTimeLog);
       return task_id ? all.filter((l) => l.task_id === task_id) : all;
     },
     async addTimeLog(i) {
-      await client.post(`${R}/project_time_logs`, i);
+      const { user_name, ...dbPayload } = i as any;
+      await client.post(`${R}/project_time_logs`, dbPayload);
     },
     async reset() { /* live: không reset DB từ UI */ },
   };
