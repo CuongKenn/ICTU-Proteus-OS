@@ -111,6 +111,7 @@ export function useMarketplace(): UseMarketplaceReturn {
           setInstallStatus("active");
           useNotificationStore.getState().addToast("success", "Cài đặt Plugin thành công!");
           if (pollingRef.current) clearInterval(pollingRef.current);
+          setTrigger((t) => t + 1);
           setTimeout(() => {
             setInstallingId(null);
             setInstallStatus(null);

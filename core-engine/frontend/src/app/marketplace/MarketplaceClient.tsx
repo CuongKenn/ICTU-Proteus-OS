@@ -24,7 +24,7 @@ export const MarketplaceClient: React.FC = () => {
   const canInstall = hasPermission("plugins:install");
 
   const { plugins: availablePlugins, isLoading: isLoadingAvailable, installingId, installProgress, installStatus, installPlugin, uninstallPlugin } = useMarketplace();
-  const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled } = usePlugins();
+  const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled, enable, upgrade } = usePlugins();
 
   const [previewPlugin, setPreviewPlugin] = useState<PluginData | null>(null);
   const [previewCredSchema, setPreviewCredSchema] = useState<CredentialFieldSchema[]>([]);
@@ -139,6 +139,35 @@ export const MarketplaceClient: React.FC = () => {
     }
   };
 
+  const handleOpenClick = (id: string) => {
+    const plugin = allPlugins.find((p) => p.data.id === id)?.data;
+    if (plugin) {
+      window.location.href = `/plugins/${plugin.codeName || plugin.id}`;
+    }
+  };
+
+  const handleRetryClick = (id: string) => {
+    handleInstallClick(id);
+  };
+
+  const handleEnableClick = async (id: string) => {
+    try {
+      await enable(id);
+      refetchInstalled();
+    } catch {
+      // error handled in hook toast
+    }
+  };
+
+  const handleUpdateClick = async (id: string) => {
+    try {
+      await upgrade(id);
+      refetchInstalled();
+    } catch {
+      // error handled in hook toast
+    }
+  };
+
   const handleConfirmUninstall = async () => {
     if (uninstallPluginData && canInstall) {
       setIsUninstalling(true);
@@ -235,6 +264,10 @@ export const MarketplaceClient: React.FC = () => {
                   canInstall={canInstall}
                   onInstall={handleInstallClick}
                   onUninstall={handleUninstallClick}
+                  onOpen={handleOpenClick}
+                  onRetry={handleRetryClick}
+                  onEnable={handleEnableClick}
+                  onUpdate={handleUpdateClick}
                 />
               );
             })}

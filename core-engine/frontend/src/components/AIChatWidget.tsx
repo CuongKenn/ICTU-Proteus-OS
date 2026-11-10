@@ -205,7 +205,11 @@ const DslPreviewPanel: React.FC<{
 
 // ─── Main Widget Component ────────────────────────────────────────────────────
 
-const AIChatWidgetInner: React.FC = () => {
+export interface AIChatWidgetProps {
+  mode?: "floating" | "inline";
+}
+
+const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) => {
   const {
     widgetState,
     messages,
@@ -223,7 +227,14 @@ const AIChatWidgetInner: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const isExpanded = widgetState !== "collapsed";
+  const isInline = mode === "inline";
+  const isExpanded = isInline || widgetState !== "collapsed";
+
+  useEffect(() => {
+    if (isInline && widgetState === "collapsed") {
+      openWidget();
+    }
+  }, [isInline, widgetState, openWidget]);
 
   // Auto-scroll khi có tin nhắn mới
   useEffect(() => {
@@ -250,6 +261,7 @@ const AIChatWidgetInner: React.FC = () => {
 
   // Global Keyboard listener for Ctrl+K
   useEffect(() => {
+    if (isInline) return;
     const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
@@ -262,16 +274,20 @@ const AIChatWidgetInner: React.FC = () => {
     };
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [isExpanded, openWidget, minimizeWidget]);
+  }, [isExpanded, openWidget, minimizeWidget, isInline]);
 
   const isInputDisabled = widgetState === "thinking" || widgetState === "awaiting_approval";
   const canSend = inputValue.trim().length > 0 && !isInputDisabled;
 
   return (
     <div
-      id="ai-chat-widget-root"
-      className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3"
-      role="complementary"
+      id={isInline ? "ai-chat-inline-root" : "ai-chat-widget-root"}
+      className={clsx(
+        isInline
+          ? "w-full h-full flex flex-col flex-1"
+          : "fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3"
+      )}
+      role={isInline ? "region" : "complementary"}
       aria-label="Proteus AI Chat"
     >
       {/* ── Chat Panel (expanded / thinking / awaiting_approval) ── */}
@@ -279,15 +295,23 @@ const AIChatWidgetInner: React.FC = () => {
         id="ai-chat-panel"
         aria-hidden={!isExpanded}
         className={clsx(
-          "w-[360px] rounded-2xl overflow-hidden",
-          "shadow-modal",
-          "transition-all duration-300 ease-out origin-bottom-right",
-          "flex flex-col",
-          isExpanded
-            ? "opacity-100 scale-100 translate-y-0"
-            : "opacity-0 scale-95 translate-y-4 pointer-events-none"
+          isInline
+            ? "w-full h-full flex-1 rounded-2xl overflow-hidden flex flex-col"
+            : clsx(
+                "w-[360px] rounded-2xl overflow-hidden",
+                "shadow-modal",
+                "transition-all duration-300 ease-out origin-bottom-right",
+                "flex flex-col",
+                isExpanded
+                  ? "opacity-100 scale-100 translate-y-0"
+                  : "opacity-0 scale-95 translate-y-4 pointer-events-none"
+              )
         )}
-        style={{ height: isExpanded ? '480px' : '0px', background: 'var(--plate)', border: '1px solid var(--plate-border)' }}
+        style={{
+          height: isInline ? "100%" : isExpanded ? "480px" : "0px",
+          background: "var(--plate)",
+          border: "1px solid var(--plate-border)",
+        }}
       >
         {/* Header */}
         <div className="h-[52px] flex items-center justify-between px-4 shrink-0" style={{ borderBottom: '1px solid var(--plate-border)', background: 'var(--plate-soft)' }}>
@@ -414,39 +438,41 @@ const AIChatWidgetInner: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Floating Button (always visible) ── */}
-      <button
-        id="ai-widget-fab"
-        aria-label={isExpanded ? "Thu nhỏ Proteus AI" : "Mở Proteus AI"}
-        aria-expanded={isExpanded}
-        title={isExpanded ? "Thu nhỏ" : "Mở Proteus AI (Ctrl+K)"}
-        onClick={isExpanded ? resetAndClose : openWidget}
-        className={clsx(
-          "w-16 h-16 rounded-2xl flex items-center justify-center",
-          "transition-all duration-300 ease-out",
-          "focus:outline-none focus-visible:ring-2",
-          isExpanded
-            ? [
-                "text-white/60",
-                "hover:text-red-400",
-                "shadow-lg",
-              ]
-            : [
-                "text-white",
-                "shadow-elevated",
-                "hover:scale-105 active:scale-95",
-              ]
-        )}
-        style={{ background: isExpanded ? 'var(--plate)' : 'var(--accent)', border: isExpanded ? '1px solid var(--plate-border)' : 'none' }}
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-6 h-6" />
-        ) : (
-          <div className="relative">
-            <Bot className="w-7 h-7" />
-          </div>
-        )}
-      </button>
+      {/* ── Floating Button (always visible for floating mode) ── */}
+      {!isInline && (
+        <button
+          id="ai-widget-fab"
+          aria-label={isExpanded ? "Thu nhỏ Proteus AI" : "Mở Proteus AI"}
+          aria-expanded={isExpanded}
+          title={isExpanded ? "Thu nhỏ" : "Mở Proteus AI (Ctrl+K)"}
+          onClick={isExpanded ? resetAndClose : openWidget}
+          className={clsx(
+            "w-16 h-16 rounded-2xl flex items-center justify-center",
+            "transition-all duration-300 ease-out",
+            "focus:outline-none focus-visible:ring-2",
+            isExpanded
+              ? [
+                  "text-white/60",
+                  "hover:text-red-400",
+                  "shadow-lg",
+                ]
+              : [
+                  "text-white",
+                  "shadow-elevated",
+                  "hover:scale-105 active:scale-95",
+                ]
+          )}
+          style={{ background: isExpanded ? 'var(--plate)' : 'var(--accent)', border: isExpanded ? '1px solid var(--plate-border)' : 'none' }}
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-6 h-6" />
+          ) : (
+            <div className="relative">
+              <Bot className="w-7 h-7" />
+            </div>
+          )}
+        </button>
+      )}
     </div>
   );
 };
@@ -490,12 +516,16 @@ class AIChatErrorBoundary extends React.Component<
   }
 }
 
-export const AIChatWidget: React.FC = () => (
+export const AIChatWidget: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) => (
   <AIChatErrorBoundary>
-    <AIChatWidgetInner />
+    <AIChatWidgetInner mode={mode} />
   </AIChatErrorBoundary>
 );
 
 // Alias for full-page AI chat panel (used by /ai route)
-export const AIChatPanel = AIChatWidget;
+export const AIChatPanel: React.FC<AIChatWidgetProps> = ({ mode = "inline" }) => (
+  <AIChatErrorBoundary>
+    <AIChatWidgetInner mode={mode} />
+  </AIChatErrorBoundary>
+);
 

@@ -10,12 +10,25 @@ import { Bell, Search, LogOut, User, ChevronDown } from "lucide-react";
 import { NotificationPanel } from "@/components/NotificationPanel";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LanguageToggle } from "@/components/i18n/LanguageToggle";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export function Topbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/federated-logout");
+      const data = await res.json();
+      await signOut({ redirect: false });
+      window.location.href = data.url || "/login";
+    } catch {
+      await signOut({ callbackUrl: "/login" });
+    }
+  };
 
   const pageTitle = (() => {
     if (pathname.startsWith("/launchpad")) return "Dashboard";
@@ -47,12 +60,21 @@ export function Topbar() {
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2 rounded-lg transition-colors"
+            className="p-2 rounded-lg transition-colors relative"
             style={{ color: "var(--muted)" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            aria-label="Thông báo"
           >
             <Bell className="w-[18px] h-[18px]" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 text-[10px] font-bold text-white rounded-full flex items-center justify-center pointer-events-none"
+                style={{ background: "var(--rose, #f43f5e)" }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </button>
           {showNotifications && (
             <>
@@ -100,7 +122,7 @@ export function Topbar() {
                   </div>
                   <div className="p-1">
                     <button
-                      onClick={() => signOut({ callbackUrl: "/login" })}
+                      onClick={handleLogout}
                       className="w-full text-left px-3 py-2 text-[13px] rounded-lg transition-colors flex items-center gap-2"
                       style={{ color: "var(--rose)" }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--rose-fill)")}

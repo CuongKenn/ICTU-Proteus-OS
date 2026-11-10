@@ -8,9 +8,11 @@ import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
+  const pathname = usePathname();
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--paper)", color: "var(--ink)" }}>
@@ -21,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      {session && <AIChatWidget />}
+      {session && pathname !== "/ai" && <AIChatWidget mode="floating" />}
     </div>
   );
 }
