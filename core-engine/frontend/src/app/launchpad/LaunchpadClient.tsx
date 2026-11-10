@@ -20,14 +20,14 @@ import { useLang } from "@/components/i18n/LanguageContext";
 export function LaunchpadClient() {
   const { data: session } = useSession();
   const hasRole = useAuthStore((state) => state.hasRole);
-  const isAdmin = hasRole("tenant_admin") || hasRole("superadmin");
+  const isAdmin = hasRole("tenant_admin") || hasRole("superadmin") || hasRole("system_admin") || hasRole("admin");
   const { plugins, isLoading } = usePlugins();
   const [activeApp, setActiveApp] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [isIframeLoading, setIsIframeLoading] = useState(false);
   const addToast = useNotificationStore((state) => state.addToast);
   const router = useRouter();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -60,15 +60,15 @@ export function LaunchpadClient() {
   const closeIframe = () => { setActiveApp(null); setIframeUrl(null); };
 
   const handleOpenPlugin = (code_name: string) => {
-    const appsmithUrl = `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${code_name}`;
-    openIframe(code_name, appsmithUrl);
+    const plugin = plugins.find(p => p.code_name === code_name);
+    const targetUrl = plugin?.external_url || plugin?.homepage_url || `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${code_name}`;
+    openIframe(code_name, targetUrl);
   };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return t("launchpad.morning");
-    if (hour < 18) return t("launchpad.afternoon");
-    return t("launchpad.evening");
+    const timeOfDay = hour < 12 ? t("launchpad.morning") : hour < 18 ? t("launchpad.afternoon") : t("launchpad.evening");
+    return lang === "en" ? `Good ${timeOfDay}` : `Chào buổi ${timeOfDay}`;
   };
 
   return (
@@ -81,7 +81,7 @@ export function LaunchpadClient() {
             WORKSPACE ACTIVE
           </div>
           <h1 className="text-3xl font-grot font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
-            Chào buổi {getGreeting()}, <span style={{ color: "var(--accent)" }}>{session?.user?.name || 'bạn'}</span>!
+            {getGreeting()}, <span style={{ color: "var(--accent)" }}>{session?.user?.name || 'bạn'}</span>!
           </h1>
           <p className="font-mono text-meta" style={{ color: "var(--dim)" }}>
             {new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -163,7 +163,7 @@ export function LaunchpadClient() {
                 <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: "var(--line)", borderTopColor: "var(--accent)" }} />
               </div>
             )}
-            <iframe src={iframeUrl} className="w-full h-full border-none" onLoad={() => setIsIframeLoading(false)} allow="clipboard-read; clipboard-write; fullscreen" />
+            <iframe src={iframeUrl} className="w-full h-full border-none" onLoad={() => setIsIframeLoading(false)} allow="clipboard-read; clipboard-write; fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
           </div>
         </div>
       )}

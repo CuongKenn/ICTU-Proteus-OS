@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Plus, Edit2, Trash2, ShieldAlert } from "lucide-react";
+import { Plus, Edit2, Trash2, ShieldAlert, LayoutTemplate } from "lucide-react";
 import api, { extractErrorMessage } from "@/lib/api";
 
 export interface Role {
@@ -73,6 +73,10 @@ export const RolesTab = () => {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [formData, setFormData] = useState({ name: "", display_name: "", description: "" });
   const [formPermissions, setFormPermissions] = useState<Record<string, string[]>>({});
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templates, setTemplates] = useState<Array<{ template_key: string; name: string; description: string; roles: string[] }>>([]);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>("");
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
 
   useEffect(() => {
     fetchRoles();
@@ -87,6 +91,34 @@ export const RolesTab = () => {
       setError(extractErrorMessage(err, "Failed to load roles"));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+    const handleOpenTemplateModal = async () => {
+    try {
+      const res = await api.get("/v1/roles/templates");
+      const list = Array.isArray(res.data) ? res.data : [];
+      setTemplates(list);
+      if (list.length > 0) setSelectedTemplateKey(list[0].template_key);
+      setIsTemplateModalOpen(true);
+    } catch (err: any) {
+      alert("Không thể tải danh sách Role Template: " + extractErrorMessage(err));
+    }
+  };
+
+  const handleApplyTemplate = async () => {
+    if (!selectedTemplateKey) return;
+    try {
+      setIsApplyingTemplate(true);
+      const res = await api.post("/v1/roles/apply-template", { template_key: selectedTemplateKey });
+      setIsTemplateModalOpen(false);
+      fetchRoles();
+      const createdCount = res.data?.created?.length || 0;
+      alert(`Đã áp dụng template thành công! Tạo mới ${createdCount} roles.`);
+    } catch (err: any) {
+      alert("Lỗi khi áp dụng template: " + extractErrorMessage(err));
+    } finally {
+      setIsApplyingTemplate(false);
     }
   };
 
@@ -181,10 +213,16 @@ export const RolesTab = () => {
             Quản lý các Role và phân quyền (RBAC) cho Tenant của bạn.
           </p>
         </div>
-        <Button onClick={() => handleOpenModal()} className="shrink-0 gap-2">
-          <Plus className="w-4 h-4" />
-          Tạo Role Mới
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" onClick={handleOpenTemplateModal} className="shrink-0 gap-2">
+            <LayoutTemplate className="w-4 h-4" />
+            Áp dụng Template
+          </Button>
+          <Button onClick={() => handleOpenModal()} className="shrink-0 gap-2">
+            <Plus className="w-4 h-4" />
+            Tạo Role Mới
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -317,6 +355,55 @@ export const RolesTab = () => {
         </div>
       </Modal>
 
+      {/* Template Modal */}
+      <Modal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        title="Áp dụng Role Template"
+        onConfirm={handleApplyTemplate}
+        confirmLabel="Áp dụng Template"
+        isConfirmLoading={isApplyingTemplate}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Chọn bộ phân quyền mẫu được cấu hình sẵn theo mô hình tổ chức của bạn. Hệ thống sẽ tự động tạo các Role còn thiếu mà không ghi đè Role hiện tại.
+          </p>
+          <div className="space-y-3">
+            {templates.map((tpl) => (
+              <label
+                key={tpl.template_key}
+                className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                  selectedTemplateKey === tpl.template_key
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-bg-surface/30 hover:bg-bg-hover"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="template_key"
+                  value={tpl.template_key}
+                  checked={selectedTemplateKey === tpl.template_key}
+                  onChange={() => setSelectedTemplateKey(tpl.template_key)}
+                  className="mt-1 w-4 h-4 text-primary focus:ring-primary/20"
+                />
+                <div className="flex-1">
+                  <span className="font-semibold text-text-primary">{tpl.name}</span>
+                  <p className="text-xs text-text-secondary mt-1">{tpl.description}</p>
+                  {tpl.roles && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {tpl.roles.map((r, i) => (
+                        <span key={i} className="px-2 py-0.5 text-[10px] rounded bg-bg-hover text-text-secondary font-mono">
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

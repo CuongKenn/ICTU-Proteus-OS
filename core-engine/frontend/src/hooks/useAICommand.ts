@@ -7,6 +7,7 @@
 // Tham chiếu: docs/architecture.md §2.1 (BFF Pattern), docs/dsl-spec.md
 
 import { useState, useCallback, useRef } from "react";
+import { useDraftRestore } from "@/hooks/useDraftRestore";
 import { useNotificationStore } from "@/store/notificationStore";
 
 // Helper: sinh UUID v4 RFC-4122 chuẩn cho cả HTTPS và HTTP
@@ -86,6 +87,9 @@ interface UseAICommandReturn {
 // ─── Hook Implementation ───────────────────────────────────────────────────────
 
 export function useAICommand(): UseAICommandReturn {
+  const { saveDraft, restoreDraft, clearDraft } = useDraftRestore();
+  const DRAFT_KEY = "ai_command_draft_input";
+
   const [widgetState, setWidgetState] = useState<WidgetState>("collapsed");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -95,7 +99,16 @@ export function useAICommand(): UseAICommandReturn {
       timestamp: new Date(),
     },
   ]);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValueState] = useState<string>(() => restoreDraft<string>("ai_command_draft_input") || "");
+
+  const setInputValue = useCallback((value: string) => {
+    setInputValueState(value);
+    if (value) {
+      saveDraft(DRAFT_KEY, value);
+    } else {
+      clearDraft(DRAFT_KEY);
+    }
+  }, [saveDraft, clearDraft]);
   const [dslPreview, setDslPreview] = useState<DslPreview | null>(null);
   const [sessionId, setSessionId] = useState<string>(() => uuid());
 
@@ -114,6 +127,7 @@ export function useAICommand(): UseAICommandReturn {
   const resetAndClose = useCallback(() => {
     setWidgetState("collapsed");
     setDslPreview(null);
+    clearDraft(DRAFT_KEY);
     setMessages([
       {
         id: uuid(),
@@ -123,7 +137,7 @@ export function useAICommand(): UseAICommandReturn {
       },
     ]);
     setSessionId(uuid());
-  }, []);
+  }, [clearDraft]);
 
   const appendMessage = useCallback((role: MessageRole, content: string) => {
     setMessages((prev) => [
@@ -145,6 +159,7 @@ export function useAICommand(): UseAICommandReturn {
     // Thêm tin nhắn người dùng
     appendMessage("user", trimmed);
     setInputValue("");
+    clearDraft(DRAFT_KEY);
     setWidgetState("thinking");
 
     try {
@@ -222,7 +237,7 @@ export function useAICommand(): UseAICommandReturn {
         setWidgetState("expanded");
       }
     }
-  }, [inputValue, widgetState, appendMessage, addToast, sessionId]);
+  }, [inputValue, widgetState, appendMessage, addToast, sessionId, setInputValue, clearDraft]);
 
   /**
    * openMattermostApproval — Mở Mattermost để phê duyệt.

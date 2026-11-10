@@ -10,7 +10,7 @@ import api from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { useNotificationStore } from "@/store/notificationStore";
 import { usePlugins } from "@/hooks/usePlugins";
-import type { PluginInfo, InstallTaskStatus, CredentialInput } from "@/types";
+import type { PluginInfo, InstallTaskStatus, CredentialInput, InstallTaskStep } from "@/types";
 import type { PluginStatus } from "@/components/marketplace/PluginCard";
 
 interface UseMarketplaceReturn {
@@ -22,6 +22,7 @@ interface UseMarketplaceReturn {
   installingId: string | null;
   installProgress: number;
   installStatus: PluginStatus | null;
+  installSteps: InstallTaskStep[];
   installPlugin: (pluginId: string, credentials?: CredentialInput[]) => Promise<void>;
   uninstallPlugin: (pluginId: string, confirmName?: string) => Promise<void>;
 }
@@ -36,6 +37,7 @@ export function useMarketplace(): UseMarketplaceReturn {
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [installProgress, setInstallProgress] = useState(0);
   const [installStatus, setInstallStatus] = useState<PluginStatus | null>(null);
+  const [installSteps, setInstallSteps] = useState<InstallTaskStep[]>([]);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const { install, uninstall } = usePlugins();
@@ -94,6 +96,7 @@ export function useMarketplace(): UseMarketplaceReturn {
       if (statusData) {
         // Tính progress từ steps thực tế
         if (statusData.steps && statusData.steps.length > 0) {
+          setInstallSteps(statusData.steps);
           const completedSteps = statusData.steps.filter(
             (s) => s.status === "DONE"
           ).length;
@@ -116,6 +119,7 @@ export function useMarketplace(): UseMarketplaceReturn {
             setInstallingId(null);
             setInstallStatus(null);
             setInstallProgress(0);
+            setInstallSteps([]);
           }, 2000);
         } else if (
           overallStatus === "FAILED_DIRTY" ||
@@ -129,6 +133,7 @@ export function useMarketplace(): UseMarketplaceReturn {
             setInstallingId(null);
             setInstallStatus(null);
             setInstallProgress(0);
+            setInstallSteps([]);
           }, 2000);
         }
       }
@@ -166,6 +171,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     setInstallingId(pluginId);
     setInstallProgress(0);
     setInstallStatus("installing");
+    setInstallSteps([]);
 
     try {
       const data = await install(pluginId, credentials);
@@ -210,6 +216,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     installingId,
     installProgress,
     installStatus,
+    installSteps,
     installPlugin,
     uninstallPlugin: uninstall,
   };
