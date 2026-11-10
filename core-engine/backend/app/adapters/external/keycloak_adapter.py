@@ -495,6 +495,22 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             extra={"user_id": user_id, "realm": realm},
         )
 
+    async def logout_user(self, realm: str, user_id: str) -> None:
+        """Đăng xuất người dùng trên Keycloak (thu hồi toàn bộ sessions)."""
+        admin_token = await self.get_admin_token()
+        url = f"{settings.KEYCLOAK_URL}/admin/realms/{realm}/users/{user_id}/logout"
+        response = await self._client.post(
+            url,
+            headers={"Authorization": f"Bearer {admin_token}"},
+            timeout=10.0,
+        )
+        if response.status_code not in (200, 204):
+            response.raise_for_status()
+        logger.info(
+            "User sessions revoked on Keycloak",
+            extra={"user_id": user_id, "realm": realm},
+        )
+
     async def delete_user(self, realm: str, user_id: str) -> None:
         """Xóa User trên Keycloak."""
         admin_token = await self.get_admin_token()

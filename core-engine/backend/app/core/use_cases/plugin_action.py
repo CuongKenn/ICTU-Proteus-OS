@@ -110,7 +110,9 @@ class PluginActionUseCase:
         # Admin bypass (đồng nhất với require_permission trong dependencies).
         if has_admin_role(ctx.roles):
             return
-        perms = await self.role_repo.get_user_permissions(ctx.user_id)
+        perms = await self.role_repo.get_user_permissions(
+            ctx.user_id, tenant_id=ctx.tenant_id
+        )
         if has_wildcard_permission(perms):
             return
 

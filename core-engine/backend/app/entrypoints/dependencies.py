@@ -297,6 +297,11 @@ async def get_current_tenant_context(
             await set_session_tenant(db, "__system__")
             user_repo = SQLAlchemyUserRepository(session=db)
             db_user = await user_repo.get_by_keycloak_id(keycloak_uuid)
+            if not db_user or not db_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Tài khoản đã bị vô hiệu hóa hoặc không tồn tại.",
+                )
             if db_user and db_user.tenant_id:
                 tenant_id_raw = str(db_user.tenant_id)
                 await set_session_tenant(db, tenant_id_raw)
@@ -333,6 +338,22 @@ async def get_current_tenant_context(
                 f"tenant_id='{tenant_id_raw}', user_id='{user_id_raw}'"
             ),
         ) from exc
+
+    # Kiểm tra trạng thái is_active của user trong DB (#743)
+    try:
+        user_repo = SQLAlchemyUserRepository(session=db)
+        db_user = await user_repo.get_by_keycloak_id(user_id)
+        if db_user is None:
+            db_user = await user_repo.get(user_id)
+        if db_user is not None and not db_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tài khoản đã bị vô hiệu hóa.",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Không thể kiểm tra is_active từ DB: %s", exc)
 
     realm_access = payload.get("realm_access", {})
     roles = realm_access.get("roles", [])
