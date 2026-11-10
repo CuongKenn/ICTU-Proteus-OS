@@ -68,7 +68,7 @@ class N8nAdapter(AbstractWorkflowEnginePort):
     _ACTION_3PART_PATTERN = re.compile(r"^[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$")
     _SEGMENT_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
-    def build_webhook_url(self, action: str) -> str:
+    def build_webhook_url(self, action: str, tenant_id: Any = None) -> str:
         """
         Xây dựng webhook URL từ action của DSL Command.
         Ví dụ: 'hr.leave_requests.batch_approve' -> '{N8N_URL}/webhook/hr-leave_requests-batch_approve'
@@ -94,6 +94,9 @@ class N8nAdapter(AbstractWorkflowEnginePort):
         path = action.replace(".", "-")
         if ".." in path or "/" in path or "\\" in path:
             raise N8nAdapterError(f"Invalid action path: {action!r}")
+        if tenant_id:
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            path = f"t_{tenant_short}_{path}"
         return f"{self._base_url}/webhook/{path}"
 
     async def _request_with_retry(

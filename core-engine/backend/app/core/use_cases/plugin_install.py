@@ -593,15 +593,21 @@ class PluginInstallUseCase:
             raise PluginInstallError(f"Cài đặt plugin thất bại: {e}") from e
 
     async def _step_1_database(
-        self, context: TenantContext, plugin_code_name: str, manifest: PluginManifest
+        self,
+        context: TenantContext,
+        plugin_code_name: str,
+        manifest: PluginManifest,
     ) -> None:
         """Thực thi seed_file của plugin và setup RLS."""
-        if manifest.database:
+        if not manifest.database:
+            return
+
+        has_schema = False
+        try:
             schema_name = f"tenant_{context.tenant_id}".replace("-", "_")
             if not re.match(r"^[a-zA-Z0-9_]+$", schema_name):
                 raise PluginInstallError("Invalid schema name.")
 
-            has_schema = False
             if manifest.database.seed_file:
                 # Chặn path traversal: plugin_code + seed_file đều phải sạch,
                 # resolve cuối cùng phải nằm trong plugins_dir.
@@ -683,6 +689,19 @@ class PluginInstallUseCase:
                                 text(f"RELEASE SAVEPOINT {sp_name}")
                             )
                         except Exception as stmt_err:
+                            stmt_upper = stmt.strip().upper()
+                            is_ddl = (
+                                stmt_upper.startswith("CREATE")
+                                or stmt_upper.startswith("ALTER")
+                                or stmt_upper.startswith("DROP")
+                            )
+                            if is_ddl:
+                                await self.session.execute(
+                                    text(f"ROLLBACK TO SAVEPOINT {sp_name}")
+                                )
+                                raise PluginInstallError(
+                                    f"DDL execution failed in seed statement: {stmt_err}"
+                                ) from stmt_err
                             logger.warning(
                                 "Seed statement %d failed (skipped): %s — %s",
                                 i,
@@ -692,10 +711,6 @@ class PluginInstallUseCase:
                             await self.session.execute(
                                 text(f"ROLLBACK TO SAVEPOINT {sp_name}")
                             )
-                    # Reset search_path về public để tránh ảnh hưởng session tiếp theo
-                    # (dù SET LOCAL đã tự reset khi commit, giữ RESET显式 cho an toàn
-                    # với session pool dùng lại transaction).
-                    await self.session.execute(text("SET search_path TO public"))
 
             # Tự động tạo RLS cho các bảng (best-effort — table có thể chưa tồn tại)
             if manifest.database.tables:
@@ -705,7 +720,10 @@ class PluginInstallUseCase:
                 await self.session.execute(
                     text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
                 )
-                await self.session.execute(text(f'SET search_path TO "{schema_name}"'))
+                await self.session.execute(
+                    text(f'SET search_path TO "{schema_name}", public')
+                )
+                has_schema = True
 
                 # Role app_user phải tồn tại thì CREATE POLICY mới chạy được
                 # (fresh install chưa có → tạo best-effort, đã có thì skip).
@@ -721,24 +739,20 @@ class PluginInstallUseCase:
                 res_cols = await self.session.execute(
                     text(
                         "SELECT table_name FROM information_schema.columns "
-                        "WHERE table_schema = :schema AND column_name = 'tenant_id'"
+                        "WHERE table_schema = :s AND column_name = 'tenant_id'",
                     ),
-                    {"schema": schema_name},
+                    {"s": schema_name},
                 )
-                tables_with_tenant = {r[0] for r in res_cols.fetchall()}
+                tenant_tables = {row[0] for row in res_cols.fetchall()}
 
                 for table in manifest.database.tables:
                     if not re.match(r"^[a-zA-Z0-9_]+$", table):
-                        raise PluginInstallError(f"Invalid table name: {table}")
-                    if table not in tables_with_tenant:
-                        logger.debug(
-                            "Bỏ qua RLS cho bảng %s (không có cột tenant_id; "
-                            "cách ly bằng schema)",
-                            table,
-                        )
+                        raise PluginInstallError("Invalid table name.")
+                    if table not in tenant_tables:
                         continue
-
                     sp = f"rls_{table}"
+                    if not re.match(r"^[a-zA-Z0-9_]+$", sp):
+                        raise PluginInstallError(f"Tên savepoint không hợp lệ: {sp}")
                     try:
                         await self.session.execute(text(f"SAVEPOINT {sp}"))
                         await self.session.execute(
@@ -753,11 +767,11 @@ class PluginInstallUseCase:
                             )
                         )
                         policy_sql = f"""
-                            CREATE POLICY tenant_isolation_policy ON "{table}"
-                            FOR ALL TO public
-                            USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                            WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                        """
+                                CREATE POLICY tenant_isolation_policy ON "{table}"
+                                FOR ALL TO public
+                                USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
+                                WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid)
+                            """
                         await self.session.execute(text(policy_sql))
                         await self.session.execute(text(f"RELEASE SAVEPOINT {sp}"))
                     except Exception as rls_err:
@@ -767,8 +781,13 @@ class PluginInstallUseCase:
                             rls_err,
                         )
                         await self.session.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+        finally:
+            if has_schema:
+                await self.session.execute(
+                    text("SET search_path TO public, ag_catalog")
+                )
 
-        # Chúng ta tạm thiết kế DB adapter bằng session execute.
+    # Chúng ta tạm thiết kế DB adapter bằng session execute.
 
     async def _step_2_n8n(
         self,
@@ -894,14 +913,26 @@ class PluginInstallUseCase:
                 with open(wf_path, encoding="utf-8-sig") as f:
                     wf_json = json.load(f)
 
+                tenant_short = str(context.tenant_id).replace("-", "")[:8]
+                wf_orig_name = wf_json.get("name") or wf.file or "workflow"
+                wf_json["name"] = f"t_{tenant_short}_{wf_orig_name}"
+
                 # Dynamic Workflow Injection
                 for node in wf_json.get("nodes", []):
                     # Webhook nodes thiếu httpMethod mặc định về GET trong n8n
                     # trong khi backend trigger POST → 404. Ép POST nếu thiếu.
                     if (node.get("type") or "") == "n8n-nodes-base.webhook":
                         params = node.setdefault("parameters", {})
-                        if isinstance(params, dict) and not params.get("httpMethod"):
-                            params["httpMethod"] = "POST"
+                        if isinstance(params, dict):
+                            if not params.get("httpMethod"):
+                                params["httpMethod"] = "POST"
+                            raw_path = params.get("path") or ""
+                            if raw_path and not raw_path.startswith(
+                                f"t_{tenant_short}_"
+                            ):
+                                params["path"] = (
+                                    f"t_{tenant_short}_{raw_path.lstrip('/')}"
+                                )
                     # Inject Tenant Schema
                     if "parameters" in node and "query" in node["parameters"]:
                         query = node["parameters"]["query"]

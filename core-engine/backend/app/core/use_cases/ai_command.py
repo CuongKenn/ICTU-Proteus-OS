@@ -148,7 +148,7 @@ class AICommandUseCase:
             return {"reply": response}
         return {"result": response}
 
-    def _resolve_action_url(self, action: str) -> str:
+    def _resolve_action_url(self, action: str, tenant_id: Any = None) -> str:
         """Dựng webhook URL cho action 3-part classic hoặc 2-part workflow."""
         from app.core.use_cases.action_catalog import split_plugin_action
 
@@ -164,9 +164,9 @@ class AICommandUseCase:
 
             plugin_code, workflow_id = split
             return resolve_workflow_webhook_url(
-                self.manifest_parser, plugin_code, workflow_id
+                self.manifest_parser, plugin_code, workflow_id, tenant_id=tenant_id
             )
-        return self.n8n_adapter.build_webhook_url(action)
+        return self.n8n_adapter.build_webhook_url(action, tenant_id=tenant_id)
 
     async def _execute_local_read(
         self, body: AICommandDTO, ctx: TenantContext
@@ -402,7 +402,9 @@ class AICommandUseCase:
                 if handled:
                     response = local_result
                 else:
-                    webhook_url = self._resolve_action_url(body.action)
+                    webhook_url = self._resolve_action_url(
+                        body.action, tenant_id=ctx.tenant_id
+                    )
                     params = body.parameters or {}
                     plugin_code = (
                         body.action.split(".")[0] if "." in body.action else ""
@@ -874,7 +876,9 @@ class AICommandUseCase:
         last_err = None
         for attempt in range(3):
             try:
-                webhook_url = self._resolve_action_url(cmd["action"])
+                webhook_url = self._resolve_action_url(
+                    cmd["action"], tenant_id=cmd.get("tenant_id")
+                )
                 plugin_code = (
                     cmd["action"].split(".")[0] if "." in cmd.get("action", "") else ""
                 )

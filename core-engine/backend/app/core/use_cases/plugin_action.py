@@ -144,7 +144,9 @@ class PluginActionUseCase:
                 f"User chỉ có quyền đọc (read-only), không được dispatch workflow ghi '{action}'."
             )
 
-    def _resolve_webhook_url(self, plugin_code: str, wf: Any) -> str:
+    def _resolve_webhook_url(
+        self, plugin_code: str, wf: Any, tenant_id: Any = None
+    ) -> str:
         """Đọc workflow JSON, lấy webhook node path → dựng URL n8n."""
         if not _CODE_PATTERN.match(plugin_code):
             raise PluginNotFoundError(f"Plugin '{plugin_code}' không tồn tại.")
@@ -184,6 +186,11 @@ class PluginActionUseCase:
                 f"Workflow '{wf.file}' không có webhook node — "
                 f"chỉ workflow trigger='webhook' mới gọi được qua API."
             )
+        if tenant_id:
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            clean_path = str(path).lstrip("/")
+            if not clean_path.startswith(f"t_{tenant_short}_"):
+                path = f"t_{tenant_short}_{clean_path}"
         base = settings.N8N_URL.rstrip("/")
         return f"{base}/webhook/{str(path).lstrip('/')}"
 
@@ -249,7 +256,9 @@ class PluginActionUseCase:
 
         await self._require_active_installation(ctx, plugin_code)
         await self._require_action_permission(ctx, plugin_code, action, wf)
-        webhook_url = self._resolve_webhook_url(plugin_code, wf)
+        webhook_url = self._resolve_webhook_url(
+            plugin_code, wf, tenant_id=ctx.tenant_id
+        )
 
         task_id = idempotency_key or str(uuid.uuid4())
         # Body PHẲNG (flat): business fields của payload nằm top-level để tương
