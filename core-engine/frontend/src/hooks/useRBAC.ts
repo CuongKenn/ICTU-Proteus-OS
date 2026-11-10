@@ -65,7 +65,7 @@ export const useRBAC = () => {
 
       // Cố gắng fetch từ API Roles
       const res = await api.get('/v1/roles');
-      const allRoles = res.data;
+      const allRoles = Array.isArray(res.data) ? res.data : [];
       const userRoles = allRoles.filter(
         (r: any) =>
           user.roles.includes(r.name) ||

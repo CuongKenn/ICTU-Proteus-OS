@@ -5,13 +5,14 @@
 
 import React, { useEffect, useState } from "react";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
+import { extractErrorMessage } from "@/lib/api";
 
 export type ToastType = "success" | "error" | "warning" | "info";
 
 interface ToastProps {
   id?: string;
   type: ToastType;
-  message: string;
+  message: any;
   title?: string;
   duration?: number;
   onDismiss?: (id: string) => void;
@@ -29,6 +30,8 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, title, duration
   const [isVisible, setIsVisible] = useState(false);
   const config = TOAST_CONFIG[type];
   const Icon = config.icon;
+
+  const safeMessage = typeof message === "string" ? message : extractErrorMessage(message);
 
   const handleClose = () => {
     if (onDismiss && id) onDismiss(id);
@@ -61,7 +64,10 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, title, duration
       }}
     >
       <Icon className="w-5 h-5 shrink-0 mt-0.5" style={{ color: config.color }} />
-      <p className="text-sm flex-1" style={{ color: "var(--ink-soft)" }}>{message}</p>
+      <div className="flex-1">
+        {title && <h4 className="text-xs font-semibold mb-0.5" style={{ color: config.color }}>{title}</h4>}
+        <p className="text-sm" style={{ color: "var(--ink-soft)" }}>{safeMessage}</p>
+      </div>
       <button
         onClick={handleClose}
         className="shrink-0 p-0.5 rounded transition-colors"

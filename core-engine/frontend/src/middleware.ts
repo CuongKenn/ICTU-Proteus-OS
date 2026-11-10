@@ -18,11 +18,7 @@ export default function middleware(req: NextRequest) {
 
   // Cho các BFF routes: để route handler tự kiểm tra token & trả JSON 401 thay vì redirect 307 HTML (#732, #746)
   const pathname = req.nextUrl.pathname;
-  if (
-    pathname.startsWith("/api/proxy/") ||
-    pathname.startsWith("/api/ai/") ||
-    pathname.startsWith("/api/embed/")
-  ) {
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
@@ -31,6 +27,6 @@ export default function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!$|login|signup|api/auth|api/onboarding|_next/static|_next/image|favicon.ico).*)",
+    "/((?!$|login|signup|api/|_next/static|_next/image|favicon.ico).*)",
   ],
 };
