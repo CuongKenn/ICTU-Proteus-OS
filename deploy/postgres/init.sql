@@ -233,11 +233,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
     actor_id        UUID,                           -- user_id hoặc NULL nếu SYSTEM
+    user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
     actor_type      actor_type NOT NULL,
     action          VARCHAR(255) NOT NULL,          -- VD: "plugin.install", "user.deactivate"
     resource_type   VARCHAR(100),                   -- VD: "Plugin", "User"
     resource_id     UUID,
     command_id      UUID,                           -- FK → ai_commands.id (nếu do AI thực hiện)
+    details         JSONB DEFAULT '{}',
     metadata        JSONB DEFAULT '{}',
     ip_address      INET,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -268,7 +270,9 @@ CREATE TABLE IF NOT EXISTS ai_commands (
     issued_by_user_id   UUID NOT NULL REFERENCES users(id),
     session_id          UUID NOT NULL,
     dsl_payload         JSONB NOT NULL,             -- Toàn bộ DX-DSL JSON
-    action              VARCHAR(255) NOT NULL,       -- VD: "hr.leave_requests.batch_approve"
+    action              VARCHAR(255) NOT NULL,
+    raw_input           TEXT,
+    parsed_dsl          JSONB,       -- VD: "hr.leave_requests.batch_approve"
     effect              VARCHAR(20)  NOT NULL,       -- read | write | critical
     status              ai_command_status NOT NULL DEFAULT 'PENDING_APPROVAL',
     dry_run_result      JSONB,

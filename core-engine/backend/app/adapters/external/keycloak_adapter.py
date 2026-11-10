@@ -494,3 +494,19 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             "User disabled on Keycloak",
             extra={"user_id": user_id, "realm": realm},
         )
+
+    async def delete_user(self, realm: str, user_id: str) -> None:
+        """Xóa User trên Keycloak."""
+        admin_token = await self.get_admin_token()
+        url = f"{settings.KEYCLOAK_URL}/admin/realms/{realm}/users/{user_id}"
+        response = await self._client.delete(
+            url,
+            headers={"Authorization": f"Bearer {admin_token}"},
+            timeout=10.0,
+        )
+        if response.status_code not in (200, 204, 404):
+            response.raise_for_status()
+        logger.info(
+            "User deleted from Keycloak",
+            extra={"user_id": user_id, "realm": realm},
+        )
