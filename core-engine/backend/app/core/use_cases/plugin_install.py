@@ -1052,11 +1052,32 @@ class PluginInstallUseCase:
     ) -> list[str]:
         """Import dashboards vào Metabase."""
         dashboard_ids = []
+        tenant_schema = f"tenant_{str(context.tenant_id).replace('-', '_')}"
+        plugins_base = self.manifest_parser.plugins_dir.resolve()
         for db in manifest.dashboards:
-            db_path = self.manifest_parser.plugins_dir / plugin_code_name / db.file
+            db_rel = db.file or ""
+            if ".." in db_rel or db_rel.startswith("/"):
+                logger.warning("Bỏ qua dashboard path không hợp lệ", path=db_rel)
+                continue
+            db_path = (plugins_base / plugin_code_name / db_rel).resolve()
+            try:
+                _inside = db_path.is_relative_to(plugins_base)
+            except AttributeError:
+                _inside = plugins_base in db_path.parents
+            if not _inside:
+                logger.warning("Bỏ qua dashboard vượt ngoài plugins_dir", path=db_rel)
+                continue
             if db_path.exists():
                 with open(db_path, encoding="utf-8-sig") as f:
-                    db_json = json.load(f)
+                    try:
+                        content_str = f.read()
+                        content_str = content_str.replace("{{TENANT_SCHEMA}}", tenant_schema).replace(
+                            "{{TENANT_ID}}", str(context.tenant_id)
+                        )
+                        db_json = json.loads(content_str)
+                    except Exception:
+                        with open(db_path, encoding="utf-8-sig") as f2:
+                            db_json = json.load(f2)
                 did = await self.metabase_adapter.import_dashboard(db_json)
                 dashboard_ids.append(did)
                 if collected is not None:
