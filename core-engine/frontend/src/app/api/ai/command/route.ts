@@ -18,29 +18,31 @@
 //   - docs/dsl-spec.md §4 (Effect Levels)
 //   - docs/api-swagger.yaml POST /ai/command
 
-import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
+import { getBffAuth } from "@/lib/bffAuth";
+import { withRotatedCookie } from "@/lib/sessionCookie";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 1. Xác thực session — Token được đọc từ HttpOnly Cookie phía server
-  const token = await getToken({ req: request });
-
-  if (!token?.accessToken) {
-    return NextResponse.json(
-      { error: "Unauthorized", message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." },
-      { status: 401 }
-    );
+  // 1. Xác thực session — Token được đọc từ HttpOnly Cookie phía server & tự động refresh inline
+  const auth = await getBffAuth(request);
+  if (!auth.success) {
+    return auth.response;
   }
+
+  const { accessToken, rotatedCookieValue } = auth;
 
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "Bad Request", message: "Request body không hợp lệ." },
-      { status: 400 }
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "Bad Request", message: "Request body không hợp lệ." },
+        { status: 400 }
+      ),
+      rotatedCookieValue
     );
   }
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       headers: {
         "Content-Type": "application/json",
         // BFF inject Bearer Token — browser không biết token này
-        Authorization: `Bearer ${token.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
       },
       body: JSON.stringify(body),
@@ -74,31 +76,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           data.dsl_preview = data.result;
         }
       }
-      return NextResponse.json(data, { status: backendResponse.status });
+      return withRotatedCookie(
+        NextResponse.json(data, { status: backendResponse.status }),
+        rotatedCookieValue
+      );
     }
 
     // Trường hợp Backend trả non-JSON (unexpected)
-    return NextResponse.json(
-      { error: "Upstream Error", message: "Backend trả về response không hợp lệ." },
-      { status: 502 }
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "Upstream Error", message: "Backend trả về response không hợp lệ." },
+        { status: 502 }
+      ),
+      rotatedCookieValue
     );
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") {
-      return NextResponse.json(
-        { error: "Gateway Timeout", message: "AI Service mất quá nhiều thời gian phản hồi." },
-        { status: 504 }
+      return withRotatedCookie(
+        NextResponse.json(
+          { error: "Gateway Timeout", message: "AI Service mất quá nhiều thời gian phản hồi." },
+          { status: 504 }
+        ),
+        rotatedCookieValue
       );
     }
 
     // Không thể kết nối tới Backend (network error, Backend down)
-    return NextResponse.json(
-      { error: "Service Unavailable", message: "Không thể kết nối tới AI Service." },
-      { status: 503 }
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "Service Unavailable", message: "Không thể kết nối tới AI Service." },
+        { status: 503 }
+      ),
+      rotatedCookieValue
     );
   }
-}
-
-// Chỉ cho phép POST — method khác trả 405
-export async function GET(): Promise<NextResponse> {
-  return NextResponse.json({ error: "Method Not Allowed" }, { status: 405 });
 }

@@ -3,6 +3,12 @@
 
 import { describe, expect, it } from "vitest";
 import { authOptions } from "./authOptions";
+import {
+  isSecureCookies,
+  sessionCookieDomain,
+  sessionCookieName,
+  SESSION_MAX_AGE,
+} from "./sessionCookie";
 
 describe("authOptions callbacks", () => {
   it("session callback never exposes accessToken (#685)", async () => {
@@ -28,5 +34,17 @@ describe("authOptions callbacks", () => {
 
     expect((result as any).accessToken).toBeUndefined();
     expect((result as any).user?.roles).toEqual(["admin"]);
+  });
+
+  it("configures sessionToken cookie matching sessionCookie helpers (#730)", () => {
+    const sessionTokenCookie = authOptions.cookies?.sessionToken;
+    expect(sessionTokenCookie).toBeDefined();
+    expect(sessionTokenCookie?.name).toBe(sessionCookieName());
+    expect(sessionTokenCookie?.options?.httpOnly).toBe(true);
+    expect(sessionTokenCookie?.options?.sameSite).toBe("lax");
+    expect(sessionTokenCookie?.options?.path).toBe("/");
+    expect(sessionTokenCookie?.options?.secure).toBe(isSecureCookies());
+    expect(sessionTokenCookie?.options?.domain).toBe(sessionCookieDomain());
+    expect(sessionTokenCookie?.options?.maxAge).toBe(SESSION_MAX_AGE);
   });
 });

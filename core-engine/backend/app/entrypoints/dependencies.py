@@ -162,14 +162,12 @@ async def get_plugin_install_use_case(
     keycloak_adapter: KeycloakAdapter = Depends(get_keycloak_adapter),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    repo: AbstractPluginRepository | None = None,
-    tenant_repo: AbstractTenantRepository | None = None,
 ) -> PluginInstallUseCase:
     """Inject Plugin Install Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginInstallUseCase(
-        plugin_repo=repo or SQLAlchemyPluginRepository(session=db),
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -178,7 +176,7 @@ async def get_plugin_install_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=request.app.state.redis_event_bus,
-        tenant_repo=tenant_repo or SQLAlchemyTenantRepository(session=db),
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
@@ -190,14 +188,12 @@ async def get_plugin_uninstall_use_case(
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
     event_bus: RedisEventBusPublisher = Depends(get_redis_event_bus),
-    repo: AbstractPluginRepository | None = None,
-    tenant_repo: AbstractTenantRepository | None = None,
 ) -> PluginUninstallUseCase:
     """Inject Plugin Uninstall Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUninstallUseCase(
-        plugin_repo=repo or SQLAlchemyPluginRepository(session=db),
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -206,18 +202,17 @@ async def get_plugin_uninstall_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=event_bus,
-        tenant_repo=tenant_repo or SQLAlchemyTenantRepository(session=db),
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
 async def get_plugin_toggle_use_case(
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    repo: AbstractPluginRepository | None = None,
 ) -> PluginToggleUseCase:
     """Inject Plugin Toggle Use Case (cùng transactional session chống mất commit #726)."""
     return PluginToggleUseCase(
-        plugin_repo=repo or SQLAlchemyPluginRepository(session=db),
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         n8n_adapter=n8n_adapter,
         session=db,
     )
@@ -231,14 +226,12 @@ async def get_plugin_upgrade_use_case(
     keycloak_adapter: KeycloakAdapter = Depends(get_keycloak_adapter),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    repo: AbstractPluginRepository | None = None,
-    tenant_repo: AbstractTenantRepository | None = None,
 ) -> PluginUpgradeUseCase:
     """Inject Plugin Upgrade Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUpgradeUseCase(
-        plugin_repo=repo or SQLAlchemyPluginRepository(session=db),
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -247,7 +240,7 @@ async def get_plugin_upgrade_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=request.app.state.redis_event_bus,
-        tenant_repo=tenant_repo or SQLAlchemyTenantRepository(session=db),
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
@@ -436,13 +429,12 @@ async def get_plugin_action_use_case(
 async def get_plugin_records_use_case(
     role_repo: RoleRepository = Depends(get_role_repo),
     db: AsyncSession = Depends(get_db_transactional),
-    repo: AbstractPluginRepository | None = None,
 ) -> PluginRecordsUseCase:
     """Inject Plugin Records CRUD Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginRecordsUseCase(
-        plugin_repo=repo or SQLAlchemyPluginRepository(session=db),
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         role_repo=role_repo,
         session=db,
