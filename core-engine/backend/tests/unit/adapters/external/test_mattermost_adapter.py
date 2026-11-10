@@ -92,3 +92,32 @@ async def test_send_interactive_message_no_token(adapter, mock_client):
     result = await adapter.send_interactive_message("channel-123", "Text", "act-1")
     assert result == ""
     mock_client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_message_and_interactive_keyword_compatibility(adapter, mock_client):
+    """Kiểm tra tương thích ngược tham số message=/text= và action_id=/command_id= (#744)."""
+    mock_request = httpx.Request("POST", "http://test")
+    mock_client.post.return_value = httpx.Response(
+        201, json={"id": "msg-ok"}, request=mock_request
+    )
+
+    # 1. send_message với message=
+    await adapter.send_message(channel_id="channel-123", message="Message param")
+    payload1 = mock_client.post.call_args[1]["json"]
+    assert payload1["message"] == "Message param"
+
+    # 2. send_message với text=
+    await adapter.send_message(channel_id="channel-123", text="Text param")
+    payload2 = mock_client.post.call_args[1]["json"]
+    assert payload2["message"] == "Text param"
+
+    # 3. send_interactive_message với message= và command_id=
+    res = await adapter.send_interactive_message(
+        channel_id="channel-123",
+        message="Interactive message",
+        command_id="cmd-999",
+    )
+    assert res == "msg-ok"
+    payload3 = mock_client.post.call_args[1]["json"]
+    assert payload3["props"]["attachments"][0]["text"] == "Interactive message"

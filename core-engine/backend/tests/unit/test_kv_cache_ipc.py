@@ -5,7 +5,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.adapters.external.qdrant_adapter import QdrantAdapter
 from app.adapters.external.redis_event_bus import RedisEventBusPublisher
@@ -94,7 +94,8 @@ async def test_transmit_ipc_endpoint_reuses_singleton_redis(mock_qdrant, mock_re
     with patch(
         "app.adapters.external.qdrant_adapter.QdrantAdapter", return_value=mock_qdrant
     ):
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 "/api/v1/ai/ipc/transmit",
                 json={

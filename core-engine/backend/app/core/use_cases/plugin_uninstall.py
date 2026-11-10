@@ -30,56 +30,6 @@ from app.infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ─── Delay simulation + chi tiết từng bước gỡ cài đặt ───
-# Giúp UI polling (1.5s/lần) luôn bắt được RUNNING → DONE từng bước.
-_UNINSTALL_STEP_DELAY_MIN = 1.2
-_UNINSTALL_STEP_DELAY_MAX = 2.5
-
-_UNINSTALL_STEP_DETAILS: dict[str, dict[str, str]] = {
-    "queued": {
-        "running": "Đang xếp hàng tác vụ gỡ cài đặt...",
-        "done": "Tác vụ gỡ cài đặt đã được xếp hàng.",
-    },
-    "events": {
-        "running": "Đang xóa event subscriptions và webhooks...",
-        "done": "Đã xóa event subscriptions.",
-    },
-    "keycloak": {
-        "running": "Đang xóa roles trên Keycloak và DB roles...",
-        "done": "Đã xóa phân quyền Keycloak.",
-    },
-    "appsmith": {
-        "running": "Đang xóa ứng dụng Appsmith...",
-        "done": "Đã xóa Appsmith apps.",
-    },
-    "metabase": {
-        "running": "Đang xóa dashboards Metabase...",
-        "done": "Đã xóa dashboards Metabase.",
-    },
-    "n8n": {
-        "running": "Đang xóa workflows n8n...",
-        "done": "Đã xóa workflows n8n.",
-    },
-    "database": {
-        "running": "Đang DROP tables của plugin (destructive)...",
-        "done": "Đã xóa tables cơ sở dữ liệu.",
-    },
-    "complete": {
-        "running": "Đang hoàn tất gỡ cài đặt...",
-        "done": "Gỡ cài đặt hoàn tất.",
-    },
-}
-
-
-async def _simulate_uninstall_delay(step_name: str = "") -> None:
-    """Delay mô phỏng để UI kịp render chi tiết từng bước gỡ."""
-    delay = random.uniform(_UNINSTALL_STEP_DELAY_MIN, _UNINSTALL_STEP_DELAY_MAX)
-    logger.info(
-        "Delay simulation (uninstall)",
-        extra={"step": step_name, "delay_s": round(delay, 2)},
-    )
-    await asyncio.sleep(delay)
-
 
 class PluginUninstallError(Exception):
     """Lỗi nghiệp vụ khi gỡ cài đặt Plugin."""
@@ -169,130 +119,67 @@ class PluginUninstallUseCase:
         completed_steps: list[str] = []
 
         try:
-            # BƯỚC 0: Queued — hiển thị ngay để UI không trống
-            self._log_step("queued", "DONE", _UNINSTALL_STEP_DETAILS["queued"]["done"])
-            await self._persist_steps(context, plugin_id)
-
             # BƯỚC 1: Xóa Event Subscriptions
-            self._log_step(
-                "events", "RUNNING", _UNINSTALL_STEP_DETAILS["events"]["running"]
-            )
+            self._log_step("events", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("events-running")
-            event_ids = config_override.get("events", [])
-            await self._step_1_events(context, plugin_code_name, manifest, event_ids)
-            self._log_step(
-                "events",
-                "DONE",
-                f"Đã xóa {len(event_ids)} event subscriptions.",
+            await self._step_1_events(
+                context, plugin_code_name, manifest, config_override.get("events", [])
             )
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("events-done")
             completed_steps.append("subscriptions")
 
             # BƯỚC 2: Xóa Keycloak Roles
-            kc_ids = config_override.get("keycloak", [])
-            self._log_step(
-                "keycloak",
-                "RUNNING",
-                f"{_UNINSTALL_STEP_DETAILS['keycloak']['running']} ({len(kc_ids)} roles)",
-            )
+            self._log_step("events", "DONE")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("keycloak-running")
-            await self._step_2_keycloak(context, plugin_code_name, manifest, kc_ids)
-            self._log_step(
-                "keycloak", "DONE", _UNINSTALL_STEP_DETAILS["keycloak"]["done"]
-            )
+            self._log_step("keycloak", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("keycloak-done")
+            await self._step_2_keycloak(
+                context, plugin_code_name, manifest, config_override.get("keycloak", [])
+            )
             completed_steps.append("keycloak")
 
             # BƯỚC 3: Xóa Appsmith Apps
-            appsmith_ids = config_override.get("appsmith", [])
-            self._log_step(
-                "appsmith",
-                "RUNNING",
-                f"{_UNINSTALL_STEP_DETAILS['appsmith']['running']} ({len(appsmith_ids)} apps)",
-            )
+            self._log_step("keycloak", "DONE")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("appsmith-running")
+            self._log_step("appsmith", "RUNNING")
+            await self._persist_steps(context, plugin_id)
             await self._step_3_appsmith(
-                context, plugin_code_name, manifest, appsmith_ids
+                context, plugin_code_name, manifest, config_override.get("appsmith", [])
             )
-            self._log_step(
-                "appsmith",
-                "DONE",
-                f"Đã xóa {len(appsmith_ids)} Appsmith apps.",
-            )
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("appsmith-done")
             completed_steps.append("appsmith")
 
             # BƯỚC 4: Xóa Metabase Dashboards
-            metabase_ids = config_override.get("metabase", [])
-            self._log_step(
-                "metabase",
-                "RUNNING",
-                f"{_UNINSTALL_STEP_DETAILS['metabase']['running']} ({len(metabase_ids)} dashboards)",
-            )
+            self._log_step("appsmith", "DONE")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("metabase-running")
+            self._log_step("metabase", "RUNNING")
+            await self._persist_steps(context, plugin_id)
             await self._step_4_metabase(
-                context, plugin_code_name, manifest, metabase_ids
+                context, plugin_code_name, manifest, config_override.get("metabase", [])
             )
-            self._log_step(
-                "metabase",
-                "DONE",
-                f"Đã xóa {len(metabase_ids)} dashboards.",
-            )
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("metabase-done")
             completed_steps.append("metabase")
 
             # BƯỚC 5: Xóa n8n Workflows
-            n8n_ids = config_override.get("n8n", [])
-            self._log_step(
-                "n8n",
-                "RUNNING",
-                f"{_UNINSTALL_STEP_DETAILS['n8n']['running']} ({len(n8n_ids)} workflows)",
+            self._log_step("metabase", "DONE")
+            await self._persist_steps(context, plugin_id)
+            self._log_step("n8n", "RUNNING")
+            await self._persist_steps(context, plugin_id)
+            await self._step_5_n8n(
+                context,
+                plugin_code_name,
+                manifest,
+                config_override.get("n8n", []),
+                plugin_id=plugin.id,
             )
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("n8n-running")
-            await self._step_5_n8n(context, plugin_code_name, manifest, n8n_ids)
-            self._log_step("n8n", "DONE", f"Đã xóa {len(n8n_ids)} workflows n8n.")
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("n8n-done")
             completed_steps.append("n8n")
 
             # BƯỚC 6: Drop Database Tables
-            tables = (
-                ", ".join(manifest.database.tables)
-                if manifest.database and manifest.database.tables
-                else "không có bảng"
-            )
-            self._log_step(
-                "database",
-                "RUNNING",
-                f"{_UNINSTALL_STEP_DETAILS['database']['running']} ({tables})",
-            )
+            self._log_step("n8n", "DONE")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("database-running")
+            self._log_step("database", "RUNNING")
+            await self._persist_steps(context, plugin_id)
             await self._step_6_database(context, plugin_code_name, manifest)
-            self._log_step(
-                "database",
-                "DONE",
-                f"{_UNINSTALL_STEP_DETAILS['database']['done']} ({tables})",
-            )
+            self._log_step("database", "DONE")
             await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("database-done")
             completed_steps.append("db")
-
-            # BƯỚC 7: Complete
-            self._log_step(
-                "complete", "DONE", _UNINSTALL_STEP_DETAILS["complete"]["done"]
-            )
-            await self._persist_steps(context, plugin_id)
-            await _simulate_uninstall_delay("complete")
 
             # Xóa hẳn (hoặc soft-delete / update status DELETED)
             # Theo Requirement: Status -> DELETED khi thành công
@@ -318,7 +205,7 @@ class PluginUninstallUseCase:
             if self.event_bus:
                 try:
                     await self.event_bus.publish_plugin_lifecycle(
-                        action="plugin.uninstalled",
+                        action="uninstalled",
                         tenant_id=str(context.tenant_id),
                         plugin_name=plugin.code_name,
                         plugin_version=manifest.version,
@@ -335,15 +222,6 @@ class PluginUninstallUseCase:
             )
 
             await self.session.rollback()
-
-            # Ghi FAILED vào step đang RUNNING để UI hiển thị chi tiết lỗi
-            try:
-                if self._steps_log and self._steps_log[-1].get("status") == "RUNNING":
-                    last_step = self._steps_log[-1]["step"]
-                    self._log_step(last_step, "FAILED", str(e))
-                    await self._persist_steps(context, plugin_id)
-            except Exception:
-                pass
 
             # Nếu lỗi, ta mark là FAILED_DIRTY để admin hoặc job cleanup xử lý
             await self.plugin_repo.update_status(
@@ -368,7 +246,7 @@ class PluginUninstallUseCase:
             if self.event_bus:
                 try:
                     await self.event_bus.publish_plugin_lifecycle(
-                        action="plugin.failed",
+                        action="failed",
                         tenant_id=str(context.tenant_id),
                         plugin_name=plugin.code_name,
                         plugin_version=manifest.version,
@@ -426,12 +304,8 @@ class PluginUninstallUseCase:
         try:
             role_repo = RoleRepository(self.session)
             existing = await role_repo.list_by_tenant(context.tenant_id)
-            manifest_names = {r.name for r in manifest.roles}
             for r in existing:
-                if (
-                    getattr(r, "plugin_code_name", None) == plugin_code_name
-                    or r.name in manifest_names
-                ):
+                if getattr(r, "plugin_code_name", None) == plugin_code_name:
                     await role_repo.delete_role(r.id, context.tenant_id)
         except Exception as e:
             logger.warning("Không thể xóa DB roles của %s: %s", plugin_code_name, e)
@@ -455,17 +329,16 @@ class PluginUninstallUseCase:
                 integration_config = integration.config
 
         for app_id in asset_ids:
-            if hasattr(self.appsmith_adapter, "delete_app"):
+            delete_fn = getattr(
+                self.appsmith_adapter, "delete_application", None
+            ) or getattr(self.appsmith_adapter, "delete_app", None)
+            if delete_fn:
                 try:
-                    if (
-                        "integration_config"
-                        in self.appsmith_adapter.delete_app.__code__.co_varnames
-                    ):
-                        await self.appsmith_adapter.delete_app(
-                            app_id, integration_config=integration_config
-                        )
+                    code_obj = getattr(delete_fn, "__code__", None)
+                    if code_obj and "integration_config" in code_obj.co_varnames:
+                        await delete_fn(app_id, integration_config=integration_config)
                     else:
-                        await self.appsmith_adapter.delete_app(app_id)
+                        await delete_fn(app_id)
                 except Exception as e:
                     logger.warning("Không thể xóa Appsmith app %s: %s", app_id, e)
 
@@ -490,14 +363,41 @@ class PluginUninstallUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
         asset_ids: list[str],
+        plugin_id: uuid.UUID | None = None,
     ) -> None:
-        """Xóa workflows khỏi n8n."""
+        """Xóa workflows và credentials khỏi n8n."""
         for wf_id in asset_ids:
             if hasattr(self.n8n_adapter, "delete_workflow"):
                 try:
                     await self.n8n_adapter.delete_workflow(wf_id)
                 except Exception as e:
                     logger.warning("Không thể xóa n8n workflow %s: %s", wf_id, e)
+
+        # Xóa n8n credentials liên quan đến plugin
+        if (
+            plugin_id
+            and hasattr(self.plugin_repo, "get_credential_ids")
+            and hasattr(self.n8n_adapter, "delete_credential")
+        ):
+            try:
+                creds = await self.plugin_repo.get_credential_ids(
+                    context.tenant_id, plugin_id
+                )
+                for cred in creds:
+                    cred_id = None
+                    if isinstance(cred, dict):
+                        cred_id = cred.get("id") or cred.get("credential_id")
+                    elif isinstance(cred, str):
+                        cred_id = cred
+                    if cred_id:
+                        try:
+                            await self.n8n_adapter.delete_credential(str(cred_id))
+                        except Exception as e:
+                            logger.warning(
+                                "Không thể xóa n8n credential %s: %s", cred_id, e
+                            )
+            except Exception as e:
+                logger.warning("Lỗi khi dọn dẹp n8n credentials: %s", e)
 
     async def _step_6_database(
         self, context: TenantContext, plugin_code_name: str, manifest: PluginManifest

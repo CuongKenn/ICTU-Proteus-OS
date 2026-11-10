@@ -48,6 +48,23 @@ from app.use_cases.tenants.onboarding_use_case import (
 router = APIRouter(prefix="/onboarding")
 
 
+def get_onboarding_use_case(
+    request: Request,
+    session: AsyncSession = Depends(get_db_transactional),
+) -> OnboardingUseCase:
+    http_client = request.app.state.http_client
+    keycloak_adapter = KeycloakAdapter(client=http_client)
+    mattermost_adapter = MattermostAdapter(client=http_client)
+    tenant_repo = SQLAlchemyTenantRepository(session=session)
+    user_repo = SQLAlchemyUserRepository(session=session)
+    return OnboardingUseCase(
+        tenant_repo=tenant_repo,
+        user_repo=user_repo,
+        keycloak_adapter=keycloak_adapter,
+        mattermost_adapter=mattermost_adapter,
+    )
+
+
 @router.post(
     "/signup",
     response_model=SignupResponse,
@@ -59,24 +76,11 @@ router = APIRouter(prefix="/onboarding")
 async def signup(
     request: Request,
     payload: SignupRequest,
+    use_case: OnboardingUseCase = Depends(get_onboarding_use_case),
     session: AsyncSession = Depends(get_db_transactional),
 ) -> SignupResponse:
     # C10: password complexity (defense-in-depth cùng schema validator).
     _check_password_complexity(payload.admin_password)
-    # Khởi tạo repositories và adapters
-    tenant_repo = SQLAlchemyTenantRepository(session=session)
-    user_repo = SQLAlchemyUserRepository(session=session)
-    # Lấy http_client từ state
-    http_client = request.app.state.http_client
-    keycloak_adapter = KeycloakAdapter(client=http_client)
-    mattermost_adapter = MattermostAdapter(client=http_client)
-
-    use_case = OnboardingUseCase(
-        tenant_repo=tenant_repo,
-        user_repo=user_repo,
-        keycloak_adapter=keycloak_adapter,
-        mattermost_adapter=mattermost_adapter,
-    )
 
     req = OnboardingRequest(
         company_name=payload.company_name,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { create } from "zustand";
+import { extractErrorMessage } from "@/lib/api";
 
 export type ToastType = "success" | "error" | "warning" | "info";
 
@@ -21,7 +22,7 @@ interface NotificationState {
   toasts: ToastMessage[];
   notifications: NotificationItem[];
   unreadCount: number;
-  addToast: (type: ToastType, message: string, duration?: number, title?: string) => void;
+  addToast: (type: ToastType, message: any, duration?: number, title?: string) => void;
   removeToast: (id: string) => void;
   markAllAsRead: () => void;
   clearNotifications: () => void;
@@ -36,11 +37,13 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       ? crypto.randomUUID() 
       : Math.random().toString(36).substring(2, 15);
     
+    const safeMessage = typeof message === "string" ? message : extractErrorMessage(message);
+
     set((state) => {
-      const newNotif: NotificationItem = { id, type, message, title, createdAt: new Date(), isRead: false };
+      const newNotif: NotificationItem = { id, type, message: safeMessage, title, createdAt: new Date(), isRead: false };
       const updatedNotifications = [newNotif, ...state.notifications].slice(0, 50); // Keep last 50
       return {
-        toasts: [...state.toasts, { id, type, message, title }],
+        toasts: [...state.toasts, { id, type, message: safeMessage, title }],
         notifications: updatedNotifications,
         unreadCount: updatedNotifications.filter(n => !n.isRead).length
       };

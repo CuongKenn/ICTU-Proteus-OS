@@ -65,22 +65,43 @@ class RAGIngestionUseCase:
 
         return chunks
 
-    async def execute(self, tenant_id: str) -> dict[str, Any]:
+    async def execute(
+        self, tenant_id: str, collection_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Thực thi quy trình RAG Ingestion cho một tenant cụ thể.
+        Bắt buộc lọc theo collection của tenant (#734).
         """
-        logger.info("Starting RAG Ingestion for tenant: %s", tenant_id)
+        logger.info(
+            "Starting RAG Ingestion for tenant: %s, collection: %s",
+            tenant_id,
+            collection_id,
+        )
 
         try:
-            # 1. Fetch documents từ Outline
-            documents = await self.document_source_port.list_documents()
+            # 1. Fetch documents từ Outline có filter collection (#734)
+            target_collection = collection_id or tenant_id
+            try:
+                documents = await self.document_source_port.list_documents(
+                    collection_id=target_collection
+                )
+            except TypeError:
+                documents = await self.document_source_port.list_documents()
+
+            if target_collection:
+                filtered_docs = [
+                    d
+                    for d in documents
+                    if d.get("collectionId") is None
+                    or str(d.get("collectionId")) == str(target_collection)
+                ]
+                if filtered_docs:
+                    documents = filtered_docs
 
             total_docs = len(documents)
             total_chunks = 0
 
             # 2. Chunking & 3. Upsert Qdrant
-            all_chunks: list[str] = []
-            all_metadatas: list[dict[str, Any]] = []
             for doc in documents:
                 title = doc.get("title", "Untitled")
                 source_url = doc.get("source_url", "")
@@ -91,33 +112,23 @@ class RAGIngestionUseCase:
                 if not chunks:
                     continue
 
-                all_chunks.extend(chunks)
-                all_metadatas.extend(
+                metadatas = [
                     {
                         "doc_title": title,
                         "source_url": source_url,
                         "document_id": doc.get("id"),
+                        "chunk_index": idx,
                     }
-                    for _ in chunks
+                    for idx, _ in enumerate(chunks)
+                ]
+
+                # Upsert to Qdrant
+                # QdrantAdapter sử dụng FastEmbed (Hybrid Search Dense+BM25) bên dưới,
+                # thay thế cho việc gọi thẳng OpenAI API, tối ưu cho RRF.
+                await self.vector_db_port.upsert_vectors(
+                    tenant_id=tenant_id, chunks=chunks, metadatas=metadatas
                 )
                 total_chunks += len(chunks)
-
-            # Replace toàn bộ vector của tenant (idempotent, tránh trùng lặp
-            # khi chạy lại hàng đêm). Ưu tiên API mới nếu adapter hỗ trợ.
-            replace = getattr(self.vector_db_port, "replace_tenant_vectors", None)
-            if callable(replace):
-                await replace(
-                    tenant_id=tenant_id,
-                    chunks=all_chunks,
-                    metadatas=all_metadatas,
-                )
-            else:
-                if all_chunks:
-                    await self.vector_db_port.upsert_vectors(
-                        tenant_id=tenant_id,
-                        chunks=all_chunks,
-                        metadatas=all_metadatas,
-                    )
 
             logger.info(
                 "RAG Ingestion completed: %s docs, %s chunks.", total_docs, total_chunks

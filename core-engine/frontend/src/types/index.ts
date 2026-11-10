@@ -59,6 +59,7 @@ export interface Plugin {
   author?: string | null;
   icon_url?: string | null;
   homepage_url?: string | null;
+  external_url?: string | null;
   category: string;
   tags: string[];
   is_official: boolean;

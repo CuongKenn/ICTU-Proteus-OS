@@ -6,38 +6,16 @@ import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
 import { logger } from '@/lib/logger';
 
-/**
- * Role được bypass mọi kiểm tra permission (khớp ADMIN_ROLES backend).
- * Keycloak realm role (tenant_admin/superadmin) + role admin legacy.
- */
-const ADMIN_ROLES = ['superadmin', 'tenant_admin', 'admin', 'Admin'];
-
-/** Chuẩn hoá permissions về list string, hỗ trợ cả 2 format DB:
- *  - list: ["*"] hoặc ["hr:employees:read", ...]
- *  - dict: {"roles": ["read","write"]} hoặc {"allowed": [...]} */
-function normalizePermissions(raw: unknown): string[] {
-  const out = new Set<string>();
-  if (!raw) return [];
-  if (Array.isArray(raw)) {
-    raw.forEach((p) => out.add(String(p)));
-    return Array.from(out);
-  }
-  if (typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.allowed)) {
-      (obj.allowed as unknown[]).forEach((p) => out.add(String(p)));
-      return Array.from(out);
-    }
-    Object.entries(obj).forEach(([mod, actions]) => {
-      if (Array.isArray(actions)) {
-        (actions as unknown[]).forEach((act) => out.add(`${mod}:${act}`));
-      } else if (actions === true) {
-        out.add(mod);
-      }
-    });
-  }
-  return Array.from(out);
-}
+const ADMIN_ROLES = new Set([
+  'admin',
+  'tenant_admin',
+  'system_admin',
+  'Admin',
+  'Tenant_Admin',
+  'System_Admin',
+  'TENANT_ADMIN',
+  'SYSTEM_ADMIN',
+]);
 
 /**
  * Hook custom để kiểm tra Role và Permission (RBAC) trên Frontend.
@@ -54,24 +32,72 @@ export const useRBAC = () => {
       return;
     }
 
-    // Admin (tenant_admin/superadmin) luôn full quyền — khớp backend.
-    if (user.roles.some((r) => ADMIN_ROLES.includes(r))) {
-      setPermissions(['*']);
+    // Nếu người dùng có role admin/tenant_admin/system_admin thì luôn có toàn quyền
+    const hasAdminRole = user.roles.some((r) =>
+      ADMIN_ROLES.has(r) || ADMIN_ROLES.has(r.toLowerCase())
+    );
+    if (hasAdminRole) {
+      setPermissions(['*']); // Wildcard permission cho Admin
       setIsLoading(false);
       return;
     }
 
     try {
+      // Ưu tiên fetch từ /v1/users/me/permissions để không cần quyền roles.read (#733)
+      try {
+        const myPermsRes = await api.get('/v1/users/me/permissions');
+        if (Array.isArray(myPermsRes.data) && myPermsRes.data.length > 0 && typeof myPermsRes.data[0] === 'string') {
+          const perms = new Set<string>();
+          myPermsRes.data.forEach((p: any) => {
+            if (typeof p === 'string') {
+              perms.add(p);
+              perms.add(p.replace(/:/g, '.'));
+              perms.add(p.replace(/\./g, ':'));
+            }
+          });
+          setPermissions(Array.from(perms));
+          setIsLoading(false);
+          return;
+        }
+      } catch (meErr) {
+        logger.debug('Fallback sang /v1/roles:', meErr);
+      }
+
+      // Cố gắng fetch từ API Roles
       const res = await api.get('/v1/roles');
       const allRoles = Array.isArray(res.data) ? res.data : [];
       const userRoles = allRoles.filter(
         (r: any) =>
-          user.roles.includes(r.name) || user.roles.includes(r.display_name)
+          user.roles.includes(r.name) ||
+          user.roles.includes(r.display_name) ||
+          user.roles.includes(r.code_name)
       );
 
       const perms = new Set<string>();
       userRoles.forEach((r: any) => {
-        normalizePermissions(r.permissions).forEach((p) => perms.add(p));
+        if (!r.permissions) return;
+        if (Array.isArray(r.permissions)) {
+          r.permissions.forEach((p: any) => {
+            if (typeof p === 'string') {
+              perms.add(p);
+              // Normalize dot and colon
+              perms.add(p.replace(/:/g, '.'));
+              perms.add(p.replace(/\./g, ':'));
+            }
+          });
+        } else if (typeof r.permissions === 'object') {
+          Object.entries(r.permissions).forEach(([mod, actions]) => {
+            if (Array.isArray(actions)) {
+              actions.forEach((act) => {
+                perms.add(`${mod}:${act}`);
+                perms.add(`${mod}.${act}`);
+              });
+            } else if (typeof actions === 'string') {
+              perms.add(`${mod}:${actions}`);
+              perms.add(`${mod}.${actions}`);
+            }
+          });
+        }
       });
       setPermissions(Array.from(perms));
     } catch (err) {
@@ -88,24 +114,45 @@ export const useRBAC = () => {
 
   const hasPermission = useCallback(
     (requiredPermission: string) => {
-      // Admin theo role luôn pass, kể cả trước khi fetch xong.
-      if (user?.roles?.some((r) => ADMIN_ROLES.includes(r))) return true;
-      if (permissions.includes('*')) return true;
-      return permissions.includes(requiredPermission);
-    },
-    [permissions, user]
-  );
+      // 1. Wildcard toàn quyền
+      if (
+        permissions.includes('*') ||
+        permissions.includes('*:*') ||
+        permissions.includes('*.*')
+      ) {
+        return true;
+      }
 
-  // Role tự tạo (VD accountant) có đủ quyền finance:* nhưng khác tên role
-  // trong manifest — kiểm tra theo prefix để hiện đúng plugin (khớp logic
-  // _require_prefix_perm của backend: prefix = plugin_code.split("-")[0] + ":").
-  const hasPermissionPrefix = useCallback(
-    (prefix: string) => {
-      if (user?.roles?.some((r) => ADMIN_ROLES.includes(r))) return true;
-      if (permissions.includes('*')) return true;
-      return permissions.some((p) => p === prefix || p.startsWith(prefix));
+      // 2. Exact match
+      if (permissions.includes(requiredPermission)) return true;
+
+      // 3. Chuẩn hóa dot (.) và colon (:)
+      const normalizedWithDot = requiredPermission.replace(/:/g, '.');
+      const normalizedWithColon = requiredPermission.replace(/\./g, ':');
+      if (
+        permissions.includes(normalizedWithDot) ||
+        permissions.includes(normalizedWithColon)
+      ) {
+        return true;
+      }
+
+      // 4. Wildcard theo resource (vd: "plugins:*" hoặc "plugins.*")
+      const parts = requiredPermission.includes(':')
+        ? requiredPermission.split(':')
+        : requiredPermission.split('.');
+      if (parts.length >= 2) {
+        const resource = parts[0];
+        if (
+          permissions.includes(`${resource}:*`) ||
+          permissions.includes(`${resource}.*`)
+        ) {
+          return true;
+        }
+      }
+
+      return false;
     },
-    [permissions, user]
+    [permissions]
   );
 
   return {
@@ -113,7 +160,6 @@ export const useRBAC = () => {
     permissions,
     hasRole,
     hasPermission,
-    hasPermissionPrefix,
     isLoading,
   };
 };

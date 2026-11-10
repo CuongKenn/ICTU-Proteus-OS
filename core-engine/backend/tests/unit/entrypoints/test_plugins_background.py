@@ -50,5 +50,5 @@ async def test_run_install_plugin_background_passes_tenant_repo():
             context=ctx,
             plugin_code_name="hr_module",
             credentials=[],
-            owner_task_id=None,
+            install_task_id=None,
         )

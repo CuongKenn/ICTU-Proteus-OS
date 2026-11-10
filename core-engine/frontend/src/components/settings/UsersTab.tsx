@@ -3,24 +3,11 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import {
-  UserPlus,
-  UserMinus,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  Search,
-  ChevronDown,
-  Users as UsersIcon,
-  UserCheck,
-  Clock,
-  Ban,
-  Mail,
-} from "lucide-react";
-import api from "@/lib/api";
+import { UserPlus, UserMinus, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import api, { extractErrorMessage } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 interface User {
@@ -31,8 +18,9 @@ interface User {
   full_name: string | null;
   roles: string[];
   is_active: boolean;
-  last_login_at?: string | null;
+  last_login_at: string | null;
 }
+
 
 interface Role {
   id: string;
@@ -41,58 +29,11 @@ interface Role {
   description: string | null;
 }
 
-type StatusFilter = "all" | "active" | "pending" | "disabled";
-type UserStatus = "active" | "pending" | "disabled";
-
-const AVATAR_STYLES = [
-  "bg-primary/15 text-primary",
-  "bg-emerald-500/15 text-success",
-  "bg-amber-500/15 text-warning",
-  "bg-sky-500/15 text-info",
-  "bg-rose-500/15 text-danger",
-  "bg-violet-500/15 text-semantic-violet",
-];
-
-function avatarStyle(key: string): string {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return AVATAR_STYLES[hash % AVATAR_STYLES.length];
-}
-
-function initialsOf(user: User): string {
-  const name = (user.full_name || "").trim();
-  if (name) {
-    const parts = name.split(/\s+/);
-    return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-  }
-  return (user.email[0] || "?").toUpperCase();
-}
-
-/** pending = chưa từng đăng nhập (is_active=False + last_login_at=None) */
-function statusOf(user: User): UserStatus {
-  if (user.is_active) return "active";
-  return user.last_login_at ? "disabled" : "pending";
-}
-
-const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
-  active: { label: "Đang hoạt động", className: "bg-success/10 text-success" },
-  pending: { label: "Chờ kích hoạt", className: "bg-warning/10 text-warning" },
-  disabled: { label: "Vô hiệu hóa", className: "bg-danger/10 text-danger" },
-};
-
 export const UsersTab = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Search + filter
-  const [query, setQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-
-  // Expanded row (detail)
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Invite modal state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -101,17 +42,18 @@ export const UsersTab = () => {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState(false);
-  const [resendingId, setResendingId] = useState<string | null>(null);
 
   // Assign role modal state
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [initialRoleIds, setInitialRoleIds] = useState<string[]>([]);
   const [assigning, setAssigning] = useState(false);
 
   // Global action messages
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const clearMessages = () => {
     setActionSuccess(null);
@@ -129,7 +71,7 @@ export const UsersTab = () => {
       setRoles(Array.isArray(rolesRes.data) ? rolesRes.data : []);
     } catch (err) {
       logger.error("Failed to fetch users/roles", err);
-      setError("Không thể tải danh sách người dùng. Vui lòng thử lại.");
+      setError(extractErrorMessage(err, "Không thể tải danh sách người dùng. Vui lòng thử lại."));
     } finally {
       setLoading(false);
     }
@@ -139,61 +81,23 @@ export const UsersTab = () => {
     fetchData();
   }, [fetchData]);
 
-  const stats = useMemo(() => {
-    const total = users.length;
-    let active = 0, pending = 0, disabled = 0;
-    users.forEach((u) => {
-      const s = statusOf(u);
-      if (s === "active") active++;
-      else if (s === "pending") pending++;
-      else disabled++;
-    });
-    return { total, active, pending, disabled };
-  }, [users]);
-
-  // Map mã role (name) -> tên hiển thị (display_name). Backend trả roles
-  // là mảng `name` (VD tenant_admin), UI phải hiện display_name
-  // (VD Quản trị viên) thay vì mã thô.
-  const roleDisplay = useMemo(() => {
-    const m = new Map<string, string>();
-    roles.forEach((r) => m.set(r.name, r.display_name || r.name));
-    return m;
-  }, [roles]);
-
-  const displayRole = useCallback(
-    (code: string) => roleDisplay.get(code) || code,
-    [roleDisplay]
-  );
-
-  const filteredUsers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return users.filter((u) => {
-      if (q && !`${u.full_name || ""} ${u.email}`.toLowerCase().includes(q)) return false;
-      if (roleFilter !== "all" && !(Array.isArray(u.roles) && u.roles.includes(roleFilter))) return false;
-      if (statusFilter !== "all" && statusOf(u) !== statusFilter) return false;
-      return true;
-    });
-  }, [users, query, roleFilter, statusFilter]);
-
   const handleInvite = async () => {
     if (!inviteEmail || !inviteFullName) return;
     setInviting(true);
     setInviteError(null);
+    clearMessages();
     try {
       const res = await api.post("/v1/users/invite", {
         email: inviteEmail,
         full_name: inviteFullName,
       });
-      await fetchData(); // Refresh list
-      // Backend trả email_sent=false khi SMTP fail — không được báo thành công giả.
       if (res.data?.email_sent === false) {
-        setInviteError(
-          res.data?.email_warning ||
-            "Tài khoản đã được tạo nhưng chưa gửi được email mời. Hãy cấu hình SMTP rồi thử 'Gửi lại lời mời'."
-        );
-        return;
+        setActionError("Người dùng đã được tạo, nhưng không thể gửi email kích hoạt (SMTP chưa cấu hình hoặc lỗi gửi mail). Hãy cấu hình SMTP hoặc gửi lại lời mời.");
+      } else {
+        setActionSuccess("Đã gửi email mời nhân viên thành công!");
       }
       setInviteSuccess(true);
+      await fetchData(); // Refresh list
       setTimeout(() => {
         setIsInviteModalOpen(false);
         setInviteSuccess(false);
@@ -201,27 +105,26 @@ export const UsersTab = () => {
         setInviteFullName("");
       }, 2000);
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "Có lỗi xảy ra khi gửi lời mời.";
+      const detail = extractErrorMessage(err, "Có lỗi xảy ra khi gửi lời mời.");
       setInviteError(detail);
     } finally {
       setInviting(false);
     }
   };
 
-  const handleResendInvite = async (user: User) => {
+  const handleResendInvite = async (userId: string) => {
+    setResendingId(userId);
     clearMessages();
-    setResendingId(user.id);
     try {
-      const res = await api.post(`/v1/users/${user.id}/resend-invite`);
+      const res = await api.post(`/v1/users/${userId}/resend-invite`);
       if (res.data?.email_sent === false) {
-        setActionError(
-          res.data?.email_warning || "Chưa gửi được email mời. Kiểm tra cấu hình SMTP."
-        );
+        setActionError("Gửi lại lời mời thất bại do lỗi SMTP.");
       } else {
-        setActionSuccess(`Đã gửi lại email mời cho ${user.email}!`);
+        setActionSuccess("Đã gửi lại email kích hoạt thành công!");
       }
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || "Không thể gửi lại lời mời.");
+      const detail = extractErrorMessage(err, "Không thể gửi lại email kích hoạt.");
+      setActionError(detail);
     } finally {
       setResendingId(null);
     }
@@ -235,30 +138,46 @@ export const UsersTab = () => {
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: false } : u));
       setActionSuccess("Vô hiệu hóa tài khoản thành công!");
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "Không thể vô hiệu hóa tài khoản.";
+      const detail = extractErrorMessage(err, "Không thể vô hiệu hóa tài khoản.");
       setActionError(detail);
     }
   };
 
   const openRoleModal = (user: User) => {
     setSelectedUser(user);
-    setSelectedRoleId(roles[0]?.id || "");
+    const userRoleIds = roles
+      .filter((r) => user.roles?.includes(r.name) || user.roles?.includes(r.display_name))
+      .map((r) => r.id);
+    setSelectedRoleIds(userRoleIds);
+    setInitialRoleIds(userRoleIds);
     setIsRoleModalOpen(true);
   };
 
-  const handleAssignRole = async () => {
-    if (!selectedUser || !selectedRoleId) return;
+  const handleSaveRoles = async () => {
+    if (!selectedUser) return;
     setAssigning(true);
     clearMessages();
     try {
-      await api.post(`/v1/roles/${selectedRoleId}/assign`, {
-        user_id: selectedUser.id,
-      });
+      // Find roles to assign and roles to revoke
+      const toAssign = selectedRoleIds.filter((id) => !initialRoleIds.includes(id));
+      const toRevoke = initialRoleIds.filter((id) => !selectedRoleIds.includes(id));
+
+      for (const roleId of toAssign) {
+        await api.post(`/v1/roles/${roleId}/assign`, {
+          user_id: selectedUser.id,
+        });
+      }
+      for (const roleId of toRevoke) {
+        await api.post(`/v1/roles/${roleId}/revoke`, {
+          user_id: selectedUser.id,
+        });
+      }
+
       setIsRoleModalOpen(false);
-      setActionSuccess(`Gán Role thành công cho ${selectedUser.full_name || selectedUser.email}!`);
+      setActionSuccess(`Cập nhật Roles thành công cho ${selectedUser.full_name || selectedUser.email}!`);
       fetchData();
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || "Không thể gán role.");
+      setActionError(extractErrorMessage(err, "Không thể cập nhật role."));
     } finally {
       setAssigning(false);
     }
@@ -283,15 +202,8 @@ export const UsersTab = () => {
     );
   }
 
-  const statCards = [
-    { label: "Tổng nhân sự", value: stats.total, icon: UsersIcon, className: "bg-primary/15 text-primary" },
-    { label: "Đang hoạt động", value: stats.active, icon: UserCheck, className: "bg-success/15 text-success" },
-    { label: "Chờ kích hoạt", value: stats.pending, icon: Clock, className: "bg-warning/15 text-warning" },
-    { label: "Vô hiệu hóa", value: stats.disabled, icon: Ban, className: "bg-danger/15 text-danger" },
-  ];
-
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-xl font-semibold text-text-primary">Quản lý Người Dùng</h2>
@@ -305,28 +217,13 @@ export const UsersTab = () => {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {statCards.map((s) => (
-          <div key={s.label} className="flex items-center gap-3 rounded-xl border border-border bg-bg-surface/50 px-4 py-3.5 backdrop-blur-glass">
-            <div className={`p-2 rounded-lg ${s.className}`}>
-              <s.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xl font-bold text-text-primary leading-tight">{s.value}</div>
-              <div className="text-xs text-text-secondary">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {actionError && (
         <div className="bg-error/10 border border-error text-error px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <p className="text-sm">{actionError}</p>
         </div>
       )}
-
+      
       {actionSuccess && (
         <div className="bg-success/10 border border-success text-success px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 shrink-0" />
@@ -334,182 +231,113 @@ export const UsersTab = () => {
         </div>
       )}
 
-      {/* Search + filters */}
-      <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Tìm theo tên hoặc email..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-bg-surface/50 border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary transition-colors"
-          />
-        </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="bg-bg-surface/50 border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
-          aria-label="Lọc theo vai trò"
-        >
-          <option value="all">Tất cả vai trò</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.name}>{r.display_name || r.name}</option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="bg-bg-surface/50 border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
-          aria-label="Lọc theo trạng thái"
-        >
-          <option value="all">Tất cả trạng thái</option>
-          <option value="active">Đang hoạt động</option>
-          <option value="pending">Chờ kích hoạt</option>
-          <option value="disabled">Vô hiệu hóa</option>
-        </select>
-      </div>
+      <div className="bg-bg-surface/50 border border-border rounded-xl overflow-hidden backdrop-blur-glass">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-border bg-bg-surface/30">
+                <th className="py-3 px-4 text-sm font-medium text-text-secondary">Tên & Email</th>
+                <th className="py-3 px-4 text-sm font-medium text-text-secondary">Vai trò</th>
+                <th className="py-3 px-4 text-sm font-medium text-text-secondary">Trạng thái</th>
 
-      {/* Row list */}
-      <div className="rounded-xl border border-border bg-bg-surface/50 backdrop-blur-glass overflow-hidden">
-        {filteredUsers.length === 0 ? (
-          <div className="py-12 text-center text-text-secondary">
-            {users.length === 0
-              ? <>Chưa có nhân viên nào. Bấm &quot;Mời nhân viên&quot; để bắt đầu.</>
-              : "Không tìm thấy người dùng phù hợp bộ lọc."}
-          </div>
-        ) : (
-          <ul className="divide-y divide-border/70">
-            {filteredUsers.map((user) => {
-              const st = statusOf(user);
-              const meta = STATUS_META[st];
-              const isOpen = expandedId === user.id;
-              const userRoles = Array.isArray(user.roles) ? user.roles : [];
-              return (
-                <li key={user.id}>
-                  <button
-                    onClick={() => setExpandedId(isOpen ? null : user.id)}
-                    className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-bg-hover/40 ${isOpen ? "bg-bg-hover/30" : ""}`}
-                    aria-expanded={isOpen}
-                  >
-                    <span className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${avatarStyle(user.email)}`}>
-                      {initialsOf(user)}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block font-medium text-text-primary truncate">
-                        {user.full_name || "(Chưa đặt tên)"}
-                      </span>
-                      <span className="block text-sm text-text-secondary truncate">{user.email}</span>
-                    </span>
-                    <span className="hidden md:flex items-center gap-1.5 max-w-[280px] overflow-hidden">
-                      {userRoles.length > 0 ? (
-                        <>
-                          {userRoles.slice(0, 2).map((role, idx) => (
-                            <span key={idx} title={role} className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium whitespace-nowrap">
-                              {displayRole(role)}
+                <th className="py-3 px-4 text-sm font-medium text-text-secondary text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {!Array.isArray(users) || users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center text-text-secondary">
+                    Chưa có nhân viên nào. Bấm &quot;Mời nhân viên&quot; để bắt đầu.
+
+                  </td>
+                </tr>
+              ) : (
+                users.map((user) => (
+                  <tr key={user.id} className="hover:bg-bg-hover/50 transition-colors">
+                    <td className="py-3 px-4">
+                      <div className="font-medium text-text-primary">{user.full_name || "(Chưa đặt tên)"}</div>
+                      <div className="text-sm text-text-secondary">{user.email}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {user.roles && user.roles.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {user.roles.map((role, idx) => (
+                            <span key={idx} className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
+                              {role}
                             </span>
                           ))}
-                          {userRoles.length > 2 && (
-                            <span className="text-xs text-text-muted whitespace-nowrap">+{userRoles.length - 2}</span>
-                          )}
-                        </>
+                        </div>
                       ) : (
-                        <span className="text-xs text-text-muted italic">Chưa có vai trò</span>
+                        <span className="text-sm text-text-secondary italic">Chưa có</span>
                       )}
-                    </span>
-                    <span className={`px-2 py-1 text-xs rounded-md font-medium whitespace-nowrap ${meta.className}`}>
-                      {meta.label}
-                    </span>
-                    <ChevronDown className={`w-4 h-4 shrink-0 text-text-disabled transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {isOpen && (
-                    <div className="px-4 pb-4 pt-1 pl-[68px] animate-fade-in">
-                      <div className="rounded-lg border border-border/70 bg-bg-base/40 p-4 space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <span className="block text-xs text-text-muted mb-0.5">Email</span>
-                            <span className="text-text-primary">{user.email}</span>
-                          </div>
-                          <div>
-                            <span className="block text-xs text-text-muted mb-0.5">Trạng thái</span>
-                            <span className={`inline-block px-2 py-0.5 text-xs rounded-md font-medium ${meta.className}`}>
-                              {meta.label}
-                            </span>
-                          </div>
-                        </div>
-                        <div>
-                          <span className="block text-xs text-text-muted mb-1.5">
-                            Vai trò ({userRoles.length})
-                          </span>
-                          {userRoles.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {userRoles.map((role, idx) => (
-                                <span key={idx} title={role} className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
-                                  {displayRole(role)}
-                                </span>
-                              ))}
-                            </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {user.is_active ? (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-green-500/10 text-green-400">
+                          Đang hoạt động
+                        </span>
+                      ) : !user.last_login_at ? (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-amber-500/10 text-amber-400">
+                          Chờ kích hoạt
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-red-500/10 text-red-400">
+                          Vô hiệu hóa
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right space-x-2">
+                      {(user.is_active || !user.last_login_at) && (
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-sm"
+                          onClick={() => openRoleModal(user)}
+                        >
+                          Gán Role
+                        </Button>
+                      )}
+                      {!user.is_active && !user.last_login_at && (
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-sm"
+                          disabled={resendingId === user.id}
+                          onClick={() => handleResendInvite(user.id)}
+                        >
+                          {resendingId === user.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
-                            <span className="text-sm text-text-secondary italic">Chưa được gán vai trò nào</span>
+                            "Gửi lại lời mời"
                           )}
-                        </div>
-                        {user.is_active && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            <Button
-                              variant="secondary"
-                              className="px-3 py-1.5 text-sm"
-                              onClick={() => openRoleModal(user)}
-                            >
-                              Gán Role
-                            </Button>
-                            <Button
-                              variant="danger"
-                              className="px-3 py-1.5 text-sm"
-                              onClick={() => handleDeactivate(user.id)}
-                            >
-                              <UserMinus className="w-4 h-4" />
-                              Vô hiệu hóa
-                            </Button>
-                          </div>
-                        )}
-                        {!user.is_active && st === "pending" && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            <Button
-                              variant="secondary"
-                              className="px-3 py-1.5 text-sm"
-                              onClick={() => handleResendInvite(user)}
-                              disabled={resendingId === user.id}
-                            >
-                              {resendingId === user.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Mail className="w-4 h-4" />
-                              )}
-                              Gửi lại lời mời
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                        </Button>
+                      )}
+                      {user.is_active && (
+                        <Button
+                          variant="danger"
+                          className="px-3 py-1.5 text-sm"
+                          onClick={() => handleDeactivate(user.id)}
+                        >
+                          <UserMinus className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Invite Modal */}
-      <Modal
-        isOpen={isInviteModalOpen}
+      <Modal 
+        isOpen={isInviteModalOpen} 
         onClose={() => {
           setIsInviteModalOpen(false);
           setInviteError(null);
           setInviteSuccess(false);
           setInviteEmail("");
           setInviteFullName("");
-        }}
+        }} 
         title="Mời nhân viên mới"
         onConfirm={!inviteSuccess ? handleInvite : undefined}
         confirmLabel="Gửi lời mời"
@@ -565,41 +393,54 @@ export const UsersTab = () => {
         )}
       </Modal>
 
-      {/* Assign Role Modal */}
-      <Modal
-        isOpen={isRoleModalOpen}
-        onClose={() => setIsRoleModalOpen(false)}
-        title="Gán Role cho Người Dùng"
-        onConfirm={handleAssignRole}
+      {/* Assign / Revoke Role Modal */}
+      <Modal 
+        isOpen={isRoleModalOpen} 
+        onClose={() => setIsRoleModalOpen(false)} 
+        title="Quản lý Roles của Người Dùng"
+        onConfirm={handleSaveRoles}
         confirmLabel="Lưu thay đổi"
         isConfirmLoading={assigning}
       >
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Đang cấu hình cho: <strong className="text-text-primary">{selectedUser?.full_name || selectedUser?.email}</strong>
+            Đang cấu hình phân quyền cho: <strong className="text-text-primary">{selectedUser?.full_name || selectedUser?.email}</strong>
           </p>
           {roles.length === 0 ? (
             <p className="text-text-secondary text-sm">Chưa có Role nào. Hãy tạo Role tại tab Roles trước.</p>
           ) : (
-            <div className="space-y-2">
-              {roles.map((role) => (
-                <label key={role.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-surface/30 cursor-pointer hover:bg-bg-hover transition-colors">
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role.id}
-                    checked={selectedRoleId === role.id}
-                    onChange={() => setSelectedRoleId(role.id)}
-                    className="w-4 h-4 text-primary focus:ring-primary/20"
-                  />
-                  <div>
-                    <span className="text-text-primary font-medium">{role.display_name || role.name}</span>
-                    {role.description && (
-                      <p className="text-xs text-text-secondary">{role.description}</p>
-                    )}
-                  </div>
-                </label>
-              ))}
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {roles.map((role) => {
+                const isChecked = selectedRoleIds.includes(role.id);
+                return (
+                  <label key={role.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-surface/30 cursor-pointer hover:bg-bg-hover transition-colors">
+                    <input
+                      type="checkbox"
+                      value={role.id}
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedRoleIds((prev) => [...prev, role.id]);
+                        } else {
+                          setSelectedRoleIds((prev) => prev.filter((id) => id !== role.id));
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary/20"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-primary font-medium">{role.display_name || role.name}</span>
+                        {isChecked && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-mono">Đã gán</span>
+                        )}
+                      </div>
+                      {role.description && (
+                        <p className="text-xs text-text-secondary mt-0.5">{role.description}</p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>

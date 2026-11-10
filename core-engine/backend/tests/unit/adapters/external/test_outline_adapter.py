@@ -67,3 +67,24 @@ async def test_list_documents_http_error(adapter):
     ):
         with pytest.raises(OutlineAdapterError, match="Failed to fetch documents:"):
             await adapter.list_documents()
+
+
+@pytest.mark.asyncio
+async def test_outline_adapter_accepts_client_in_init():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_response = httpx.Response(
+        200,
+        json={"data": [{"id": "doc2", "urlId": "url2"}]},
+        request=httpx.Request("POST", "http://test"),
+    )
+    mock_client.post.return_value = mock_response
+    with patch("app.adapters.external.outline_adapter.settings") as mock_settings:
+        mock_settings.OUTLINE_URL = "http://outline.local"
+        mock_settings.OUTLINE_API_KEY = "test-key"
+        adapter = OutlineAdapter(client=mock_client)
+        docs = await adapter.list_documents()
+        assert len(docs) == 1
+        assert docs[0]["id"] == "doc2"
+        mock_client.post.assert_called_once()
+        await adapter.aclose()
+        mock_client.aclose.assert_called_once()

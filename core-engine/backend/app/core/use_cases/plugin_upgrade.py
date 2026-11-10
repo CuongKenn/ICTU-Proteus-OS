@@ -49,9 +49,15 @@ class PluginUpgradeError(Exception):
 # SQL nguy hiểm (check sau khi strip comment). Chặt hơn bản cũ (chỉ `in` thô):
 # TRUNCATE, DROP COLUMN/SCHEMA/DATABASE, ALTER...DROP.
 _DANGEROUS_SQL = re.compile(
-    r"\bDROP\s+(TABLE|COLUMN|SCHEMA|DATABASE)\b"
+    r"\bDROP\s+(TABLE|COLUMN|SCHEMA|DATABASE|FUNCTION|PROCEDURE|INDEX|VIEW|TRIGGER|POLICY|EXTENSION|ROLE|USER)\b"
     r"|\bTRUNCATE\b"
-    r"|\bALTER\s+TABLE\b.{0,200}?\bDROP\b",
+    r"|\bDELETE\s+FROM\b"
+    r"|\bCOPY\b"
+    r"|\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b"
+    r"|\bALTER\s+TABLE\b[^;]{0,200}?\bDROP\s+(?:COLUMN|CONSTRAINT|PRIMARY|FOREIGN)\b"
+    r"|\bGRANT\b|\bREVOKE\b"
+    r"|\bSECURITY\s+DEFINER\b"
+    r"|\b(public\.|pg_\w+|pg_catalog|information_schema)",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -228,6 +234,7 @@ class PluginUpgradeUseCase:
         context: TenantContext,
         plugin_code_name: str,
         task_id: uuid.UUID,
+        was_disabled: bool | None = None,
     ) -> None:
         """Chạy toàn bộ pipeline upgrade. Fail ở đâu rollback tới đó."""
         self._steps_log = []
@@ -241,9 +248,12 @@ class PluginUpgradeUseCase:
             or "unknown"
         )
         to_version = manifest.version
-        was_disabled = (
-            await self.plugin_repo.get_installation_status(context.tenant_id, plugin.id)
-        ) == PluginStatus.DISABLED
+        if was_disabled is None:
+            was_disabled = (
+                await self.plugin_repo.get_installation_status(
+                    context.tenant_id, plugin.id
+                )
+            ) == PluginStatus.DISABLED
 
         # 0. Snapshot trạng thái cũ để rollback (n8n exports + config + version)
         self._log_step("snapshot", "RUNNING")
@@ -581,6 +591,42 @@ class PluginUpgradeUseCase:
 
         import json as _json
 
+        # Khôi phục custom credentials đã lưu từ trước cho plugin
+        custom_cred_mapping: dict[str, str] = {}
+        target_pid = snapshot.get("plugin_id")
+        if not target_pid and hasattr(self.plugin_repo, "get_by_code_name"):
+            try:
+                _p = await self.plugin_repo.get_by_code_name(plugin_code_name)
+                if _p:
+                    target_pid = _p.id
+            except Exception:
+                pass
+        if target_pid and hasattr(self.plugin_repo, "get_credential_ids"):
+            try:
+                _existing_creds = await self.plugin_repo.get_credential_ids(
+                    context.tenant_id, target_pid
+                )
+                for _c in _existing_creds:
+                    if isinstance(_c, dict):
+                        _cid = _c.get("id") or _c.get("credential_id")
+                        _ctype = _c.get("type") or _c.get("credential_type")
+                        _cname = _c.get("name", "")
+                        if _cid:
+                            if _ctype:
+                                custom_cred_mapping[_ctype] = str(_cid)
+                            if _cname and f"_{plugin_code_name}_" in _cname:
+                                _inferred = _cname.split(f"_{plugin_code_name}_")[-1]
+                                custom_cred_mapping[_inferred] = str(_cid)
+                    elif isinstance(_c, str):
+                        # fallback
+                        pass
+            except Exception as _ce:
+                logger.warning("Không đọc được custom credentials khi upgrade: %s", _ce)
+
+        tenant_short = str(context.tenant_id).replace("-", "")[:8]
+        tenant_allowed_ids = set(
+            str(w) for w in snapshot.get("config_override", {}).get("n8n", []) or []
+        ) | set(str(k) for k in snapshot.get("n8n_exports", {}).keys())
         for wf in manifest.workflows:
             wf_path = plugins_dir / plugin_code_name / wf.file
             if not wf_path.exists():
@@ -597,17 +643,34 @@ class PluginUpgradeUseCase:
                 proteus_ollama_cred_id,
                 proteus_ollama_cred_name,
                 alerts_channel_id,
+                tenant_short=tenant_short,
+                custom_cred_mapping=custom_cred_mapping,
+                plugin_code_name=plugin_code_name,
+                context=context,
             )
-            wf_name = wf_json.get("name") or wf.file
-            old_id = existing_by_name.get(wf_name)
-            if old_id and old_id in snapshot.get("n8n_exports", {}):
+            wf_orig_name = wf_json.get("name") or wf.file or "workflow"
+            wf_name = f"t_{tenant_short}_{wf_orig_name}"
+            wf_json["name"] = wf_name
+
+            candidate_id = existing_by_name.get(wf_name) or existing_by_name.get(
+                wf_orig_name
+            )
+            old_id = None
+            if candidate_id and candidate_id in tenant_allowed_ids:
+                old_id = candidate_id
+            else:
+                for wid, exp in snapshot.get("n8n_exports", {}).items():
+                    if str(wid) in tenant_allowed_ids and (
+                        exp.get("name") in (wf_name, wf_orig_name)
+                        or len(manifest.workflows) == 1
+                    ):
+                        old_id = str(wid)
+                        break
+
+            if old_id and old_id in tenant_allowed_ids:
                 await self.n8n_adapter.update_workflow(old_id, wf_json)
                 new_ids.append(old_id)
                 logger.info("Đã update workflow n8n tại chỗ", extra={"id": old_id})
-            elif old_id:
-                # Tồn tại trên n8n nhưng ngoài snapshot (tạo tay?) → update luôn.
-                await self.n8n_adapter.update_workflow(old_id, wf_json)
-                new_ids.append(old_id)
             else:
                 wid = await self.n8n_adapter.import_workflow(wf_json)
                 new_ids.append(wid)
@@ -827,13 +890,22 @@ class PluginUpgradeUseCase:
         proteus_ollama_cred_id: str | None,
         proteus_ollama_cred_name: str | None,
         alerts_channel_id: str | None = None,
+        tenant_short: str | None = None,
+        custom_cred_mapping: dict[str, str] | None = None,
+        plugin_code_name: str | None = None,
+        context: TenantContext | None = None,
     ) -> None:
         """Gắn credentials dùng chung vào nodes (giống luồng install)."""
         for node in wf_json.get("nodes", []):
             if (node.get("type") or "") == "n8n-nodes-base.webhook":
                 params = node.setdefault("parameters", {})
-                if isinstance(params, dict) and not params.get("httpMethod"):
-                    params["httpMethod"] = "POST"
+                if isinstance(params, dict):
+                    if not params.get("httpMethod"):
+                        params["httpMethod"] = "POST"
+                    if tenant_short:
+                        raw_path = params.get("path") or ""
+                        if raw_path and not raw_path.startswith(f"t_{tenant_short}_"):
+                            params["path"] = f"t_{tenant_short}_{raw_path.lstrip('/')}"
             if "parameters" in node and "query" in node["parameters"]:
                 query = node["parameters"]["query"]
                 if "{{TENANT_SCHEMA}}" in query:
@@ -876,6 +948,14 @@ class PluginUpgradeUseCase:
                     ):
                         node["credentials"][cred_key]["id"] = proteus_db_cred_id
                         node["credentials"][cred_key]["name"] = "ProteusDB_Real"
+                    elif custom_cred_mapping and cred_key in custom_cred_mapping:
+                        node["credentials"][cred_key]["id"] = custom_cred_mapping[
+                            cred_key
+                        ]
+                        if context and plugin_code_name:
+                            node["credentials"][cred_key][
+                                "name"
+                            ] = f"tenant_{context.tenant_id}_{plugin_code_name}_{cred_key}"
 
     async def _compensate(
         self,
@@ -900,9 +980,26 @@ class PluginUpgradeUseCase:
                 await self.metabase_adapter.delete_dashboard(str(did))
             except Exception as e:
                 logger.warning("Không dọn được dashboard mới %s: %s", did, e)
+        integration_config = None
+        if self.tenant_repo and hasattr(
+            self.tenant_repo, "get_integration_by_provider"
+        ):
+            try:
+                integration = await self.tenant_repo.get_integration_by_provider(
+                    context.tenant_id, "appsmith"
+                )
+                if integration:
+                    integration_config = integration.config
+            except Exception as e:
+                logger.warning("Không lấy được Appsmith integration config: %s", e)
+
+        kwargs = {}
+        if integration_config is not None:
+            kwargs["integration_config"] = integration_config
+
         for aid in created_assets.get("appsmith", []) or []:
             try:
-                await self.appsmith_adapter.delete_application(str(aid))
+                await self.appsmith_adapter.delete_application(str(aid), **kwargs)
             except Exception as e:
                 logger.warning("Không dọn được app mới %s: %s", aid, e)
         # n8n workflows MỚI import thêm (không update) → xóa.

@@ -56,12 +56,17 @@ class PluginListUseCase:
         self.manifest_parser = LocalManifestParser()
 
     async def list_marketplace(
-        self, limit: int = 20, offset: int = 0
+        self, limit: int = 20, offset: int = 0, category: str | None = None
     ) -> tuple[list[PluginEntity], int]:
-        """Liệt kê tất cả Plugin trên Marketplace."""
-        logger.info("Listing marketplace plugins (limit=%s, offset=%s)", limit, offset)
+        """Liệt kê tất cả Plugin trên Marketplace (hỗ trợ lọc category ở SQL)."""
+        logger.info(
+            "Listing marketplace plugins (limit=%s, offset=%s, category=%s)",
+            limit,
+            offset,
+            category,
+        )
         plugins, total = await self.plugin_repo.list_marketplace(
-            limit=limit, offset=offset
+            limit=limit, offset=offset, category=category
         )
         self._enrich_with_manifest(plugins)
         return plugins, total

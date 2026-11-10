@@ -14,11 +14,17 @@ from typing import Any, cast
 
 import httpx
 from jose import jwt
+from jose.exceptions import JWTClaimsError
 
 from app.core.domain.ports import AbstractIdentityProviderPort
 from app.infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class KeycloakAdapterError(Exception):
+    """Lỗi khi tương tác với Keycloak."""
+    pass
 
 
 def mattermost_numeric_id(keycloak_user_id: str) -> int:
@@ -58,10 +64,12 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
 
     # JWKS TTL: 1 giờ — Keycloak thường rotate keys định kỳ
     _JWKS_TTL_SECONDS: float = 3600.0
+    _FORCE_REFRESH_COOLDOWN_SECONDS: float = 30.0
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._jwks_cache: dict[str, Any] | None = None
         self._jwks_cached_at: float = 0.0
+        self._last_force_refresh_at: float = 0.0
         self._jwks_lock = asyncio.Lock()
         # Nếu không truyền client (VD: fallback hoặc test),
         # tạo mới nhưng không tối ưu pooling
@@ -93,22 +101,48 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             logger.debug(
                 "Fetching JWKS from Keycloak", extra={"url": settings.keycloak_jwks_url}
             )
-            response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
-            response.raise_for_status()
-            self._jwks_cache = response.json()
-            self._jwks_cached_at = time.monotonic()
-            logger.info("JWKS cache refreshed")
-            return self._jwks_cache
+            try:
+                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response.raise_for_status()
+                self._jwks_cache = response.json()
+                self._jwks_cached_at = time.monotonic()
+                logger.info("JWKS cache refreshed")
+                return self._jwks_cache
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to fetch JWKS from Keycloak: {e}")
+                if self._jwks_cache is not None:
+                    return self._jwks_cache
+                raise KeycloakAdapterError(f"Cannot reach Keycloak to fetch JWKS: {e}") from e
 
     async def _force_refresh_jwks(self) -> dict[str, Any]:
-        """M22: ép refresh JWKS (khi kid miss sau rotate)."""
-        async with self._jwks_lock:
-            response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
-            response.raise_for_status()
-            self._jwks_cache = response.json()
-            self._jwks_cached_at = time.monotonic()
-            logger.info("JWKS cache force-refreshed (kid miss)")
+        """M22: ép refresh JWKS (khi kid miss sau rotate) với cooldown (Issue #740)."""
+        now = time.monotonic()
+        if (
+            self._jwks_cache is not None
+            and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+        ):
             return self._jwks_cache
+
+        async with self._jwks_lock:
+            now = time.monotonic()
+            if (
+                self._jwks_cache is not None
+                and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+            ):
+                return self._jwks_cache
+            try:
+                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response.raise_for_status()
+                self._jwks_cache = response.json()
+                self._jwks_cached_at = time.monotonic()
+                self._last_force_refresh_at = self._jwks_cached_at
+                logger.info("JWKS cache force-refreshed (kid miss)")
+                return self._jwks_cache
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to force refresh JWKS from Keycloak: {e}")
+                if self._jwks_cache is not None:
+                    return self._jwks_cache
+                raise KeycloakAdapterError(f"Cannot reach Keycloak to refresh JWKS: {e}") from e
 
     async def verify_and_decode_token(self, token: str) -> dict[str, Any]:
         """
@@ -127,20 +161,35 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             keys = (jwks or {}).get("keys", [])
             if not any(k.get("kid") == kid for k in keys):
                 jwks = await self._force_refresh_jwks()
-        expected_issuers = settings.keycloak_allowed_issuers
-        # Verify chữ ký + exp + aud trước, rồi so `iss` với allowlist
-        # (Keycloak cấp iss theo KC_HOSTNAME public, backend gọi nội bộ).
-        payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["RS256"],
-            audience=settings.KEYCLOAK_CLIENT_ID,
-            options={"verify_exp": True, "verify_iss": False, "verify_aud": True},
+        expected_issuer = (
+            f"{settings.KEYCLOAK_URL.rstrip('/')}/realms/{settings.KEYCLOAK_REALM}"
         )
-        if payload.get("iss") not in expected_issuers:
-            from jose import JWTError as _JWTError
-
-            raise _JWTError(f"Token iss không hợp lệ: {payload.get('iss')}")
+        try:
+            payload = jwt.decode(
+                token,
+                jwks,
+                algorithms=["RS256"],
+                audience=settings.KEYCLOAK_CLIENT_ID,
+                issuer=expected_issuer,
+                options={"verify_exp": True, "verify_iss": True, "verify_aud": True},
+            )
+        except JWTClaimsError as e:
+            # Fallback (Issue #699): Nếu Keycloak trả aud mặc định là "account" nhưng azp hợp lệ
+            if "audience" in str(e).lower():
+                payload = jwt.decode(
+                    token,
+                    jwks,
+                    algorithms=["RS256"],
+                    audience="account",
+                    issuer=expected_issuer,
+                    options={
+                        "verify_exp": True,
+                        "verify_iss": True,
+                        "verify_aud": True,
+                    },
+                )
+            else:
+                raise
         # M22: verify azp (authorized party) — chặn token cấp cho client khác.
         azp = payload.get("azp")
         if azp is not None and azp != settings.KEYCLOAK_CLIENT_ID:
@@ -476,5 +525,37 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
         response.raise_for_status()
         logger.info(
             "User disabled on Keycloak",
+            extra={"user_id": user_id, "realm": realm},
+        )
+
+    async def logout_user(self, realm: str, user_id: str) -> None:
+        """Đăng xuất người dùng trên Keycloak (thu hồi toàn bộ sessions)."""
+        admin_token = await self.get_admin_token()
+        url = f"{settings.KEYCLOAK_URL}/admin/realms/{realm}/users/{user_id}/logout"
+        response = await self._client.post(
+            url,
+            headers={"Authorization": f"Bearer {admin_token}"},
+            timeout=10.0,
+        )
+        if response.status_code not in (200, 204):
+            response.raise_for_status()
+        logger.info(
+            "User sessions revoked on Keycloak",
+            extra={"user_id": user_id, "realm": realm},
+        )
+
+    async def delete_user(self, realm: str, user_id: str) -> None:
+        """Xóa User trên Keycloak."""
+        admin_token = await self.get_admin_token()
+        url = f"{settings.KEYCLOAK_URL}/admin/realms/{realm}/users/{user_id}"
+        response = await self._client.delete(
+            url,
+            headers={"Authorization": f"Bearer {admin_token}"},
+            timeout=10.0,
+        )
+        if response.status_code not in (200, 204, 404):
+            response.raise_for_status()
+        logger.info(
+            "User deleted from Keycloak",
             extra={"user_id": user_id, "realm": realm},
         )

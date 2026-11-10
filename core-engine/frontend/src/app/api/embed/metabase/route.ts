@@ -5,7 +5,8 @@
 // Lấy Signed URL từ Backend Python hoặc giả lập (mock) nếu Backend chưa sẵn sàng.
 
 import { NextRequest, NextResponse } from "next/server";
-import { readSessionToken } from "@/lib/sessionJwt";
+import { getBffAuth } from "@/lib/bffAuth";
+import { withRotatedCookie } from "@/lib/sessionCookie";
 import { logger } from "@/lib/logger";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
@@ -28,23 +29,39 @@ function decodeJwtPayload(token: string) {
 }
 
 export async function GET(request: NextRequest) {
-  // 1. Xác thực session từ HttpOnly Cookie
-  const token = await readSessionToken(request);
-  if (!token?.accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // 1. Xác thực session từ HttpOnly Cookie với inline auto refresh
+  const auth = await getBffAuth(request);
+  if (!auth.success) {
+    return auth.response;
   }
 
-  // 2. Trích xuất dashboard_id từ Query Parameters
-  const dashboardId = request.nextUrl.searchParams.get("dashboard_id");
+  const { accessToken, rotatedCookieValue } = auth;
+
+  // 2. Trích xuất dashboard_id từ Query Parameters & chặn SSRF / Path Traversal (#734)
+  const dashboardId =
+    request.nextUrl.searchParams.get("dashboard_id") ||
+    request.nextUrl.searchParams.get("dashboardId");
   if (!dashboardId) {
-    return NextResponse.json(
-      { error: "Thiếu tham số dashboard_id" },
-      { status: 400 }
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "Thiếu tham số dashboard_id" },
+        { status: 400 }
+      ),
+      rotatedCookieValue
+    );
+  }
+  if (!/^\d+$/.test(dashboardId)) {
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "dashboard_id không hợp lệ (phải là số nguyên dương)" },
+        { status: 400 }
+      ),
+      rotatedCookieValue
     );
   }
 
   // 3. Giải mã accessToken (Keycloak JWT) để lấy tenant_id
-  const payload = decodeJwtPayload(token.accessToken);
+  const payload = decodeJwtPayload(accessToken);
   const tenantId = payload?.tenant_id || payload?.groups?.[0] || "unknown_tenant";
 
   try {
@@ -53,14 +70,14 @@ export async function GET(request: NextRequest) {
     const response = await fetch(targetUrl, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${token.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
 
     if (response.ok) {
       const data = await response.json();
-      return NextResponse.json(data);
+      return withRotatedCookie(NextResponse.json(data), rotatedCookieValue);
     }
     
     // Nếu Backend trả về lỗi (có thể do chưa implement), throw để chuyển sang luồng Mock
@@ -74,15 +91,21 @@ export async function GET(request: NextRequest) {
       // Giả lập 1 chuỗi token ngẫu nhiên
       const mockToken = Buffer.from(`mock_token_${tenantId}_${dashboardId}_${Date.now()}`).toString("base64");
       
-      return NextResponse.json({
-        url: `${mockMetabaseUrl}/embed/dashboard/${mockToken}#bordered=true&titled=false`,
-      });
+      return withRotatedCookie(
+        NextResponse.json({
+          url: `${mockMetabaseUrl}/embed/dashboard/${mockToken}#bordered=true&titled=false`,
+        }),
+        rotatedCookieValue
+      );
     }
 
     // Trên production không trả về mock
-    return NextResponse.json(
-      { error: "Không thể kết nối đến hệ thống báo cáo (Backend Error)" },
-      { status: 500 }
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "Không thể kết nối đến hệ thống báo cáo (Backend Error)" },
+        { status: 500 }
+      ),
+      rotatedCookieValue
     );
   }
 }

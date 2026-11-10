@@ -80,6 +80,9 @@ jobs:
   security:
     name: Security Scan (Bandit)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core-engine/backend
 
     steps:
       - name: Checkout code

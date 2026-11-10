@@ -5,6 +5,8 @@
 // Dùng chung giữa authOptions (lúc sign-in) và BFF proxy (lúc persist token
 // sau inline refresh). Lệch nhau là browser gửi cookie mà server không đọc.
 
+import { NextResponse } from "next/server";
+
 export const SESSION_MAX_AGE = 8 * 60 * 60; // 8 giờ, khớp session.maxAge
 
 // Đổi tên cookie (+.v2) để bỏ lại phía sau các cookie rác của bản cũ: trước đây
@@ -41,6 +43,43 @@ export function sessionCookieDomain(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Gắn cookie session mới sau khi xoay vòng token cho cả NextResponse và Response thường */
+export function withRotatedCookie<T extends Response | NextResponse>(
+  res: T,
+  rotatedCookieValue: string | null
+): T {
+  if (rotatedCookieValue) {
+    const domain = sessionCookieDomain();
+    if ("cookies" in res && typeof (res as any).cookies?.set === "function") {
+      const cookieOptions: any = {
+        name: sessionCookieName(),
+        value: rotatedCookieValue,
+        httpOnly: true,
+        secure: isSecureCookies(),
+        sameSite: "lax",
+        path: "/",
+        maxAge: SESSION_MAX_AGE,
+      };
+      if (domain) {
+        cookieOptions.domain = domain;
+      }
+      (res as NextResponse).cookies.set(cookieOptions);
+    } else {
+      const parts = [
+        `${sessionCookieName()}=${rotatedCookieValue}`,
+        `Path=/`,
+        `Max-Age=${SESSION_MAX_AGE}`,
+        `SameSite=Lax`,
+        `HttpOnly`,
+      ];
+      if (isSecureCookies()) parts.push("Secure");
+      if (domain) parts.push(`Domain=${domain}`);
+      res.headers.append("Set-Cookie", parts.join("; "));
+    }
+  }
+  return res;
 }
 
 /**

@@ -4,6 +4,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.external.keycloak_adapter import KeycloakAdapter
@@ -17,6 +18,7 @@ from app.entrypoints.dependencies import (
     get_keycloak_adapter,
     require_permission,
 )
+from app.infrastructure.config import settings
 from app.entrypoints.schemas.role import (
     ApplyTemplateRequest,
     ApplyTemplateResponse,
@@ -26,6 +28,10 @@ from app.entrypoints.schemas.role import (
     RoleTemplateInfo,
     RoleUpdate,
 )
+
+# Copyright (c) 2026 CuongKenn & ICTU Team
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
 
@@ -100,7 +106,7 @@ async def create_role(
 
 @router.get("", response_model=list[RoleResponse])
 async def list_roles(
-    tenant_context: TenantContext = Depends(get_current_tenant_context),
+    tenant_context: TenantContext = Depends(require_permission("roles.read")),
     use_case: RoleManagementUseCase = Depends(get_role_use_case),
 ):
     """
@@ -142,7 +148,7 @@ async def apply_role_template(
 @router.get("/{role_id}", response_model=RoleResponse)
 async def get_role(
     role_id: uuid.UUID,
-    tenant_context: TenantContext = Depends(get_current_tenant_context),
+    tenant_context: TenantContext = Depends(require_permission("roles.read")),
     use_case: RoleManagementUseCase = Depends(get_role_use_case),
 ):
     """
@@ -186,6 +192,11 @@ async def delete_role(
         await use_case.delete_role(role_id, tenant_context.tenant_id)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Không thể xóa Role vì vẫn còn liên kết dữ liệu ràng buộc.",
+        ) from e
 
 
 @router.post("/{role_id}/assign")
@@ -220,9 +231,14 @@ async def assign_role_to_user(
         )
 
         # Assign role in Keycloak
+        kc_role_name = (
+            f"{role.plugin_code_name}_{role.name}"
+            if getattr(role, "plugin_code_name", None)
+            else role.name
+        )
         try:
             await keycloak.assign_role_to_user(
-                realm="proteus", user_id=str(user.keycloak_id), role_name=role.name
+                realm=getattr(tenant_context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(user.keycloak_id), role_name=kc_role_name
             )
         except Exception as exc:
             import logging
@@ -278,9 +294,14 @@ async def revoke_role_from_user(
         )
 
         # Revoke role in Keycloak
+        kc_role_name = (
+            f"{role.plugin_code_name}_{role.name}"
+            if getattr(role, "plugin_code_name", None)
+            else role.name
+        )
         try:
             await keycloak.revoke_role_from_user(
-                realm="proteus", user_id=str(user.keycloak_id), role_name=role.name
+                realm=getattr(tenant_context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(user.keycloak_id), role_name=kc_role_name
             )
         except Exception as exc:
             import logging

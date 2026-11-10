@@ -46,23 +46,32 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "proteus-bff-secret",
       "redirectUris": [
-        "*"
+        "http://localhost:3000/*",
+        "https://localhost:3000/*",
+        "http://localhost/*",
+        "https://localhost/*",
+        "https://${DOMAIN}/*",
+        "http://${DOMAIN}/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost:3000",
+        "https://localhost:3000",
+        "https://${DOMAIN}",
+        "http://${DOMAIN}",
+        "+"
       ],
       "publicClient": false,
       "bearerOnly": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "frontchannelLogout": true,
       "protocol": "openid-connect",
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "frontchannel.logout.url": "",
-        "post.logout.redirect.uris": "*"
+        "post.logout.redirect.uris": "http://localhost:3000/*##https://localhost:3000/*##+"
       },
       "protocolMappers": [
         {
@@ -92,6 +101,17 @@
             "claim.name": "realm_access.roles",
             "jsonType.label": "String"
           }
+        },
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "proteus-bff",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -102,14 +122,20 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "n8n-secret",
       "redirectUris": [
-        "*"
+        "http://localhost:5678/*",
+        "https://localhost:5678/*",
+        "https://workflow.${DOMAIN}/*",
+        "http://workflow.${DOMAIN}/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost:5678",
+        "https://workflow.${DOMAIN}",
+        "http://workflow.${DOMAIN}",
+        "+"
       ],
       "publicClient": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "protocol": "openid-connect"
     },
     {
@@ -119,14 +145,19 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "outline-secret",
       "redirectUris": [
-        "*"
+        "http://localhost:3002/*",
+        "https://wiki.${DOMAIN}/*",
+        "http://wiki.${DOMAIN}/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost:3002",
+        "https://wiki.${DOMAIN}",
+        "http://wiki.${DOMAIN}",
+        "+"
       ],
       "publicClient": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "protocol": "openid-connect"
     },
     {
@@ -136,14 +167,19 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "appsmith-secret",
       "redirectUris": [
-        "*"
+        "http://localhost:8080/*",
+        "https://apps.${DOMAIN}/*",
+        "http://apps.${DOMAIN}/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost:8080",
+        "https://apps.${DOMAIN}",
+        "http://apps.${DOMAIN}",
+        "+"
       ],
       "publicClient": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "protocol": "openid-connect"
     },
     {
@@ -203,7 +239,8 @@
             "userinfo.token.claim": "true"
           }
         }
-      ]
+      ],
+      "directAccessGrantsEnabled": false
     },
     {
       "clientId": "metabase",
@@ -212,14 +249,19 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "metabase-secret",
       "redirectUris": [
-        "*"
+        "http://localhost:3001/*",
+        "https://analytics.${DOMAIN}/*",
+        "http://analytics.${DOMAIN}/*"
       ],
       "webOrigins": [
-        "*"
+        "http://localhost:3001",
+        "https://analytics.${DOMAIN}",
+        "http://analytics.${DOMAIN}",
+        "+"
       ],
       "publicClient": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "protocol": "openid-connect"
     }
   ],
@@ -228,7 +270,9 @@
       "name": "openid",
       "description": "OpenID Connect built-in scope",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true" },
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
       "protocolMappers": [
         {
           "name": "sub",
@@ -250,7 +294,10 @@
       "name": "role_list",
       "description": "SAML role list",
       "protocol": "saml",
-      "attributes": { "consent.screen.text": "${samlRoleListScopeConsentText}", "display.on.consent.page": "true" }
+      "attributes": {
+        "consent.screen.text": "${samlRoleListScopeConsentText}",
+        "display.on.consent.page": "true"
+      }
     },
     {
       "name": "email",
@@ -376,12 +423,17 @@
         {
           "type": "password",
           "value": "Admin@123",
-          "temporary": false
+          "temporary": true
         }
       ],
-      "realmRoles": ["superadmin", "user"],
+      "realmRoles": [
+        "superadmin",
+        "user"
+      ],
       "attributes": {
-        "tenant_id": ["default"]
+        "tenant_id": [
+          "default"
+        ]
       }
     }
   ]

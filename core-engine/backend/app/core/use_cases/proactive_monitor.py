@@ -70,9 +70,12 @@ class ProactiveMonitorAgent:
                 await self.ai_command_repo.get_pending_commands_expiring_soon(minutes=5)
             )
             for c in soon_expired_cmds:
+                requester = (
+                    c.get("requested_by") or c.get("issued_by_user_id") or "unknown"
+                )
                 msg = (
                     f"⚠️ **[Nhắc nhở phê duyệt]** Lệnh `{c['action']}` (ID: {c['id']}) "
-                    f"do <@{c['requested_by']}> yêu cầu sẽ HẾT HẠN trong vòng 5 phút nữa!\n\n"
+                    f"do <@{requester}> yêu cầu sẽ HẾT HẠN trong vòng 5 phút nữa!\n\n"
                     f"Nếu không có ai phê duyệt, lệnh này sẽ bị huỷ bỏ tự động."
                 )
                 await self.mattermost_adapter.send_message(

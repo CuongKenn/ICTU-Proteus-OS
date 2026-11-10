@@ -10,8 +10,8 @@ import { PluginCard, type PluginData, type PluginStatus } from "@/components/mar
 import { CategoryFilter } from "@/components/marketplace/CategoryFilter";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { Modal } from "@/components/ui/Modal";
-import { InstallProgressModal } from "@/components/marketplace/InstallProgressModal";
 import { InstallPreviewDialog } from "./InstallPreviewDialog";
+import { InstallProgressModal } from "@/components/marketplace/InstallProgressModal";
 import { useMarketplace } from "@/hooks/useMarketplace";
 import { usePlugins } from "@/hooks/usePlugins";
 import { PackageOpen, Sparkles } from "lucide-react";
@@ -24,19 +24,8 @@ export const MarketplaceClient: React.FC = () => {
   const { hasPermission, isLoading: isRBACLoading } = useRBAC();
   const canInstall = hasPermission("plugins:install");
 
-  const {
-    plugins: availablePlugins,
-    isLoading: isLoadingAvailable,
-    installingId,
-    installingName,
-    installProgress,
-    installSteps,
-    installStatus,
-    installPlugin,
-    uninstallPlugin,
-    closeProgress,
-  } = useMarketplace();
-  const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled } = usePlugins();
+  const { plugins: availablePlugins, isLoading: isLoadingAvailable, installingId, installProgress, installStatus, installSteps, installPlugin, uninstallPlugin } = useMarketplace();
+  const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled, enable, upgrade } = usePlugins();
 
   const [previewPlugin, setPreviewPlugin] = useState<PluginData | null>(null);
   const [previewCredSchema, setPreviewCredSchema] = useState<CredentialFieldSchema[]>([]);
@@ -74,7 +63,7 @@ export const MarketplaceClient: React.FC = () => {
           category: p.category || "Utilities",
           author: p.author ?? undefined,
           tags: p.tags ?? [],
-          externalUrl: p.external_url ?? null,
+          iconUrl: p.icon_url ?? undefined,
         },
         credSchema: p.credentials_schema ?? [],
         status: uiStatus,
@@ -99,7 +88,7 @@ export const MarketplaceClient: React.FC = () => {
             category: p.category || "Utilities",
             author: p.author ?? undefined,
             tags: p.tags ?? [],
-            externalUrl: p.external_url ?? null,
+            iconUrl: p.icon_url ?? undefined,
           },
           credSchema: p.credentials_schema ?? [],
           status: "available",
@@ -110,22 +99,6 @@ export const MarketplaceClient: React.FC = () => {
 
     return list;
   }, [availablePlugins, installedPlugins]);
-
-  const handleOpenPlugin = (plugin: PluginData) => {
-    // Plugin UI là React MFE (plugins.<domain>/<code>) — ưu tiên externalUrl
-    // từ backend; Appsmith chỉ là fallback cho plugin cũ chưa có MFE.
-    const mfeBase = process.env.NEXT_PUBLIC_PLUGINS_MFE_URL;
-    const url =
-      plugin.externalUrl ||
-      (mfeBase && plugin.codeName
-        ? `${mfeBase.replace(/\/+$/, "")}/${plugin.codeName}`
-        : "") ||
-      (plugin.codeName
-        ? `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${plugin.codeName}`
-        : "");
-    if (!url) return;
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
 
   // Filter plugins based on search and category
   const filteredPlugins = useMemo(() => {
@@ -169,19 +142,44 @@ export const MarketplaceClient: React.FC = () => {
     }
   };
 
+  const handleOpenClick = (id: string) => {
+    const plugin = allPlugins.find((p) => p.data.id === id)?.data;
+    if (plugin) {
+      window.location.href = `/plugins/${plugin.codeName || plugin.id}`;
+    }
+  };
+
+  const handleRetryClick = (id: string) => {
+    handleInstallClick(id);
+  };
+
+  const handleEnableClick = async (id: string) => {
+    try {
+      await enable(id);
+      refetchInstalled();
+    } catch {
+      // error handled in hook toast
+    }
+  };
+
+  const handleUpdateClick = async (id: string) => {
+    try {
+      await upgrade(id);
+      refetchInstalled();
+    } catch {
+      // error handled in hook toast
+    }
+  };
+
   const handleConfirmUninstall = async () => {
     if (uninstallPluginData && canInstall) {
       setIsUninstalling(true);
-      // Đóng modal xác nhận trước để mở modal tiến trình chi tiết
+      await uninstallPlugin(uninstallPluginData.id, uninstallPluginData.name);
+      setIsUninstalling(false);
       setIsUninstallConfirmOpen(false);
-      try {
-        await uninstallPlugin(uninstallPluginData.id, uninstallPluginData.name);
-      } finally {
-        setIsUninstalling(false);
-        setUninstallPluginData(null);
-        // Refresh list sau khi gỡ (polling nền vẫn chạy trong modal chi tiết)
-        setTimeout(() => refetchInstalled(), 3000);
-      }
+      setUninstallPluginData(null);
+      // Refresh list after uninstall
+      setTimeout(() => refetchInstalled(), 1000);
     }
   };
 
@@ -268,8 +266,11 @@ export const MarketplaceClient: React.FC = () => {
                   installProgress={installingId === data.id ? installProgress : 0}
                   canInstall={canInstall}
                   onInstall={handleInstallClick}
-                  onOpen={() => handleOpenPlugin(data)}
                   onUninstall={handleUninstallClick}
+                  onOpen={handleOpenClick}
+                  onRetry={handleRetryClick}
+                  onEnable={handleEnableClick}
+                  onUpdate={handleUpdateClick}
                 />
               );
             })}
@@ -284,6 +285,16 @@ export const MarketplaceClient: React.FC = () => {
         credentialsSchema={previewCredSchema}
         onClose={() => setIsInstallPreviewOpen(false)}
         onConfirm={handleConfirmInstall}
+      />
+
+      {/* Install Progress Modal */}
+      <InstallProgressModal
+        isOpen={Boolean(installingId)}
+        pluginName={allPlugins.find(p => p.data.id === installingId)?.data.name}
+        steps={installSteps || []}
+        overallProgress={installProgress}
+        status={installStatus}
+        onClose={() => {}}
       />
 
       {/* Uninstall Confirm Modal */}
@@ -305,28 +316,11 @@ export const MarketplaceClient: React.FC = () => {
             Bạn có chắc chắn muốn gỡ cài đặt ứng dụng <strong>{uninstallPluginData?.name}</strong>?
           </p>
             <div className="text-sm p-4 rounded-xl font-medium" style={{ background: 'var(--rose-fill)', border: '1px solid var(--rose)', color: 'var(--rose)' }}>
-              ⚠️ <strong>Cảnh báo nguy hiểm:</strong> Hành động này không thể hoàn tác.
+              ⚠️ <strong>Cảnh báo nguy hiểm:</strong> Hành động này không thể hoàn tác. 
               Toàn bộ dữ liệu nghiệp vụ, bảng (tables), và workflows liên quan đến ứng dụng này sẽ bị xóa vĩnh viễn khỏi hệ thống.
             </div>
-            <p className="text-xs" style={{ color: 'var(--dim)' }}>
-              Sau khi xác nhận, hệ thống sẽ hiển thị chi tiết từng bước gỡ (events → keycloak → appsmith → metabase → n8n → database) với delay mô phỏng để bạn theo dõi.
-            </p>
         </div>
       </Modal>
-
-      {/* Install/Uninstall Progress Modal — chi tiết từng bước + delay simulation */}
-      <InstallProgressModal
-        isOpen={installingId !== null}
-        pluginName={installingName || undefined}
-        steps={installSteps}
-        overallProgress={installProgress}
-        status={installStatus}
-        onClose={() => {
-          closeProgress();
-          // Refresh sau khi đóng modal tiến trình
-          setTimeout(() => refetchInstalled(), 500);
-        }}
-      />
     </div>
   );
 };

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.core.domain.entities import AICommandStatus
 from app.core.use_cases.ai_timeout_worker import AITimeoutWorker
 
@@ -39,7 +40,7 @@ def mock_audit_log_repo():
 
 @pytest.fixture
 def mock_mattermost_adapter():
-    adapter = AsyncMock()
+    adapter = AsyncMock(spec=MattermostAdapter)
     return adapter
 
 
@@ -110,3 +111,22 @@ async def test_execute_with_error(
     mock_mattermost_adapter.send_message.assert_not_called()
     mock_ai_command_repo.rollback.assert_called_once()
     mock_ai_command_repo.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_execute_mattermost_failure_does_not_rollback(
+    worker, mock_ai_command_repo, mock_audit_log_repo, mock_mattermost_adapter
+):
+    """Lỗi gửi tin nhắn Mattermost không làm rollback tiến trình cập nhật TIMEOUT (#744)."""
+    mock_mattermost_adapter.send_message.side_effect = Exception(
+        "Mattermost connection down"
+    )
+
+    await worker.execute()
+
+    assert mock_ai_command_repo.update_status.call_count == 2
+    for call in mock_ai_command_repo.update_status.call_args_list:
+        assert call[0][1] == AICommandStatus.TIMEOUT
+
+    mock_ai_command_repo.commit.assert_called_once()
+    mock_ai_command_repo.rollback.assert_not_called()

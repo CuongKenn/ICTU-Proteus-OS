@@ -10,48 +10,28 @@ import { Bell, Search, LogOut, User, ChevronDown } from "lucide-react";
 import { NotificationPanel } from "@/components/NotificationPanel";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LanguageToggle } from "@/components/i18n/LanguageToggle";
-import api from "@/lib/api";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export function Topbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
-  // Đăng xuất toàn phần: thu hồi Mattermost sessions (backend) →
-  // federated logout Keycloak (xóa SSO cookie) → xóa local session.
-  // Trước đây chỉ signOut local nên SSO cookie còn → vào lại không hỏi pass.
   const handleLogout = async () => {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    setShowUserMenu(false);
     try {
-      // 1. Thu hồi Mattermost sessions — best-effort, cần gọi khi
-      // NextAuth session vẫn còn hạn (sau signOut là 401).
-      await api.post("/v1/auth/logout").catch(() => null);
-      // 2. Lấy Keycloak end_session URL (kèm id_token_hint).
-      const res = await fetch("/api/auth/federated-logout")
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-      const url = res?.url;
-      if (url && url !== "/login") {
-        // 3. Xóa local session (không redirect vội) rồi nhảy sang
-        // Keycloak logout để xóa SSO cookie, Keycloak tự redirect về /login.
-        await signOut({ redirect: false }).catch(() => null);
-        window.location.href = url;
-        return;
-      }
+      const res = await fetch("/api/auth/federated-logout");
+      const data = await res.json();
+      await signOut({ redirect: false });
+      window.location.href = data.url || "/login";
     } catch {
-      // Rơi xuống fallback local signOut bên dưới.
+      await signOut({ callbackUrl: "/login" });
     }
-    await signOut({ callbackUrl: "/login" });
-    setLoggingOut(false);
   };
 
   const pageTitle = (() => {
     if (pathname.startsWith("/launchpad")) return "Dashboard";
-    if (pathname.startsWith("/ai")) return "Proteus AI";
     if (pathname.startsWith("/marketplace")) return "Marketplace";
     if (pathname.startsWith("/settings")) return "Settings";
     if (pathname.startsWith("/chat")) return "Mattermost";
@@ -80,12 +60,21 @@ export function Topbar() {
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2 rounded-lg transition-colors"
+            className="p-2 rounded-lg transition-colors relative"
             style={{ color: "var(--muted)" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            aria-label="Thông báo"
           >
             <Bell className="w-[18px] h-[18px]" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 text-[10px] font-bold text-white rounded-full flex items-center justify-center pointer-events-none"
+                style={{ background: "var(--rose, #f43f5e)" }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </button>
           {showNotifications && (
             <>
@@ -134,14 +123,13 @@ export function Topbar() {
                   <div className="p-1">
                     <button
                       onClick={handleLogout}
-                      disabled={loggingOut}
-                      className="w-full text-left px-3 py-2 text-[13px] rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60"
+                      className="w-full text-left px-3 py-2 text-[13px] rounded-lg transition-colors flex items-center gap-2"
                       style={{ color: "var(--rose)" }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--rose-fill)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       <LogOut className="w-4 h-4" />
-                      {loggingOut ? "Đang đăng xuất..." : "Đăng xuất"}
+                      Đăng xuất
                     </button>
                   </div>
                 </div>

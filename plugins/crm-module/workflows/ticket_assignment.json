@@ -5,7 +5,7 @@
     {
       "parameters": {
         "path": "crm/ticket-assignment",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {},
         "httpMethod": "POST"
       },

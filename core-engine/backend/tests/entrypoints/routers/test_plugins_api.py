@@ -4,7 +4,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.adapters.external.n8n_adapter import N8nAdapterError
 from app.adapters.repositories.base import AbstractPluginRepository
@@ -14,6 +14,7 @@ from app.entrypoints.dependencies import (
     get_current_tenant_context,
     get_plugin_credentials_use_case,
     get_plugin_repo,
+    get_plugin_repo_write,
     get_role_repo,
 )
 from main import app
@@ -52,7 +53,9 @@ async def test_configure_plugin_credentials_success(override_auth):
 
     app.dependency_overrides[get_plugin_credentials_use_case] = lambda: mock_use_case
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
             "/api/v1/plugins/123e4567-e89b-12d3-a456-426614174000/credentials",
             json={
@@ -78,7 +81,9 @@ async def test_configure_plugin_credentials_failure(override_auth):
 
     app.dependency_overrides[get_plugin_credentials_use_case] = lambda: mock_use_case
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
             "/api/v1/plugins/123e4567-e89b-12d3-a456-426614174000/credentials",
             json={
@@ -108,7 +113,9 @@ async def test_get_install_status_success(override_auth):
     app.dependency_overrides[get_plugin_repo] = lambda: mock_repo
 
     task_id = "123e4567-e89b-12d3-a456-426614174000"
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             f"/api/v1/plugins/install/{task_id}/status",
             headers={"Authorization": "Bearer fake"},
@@ -132,7 +139,9 @@ async def test_get_install_status_not_found(override_auth):
     app.dependency_overrides[get_plugin_repo] = lambda: mock_repo
 
     task_id = "123e4567-e89b-12d3-a456-426614174000"
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             f"/api/v1/plugins/install/{task_id}/status",
             headers={"Authorization": "Bearer fake"},
@@ -146,7 +155,9 @@ async def test_get_install_status_not_found(override_auth):
 
 @pytest.mark.asyncio
 async def test_get_install_status_invalid_uuid(override_auth):
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             "/api/v1/plugins/install/not-a-valid-uuid/status",
             headers={"Authorization": "Bearer fake"},
@@ -154,3 +165,63 @@ async def test_get_install_status_invalid_uuid(override_auth):
 
     assert response.status_code == 400
     assert "Invalid task_id" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_uninstall_plugin_not_installed_fails(override_auth):
+    import types
+
+    mock_repo = AsyncMock(spec=AbstractPluginRepository)
+    plugin_id = uuid.uuid4()
+    mock_repo.get_by_id.return_value = types.SimpleNamespace(
+        id=plugin_id, code_name="test-plugin"
+    )
+    mock_repo.get_installation_status.return_value = None
+
+    app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.request(
+            "DELETE",
+            f"/api/v1/plugins/{plugin_id}/uninstall",
+            json={"confirm_name": "test-plugin"},
+            headers={"Authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 400
+    assert "chưa được cài đặt" in response.json()["detail"]
+    app.dependency_overrides.pop(get_plugin_repo_write, None)
+
+
+@pytest.mark.asyncio
+async def test_uninstall_plugin_active_success(override_auth):
+    import types
+
+    mock_repo = AsyncMock(spec=AbstractPluginRepository)
+    plugin_id = uuid.uuid4()
+    mock_repo.get_by_id.return_value = types.SimpleNamespace(
+        id=plugin_id, code_name="test-plugin"
+    )
+    mock_repo.get_installation_status.return_value = PluginStatus.ACTIVE
+    mock_repo.upsert_installation = AsyncMock()
+    mock_repo.update_install_steps_log = AsyncMock()
+    mock_repo._session = AsyncMock()
+
+    app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.request(
+            "DELETE",
+            f"/api/v1/plugins/{plugin_id}/uninstall",
+            json={"confirm_name": "test-plugin"},
+            headers={"Authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "UNINSTALLING"
+    mock_repo.upsert_installation.assert_called_once()
+    app.dependency_overrides.pop(get_plugin_repo_write, None)

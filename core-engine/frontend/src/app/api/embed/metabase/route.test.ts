@@ -73,6 +73,26 @@ describe("GET /api/embed/metabase", () => {
     expect(data.error).toBe("Thiếu tham số dashboard_id");
   });
 
+  it("should return 400 if dashboard_id contains path traversal or non-numeric", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      accessToken: createFakeJwt({ tenant_id: "tenant-1" }),
+      expires: "12345",
+    });
+    vi.mocked(getToken).mockResolvedValue({
+      accessToken: createFakeJwt({ tenant_id: "tenant-1" }),
+    } as any);
+
+    const traversalRequest = new NextRequest("http://localhost:3000/api/embed/metabase?dashboard_id=../../users");
+    const traversalResponse = await GET(traversalRequest);
+    expect(traversalResponse.status).toBe(400);
+    const traversalData = await traversalResponse.json();
+    expect(traversalData.error).toContain("không hợp lệ");
+
+    const invalidRequest = new NextRequest("http://localhost:3000/api/embed/metabase?dashboard_id=abc");
+    const invalidResponse = await GET(invalidRequest);
+    expect(invalidResponse.status).toBe(400);
+  });
+
   it("should return data from backend if fetch is successful", async () => {
     const fakeToken = createFakeJwt({ tenant_id: "tenant-1" });
     vi.mocked(getServerSession).mockResolvedValue({

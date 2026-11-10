@@ -23,6 +23,7 @@ database:
     - "procurement_contracts"
     - "procurement_purchase_orders"
     - "procurement_deliveries"
+    - "procurement_config"
   seed_file: "db/seed_data.sql"
   default_config:
     require_board_approval_threshold: 50000000
@@ -51,7 +52,14 @@ workflows:
     file: "workflows/vendor_evaluation.json"
     name: "Vendor Evaluation"
     description: "Đánh giá nhà cung cấp"
-    trigger: "manual"
+    trigger: "cron"
+    cron_expression: "0 8 1 */3 *"
+
+  - id: "wf_sync_payment_status"
+    file: "workflows/sync_payment_status.json"
+    name: "Sync Payment Status"
+    description: "Đồng bộ trạng thái thanh toán đơn mua hàng"
+    trigger: "webhook"
 
 dashboards:
   - file: "dashboards/procurement_overview.json"

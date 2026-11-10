@@ -5,7 +5,7 @@
 // Render form inputs động dựa trên credentials_schema từ manifest.
 // Không còn JSON textarea thô — mỗi field được render riêng biệt.
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import type { PluginData } from "@/components/marketplace/PluginCard";
 import type { CredentialFieldSchema, CredentialInput } from "@/types";
@@ -116,12 +116,32 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
   const [credValues, setCredValues] = useState<CredentialValues>({});
   const [validationError, setValidationError] = useState("");
 
+  useEffect(() => {
+    if (credentialsSchema && credentialsSchema.length > 0) {
+      const initial: CredentialValues = {};
+      credentialsSchema.forEach((f) => {
+        if (f.default != null) {
+          initial[f.key] = String(f.default);
+        }
+      });
+      setCredValues(initial);
+    } else {
+      setCredValues({});
+    }
+  }, [credentialsSchema]);
+
   // useCallback MUST be called unconditionally (Rules of Hooks) — place before early return
   const handleClose = useCallback(() => {
-    setCredValues({});
+    const initial: CredentialValues = {};
+    credentialsSchema.forEach((f) => {
+      if (f.default != null) {
+        initial[f.key] = String(f.default);
+      }
+    });
+    setCredValues(initial);
     setValidationError("");
     onClose();
-  }, [onClose]);
+  }, [credentialsSchema, onClose]);
 
   const hasRequiredCreds = credentialsSchema.some((f) => f.required);
   const hasAnyCreds = credentialsSchema.length > 0;
@@ -134,9 +154,16 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
   };
 
   const handleConfirm = () => {
+    const effectiveValues = { ...credValues };
+    credentialsSchema.forEach((f) => {
+      if (effectiveValues[f.key] === undefined && f.default != null) {
+        effectiveValues[f.key] = String(f.default);
+      }
+    });
+
     // Validate required fields
     const missingFields = credentialsSchema
-      .filter((f) => f.required && !credValues[f.key]?.trim())
+      .filter((f) => f.required && !effectiveValues[f.key]?.trim())
       .map((f) => f.label);
 
     if (missingFields.length > 0) {
@@ -146,10 +173,10 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
 
     // Build CredentialInput[]
     const credentials: CredentialInput[] = credentialsSchema
-      .filter((f) => credValues[f.key] !== undefined && credValues[f.key] !== "")
+      .filter((f) => effectiveValues[f.key] !== undefined && effectiveValues[f.key] !== "")
       .map((f) => ({
         key: f.key,
-        value: credValues[f.key],
+        value: effectiveValues[f.key],
         credential_type_name: f.credential_type_name ?? null,
       }));
 

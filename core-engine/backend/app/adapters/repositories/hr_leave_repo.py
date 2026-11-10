@@ -27,66 +27,94 @@ class SQLAlchemyHRLeaveRepository(AbstractHRLeaveRepository):
         self._session = session
 
     async def get_pending_leaves_older_than(self, days: int) -> list[dict] | None:
-        # Kiểm tra xem bảng hr_leave_requests có tồn tại không trước khi query
+        # Quét các tenant schema chứa bảng hr_leave_requests (#735)
         check_table = await self._session.execute(
             text(
-                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'hr_leave_requests')"
+                "SELECT table_schema FROM information_schema.tables WHERE table_name = 'hr_leave_requests'"
             )
         )
-        has_hr = check_table.scalar()
-
-        if not has_hr:
+        schemas = check_table.scalars().all()
+        if not schemas:
             return None
 
         now = datetime.now(UTC)
         day_ago = now - timedelta(days=days)
+        all_leaves: list[dict] = []
 
-        stmt = select(
-            hr_leave_requests_table.c.employee_id,
-            hr_leave_requests_table.c.created_at,
-            hr_leave_requests_table.c.days_count,
-        ).where(
-            hr_leave_requests_table.c.status == "pending",
-            hr_leave_requests_table.c.created_at < day_ago,
-        )
+        for schema in schemas:
+            safe_schema = "".join(c for c in str(schema) if c.isalnum() or c == "_")
+            if not safe_schema:
+                continue
+            try:
+                res_leaves = await self._session.execute(
+                    text(
+                        f'SELECT employee_id, created_at, days_count, status FROM "{safe_schema}".hr_leave_requests '
+                        f"WHERE status = 'pending' AND created_at < :day_ago"
+                    ),
+                    {"day_ago": day_ago},
+                )
+                for row in res_leaves.mappings().all():
+                    d = dict(row)
+                    d["requested_by"] = d.get("employee_id") or d.get(
+                        "issued_by_user_id"
+                    )
+                    d["issued_by_user_id"] = d["requested_by"]
+                    all_leaves.append(d)
+            except Exception:
+                continue
 
-        res_leaves = await self._session.execute(stmt)
-        rows = res_leaves.mappings().all()
-        return [dict(row) for row in rows]
+        return all_leaves
 
     async def count_leaves_spike(self) -> dict | None:
+        # Tính spike thống kê trên toàn bộ tenant schemas (#735)
         check_table = await self._session.execute(
             text(
-                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'hr_leave_requests')"
+                "SELECT table_schema FROM information_schema.tables WHERE table_name = 'hr_leave_requests'"
             )
         )
-        if not check_table.scalar():
+        schemas = check_table.scalars().all()
+        if not schemas:
             return None
         now = datetime.now(UTC)
         recent_since = now - timedelta(days=7)
         base_since = now - timedelta(days=35)
-        recent = (
-            await self._session.execute(
-                text(
-                    "SELECT COUNT(*) FROM hr_leave_requests "
-                    "WHERE created_at >= :since"
-                ),
-                {"since": recent_since},
-            )
-        ).scalar() or 0
-        base = (
-            await self._session.execute(
-                text(
-                    "SELECT COUNT(*) FROM hr_leave_requests "
-                    "WHERE created_at >= :bstart AND created_at < :bend"
-                ),
-                {"bstart": base_since, "bend": recent_since},
-            )
-        ).scalar() or 0
-        baseline_daily_avg = base / 28
-        ratio = (recent / 7 / baseline_daily_avg) if baseline_daily_avg > 0 else 0.0
+        total_recent = 0
+        total_base = 0
+
+        for schema in schemas:
+            safe_schema = "".join(c for c in str(schema) if c.isalnum() or c == "_")
+            if not safe_schema:
+                continue
+            try:
+                recent = (
+                    await self._session.execute(
+                        text(
+                            f'SELECT COUNT(*) FROM "{safe_schema}".hr_leave_requests '
+                            f"WHERE created_at >= :since"
+                        ),
+                        {"since": recent_since},
+                    )
+                ).scalar() or 0
+                base = (
+                    await self._session.execute(
+                        text(
+                            f'SELECT COUNT(*) FROM "{safe_schema}".hr_leave_requests '
+                            f"WHERE created_at >= :bstart AND created_at < :bend"
+                        ),
+                        {"bstart": base_since, "bend": recent_since},
+                    )
+                ).scalar() or 0
+                total_recent += recent
+                total_base += base
+            except Exception:
+                continue
+
+        baseline_daily_avg = total_base / 28
+        ratio = (
+            (total_recent / 7 / baseline_daily_avg) if baseline_daily_avg > 0 else 0.0
+        )
         return {
-            "recent": int(recent),
+            "recent": int(total_recent),
             "baseline_daily_avg": round(baseline_daily_avg, 2),
             "ratio": round(ratio, 2),
         }

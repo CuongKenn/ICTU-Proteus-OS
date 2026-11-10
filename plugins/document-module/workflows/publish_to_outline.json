@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "knowledge/publish",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - Publish Doc",

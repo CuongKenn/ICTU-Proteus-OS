@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -92,6 +93,9 @@ class TenantModel(BaseModel, SoftDeleteMixin):
 
 class UserModel(BaseModel, SoftDeleteMixin):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="users_tenant_id_email_key"),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -105,6 +109,7 @@ class UserModel(BaseModel, SoftDeleteMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    mattermost_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -155,6 +160,9 @@ class RoleModel(BaseModel, SoftDeleteMixin):
 
 class UserRoleModel(BaseModel, SoftDeleteMixin):
     __tablename__ = "user_roles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_id", name="user_roles_user_role_key"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -332,6 +340,7 @@ class AuditLogModel(BaseModel, SoftDeleteMixin):
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
@@ -352,6 +361,8 @@ class AICommandModel(BaseModel, SoftDeleteMixin):
         index=True,
     )
     dsl_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    raw_input: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parsed_dsl: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     action: Mapped[str] = mapped_column(String(255), nullable=False)
     effect: Mapped[str] = mapped_column(String(50), nullable=False)
     parameters: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -428,3 +439,31 @@ class AIMessageModel(BaseModel, SoftDeleteMixin):
         UUID(as_uuid=True), nullable=True
     )
     citations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+
+
+class PluginSchemaMigrationModel(Base):
+    __tablename__ = "plugin_schema_migrations"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "tenant_id", "plugin_id", "version", name="pk_plugin_schema_migrations"
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plugin_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("plugins.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

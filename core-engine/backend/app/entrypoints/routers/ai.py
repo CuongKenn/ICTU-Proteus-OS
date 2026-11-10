@@ -77,12 +77,31 @@ async def submit_ai_chat(
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
-    # We reuse AICommandResponse but command_id might be newly generated
+    # Trả đúng command_id từ execution kết quả hoặc dsl_preview (#731)
     preview = None
+    real_command_id = None
     if isinstance(result, dict):
         preview = result.get("dsl_preview")
+        if preview and isinstance(preview, dict) and preview.get("command_id"):
+            try:
+                real_command_id = uuid.UUID(str(preview["command_id"]))
+            except (ValueError, TypeError):
+                pass
+        if not real_command_id and result.get("steps"):
+            steps = result["steps"]
+            if (
+                steps
+                and isinstance(steps, list)
+                and isinstance(steps[-1], dict)
+                and steps[-1].get("command_id")
+            ):
+                try:
+                    real_command_id = uuid.UUID(str(steps[-1]["command_id"]))
+                except (ValueError, TypeError):
+                    pass
+
     return AICommandResponse(
-        command_id=uuid.uuid4(),  # Or return the one generated inside if available, but for simplicity we generate a new one if not passed out
+        command_id=real_command_id or uuid.uuid4(),
         status=status_code,
         message=message,
         result=result if status_code == AICommandStatus.COMPLETED else None,
@@ -102,9 +121,11 @@ async def submit_ai_command(
     body: AICommandRequest,
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: AICommandUseCase = Depends(get_ai_command_use_case),
+    chat_use_case: AIChatUseCase = Depends(get_ai_chat_use_case),
 ) -> AICommandResponse:
     """
     Nhận DX-DSL command từ AI Layer, validate và xử lý.
+    Nếu client gửi natural_language_input mà không có action/effect, tự động forward sang chat_use_case.
 
     - Nếu effect = read: thực thi ngay, trả về kết quả.
     - Nếu effect = write/critical: gửi xin phê duyệt qua Mattermost,
@@ -112,6 +133,34 @@ async def submit_ai_command(
 
     Tham chiếu: docs/dsl-spec.md §4 (Effect Levels & Approval Rules)
     """
+    if body.natural_language_input and not body.action:
+        chat_dto = AIChatDTO(
+            session_id=body.session_id,
+            natural_language_input=body.natural_language_input,
+        )
+        try:
+            status_code, message, result = await chat_use_case.execute(chat_dto, ctx)
+        except PermissionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
+        preview = None
+        if isinstance(result, dict):
+            preview = result.get("dsl_preview")
+        return AICommandResponse(
+            command_id=body.command_id,
+            status=status_code,
+            message=message,
+            result=result if status_code == AICommandStatus.COMPLETED else None,
+            dsl_preview=preview,
+        )
+
+    if not body.action or not body.effect:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Các trường 'action' và 'effect' là bắt buộc đối với DX-DSL Command",
+        )
+
     logger.info(
         "AI command received",
         extra={
@@ -136,11 +185,24 @@ async def submit_ai_command(
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
+    preview = None
+    if status_code == AICommandStatus.PENDING_APPROVAL:
+        preview = {
+            "command_id": str(body.command_id),
+            "action": body.action,
+            "effect": body.effect,
+            "parameters": body.parameters,
+            "dry_run": result,
+        }
+    elif isinstance(result, dict) and "dsl_preview" in result:
+        preview = result.get("dsl_preview")
+
     return AICommandResponse(
         command_id=body.command_id,
         status=status_code,
         message=message,
-        result=result,
+        result=result if status_code != AICommandStatus.PENDING_APPROVAL else None,
+        dsl_preview=preview,
     )
 
 
@@ -148,16 +210,25 @@ async def submit_ai_command(
     "/knowledge/ingest",
     status_code=status.HTTP_200_OK,
     summary="Manual Trigger: RAG Document Ingestion",
+    dependencies=[Depends(require_permission("ai.knowledge.ingest"))],
 )
+@limiter.limit("5/minute")
 async def trigger_rag_ingestion(
+    request: Request,
+    collection_id: str | None = None,
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: RAGIngestionUseCase = Depends(get_rag_ingestion_use_case),
 ):
     """
     Kích hoạt thủ công quá trình Ingestion tài liệu từ Outline vào Qdrant
-    cho tenant hiện tại.
+    cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734).
     """
-    result = await use_case.execute(str(ctx.tenant_id))
+    target_collection = (
+        collection_id
+        or getattr(ctx, "outline_collection_id", None)
+        or str(ctx.tenant_id)
+    )
+    result = await use_case.execute(str(ctx.tenant_id), collection_id=target_collection)
     return result
 
 
@@ -190,10 +261,15 @@ async def transmit_kv_cache_ipc(
     if redis_publisher is None:
         redis_publisher = RedisEventBusPublisher()
 
-    manager = KVCacheIPCManager(
-        qdrant_adapter=QdrantAdapter(
+    qdrant_adapter = getattr(request.app.state, "qdrant_adapter", None)
+    if qdrant_adapter is None:
+        qdrant_adapter = QdrantAdapter(
             qdrant_client=getattr(request.app.state, "qdrant_client", None)
-        ),
+        )
+        request.app.state.qdrant_adapter = qdrant_adapter
+
+    manager = KVCacheIPCManager(
+        qdrant_adapter=qdrant_adapter,
         redis_publisher=redis_publisher,
     )
 
@@ -279,9 +355,14 @@ async def ensure_ai_session(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    session_id = await use_case.ensure_session(
-        ctx.tenant_id, ctx.user_id, body.session_id
-    )
+    try:
+        session_id = await use_case.ensure_session(
+            ctx.tenant_id, ctx.user_id, body.session_id
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return SessionResponse(session_id=session_id)
 
@@ -297,7 +378,10 @@ async def list_ai_sessions(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    return await use_case.sessions(ctx.tenant_id, ctx.user_id)
+    try:
+        return await use_case.sessions(ctx.tenant_id, ctx.user_id)
+    except ValueError:
+        return []
 
 
 @router.get(
@@ -312,7 +396,12 @@ async def list_ai_messages(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    return await use_case.history(ctx.tenant_id, ctx.user_id, session_id)
+    try:
+        return await use_case.history(ctx.tenant_id, ctx.user_id, session_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post(
@@ -329,16 +418,23 @@ async def append_ai_message(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    real_session = await use_case.ensure_session(ctx.tenant_id, ctx.user_id, session_id)
-    msg_id = await use_case.save_turn(
-        ctx.tenant_id,
-        ctx.user_id,
-        real_session,
-        body.role,
-        body.content,
-        body.command_id,
-        body.citations,
-    )
+    try:
+        real_session = await use_case.ensure_session(
+            ctx.tenant_id, ctx.user_id, session_id
+        )
+        msg_id = await use_case.save_turn(
+            ctx.tenant_id,
+            ctx.user_id,
+            real_session,
+            body.role,
+            body.content,
+            body.command_id,
+            body.citations,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return ChatMessageResponse(
         id=msg_id,
@@ -533,12 +629,15 @@ async def stream_ai_chat(
         session_id=body.session_id, natural_language_input=body.natural_language_input
     )
     # M1: chặn IDOR session trước khi stream (đồng bộ, để trả 403 ngay).
-    try:
-        await use_case.ai_command_use_case._assert_session_owned(
-            ctx.tenant_id, ctx.user_id, body.session_id
-        )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if use_case.conversation_repo is not None:
+        try:
+            await use_case.conversation_repo.assert_session_owned(
+                ctx.tenant_id, ctx.user_id, body.session_id
+            )
+        except PermissionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
 
     async def event_gen():
         async for payload in use_case.execute_stream(dto, ctx):

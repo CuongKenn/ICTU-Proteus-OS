@@ -57,6 +57,7 @@ database:
     - "hr_leave_requests"
     - "hr_attendance_logs"
     - "hr_payroll_records"
+    - "hr_payroll_config"
     - "hr_onboarding_tasks"
     - "hr_job_postings"
     - "hr_applications"
@@ -101,6 +102,26 @@ workflows:
     description: "Reset số ngày phép còn lại vào đầu năm mới"
     trigger: "cron"
     cron_expression: "0 1 1 1 *"   # 1h sáng, ngày 1 tháng 1
+
+  - id: "wf_attendance_checkin"
+    file: "workflows/attendance_checkin.json"
+    name: "Attendance Check-in/Check-out"
+    description: "Xử lý sự kiện chấm công vào/ra"
+    trigger: "webhook"
+
+  - id: "wf_leave_balance_check"
+    file: "workflows/leave_balance_check.json"
+    name: "Leave Balance Check"
+    description: "Kiểm tra số dư phép hàng năm"
+    trigger: "cron"
+    cron_expression: "0 1 1 1 *"
+
+  - id: "wf_payroll_calculation"
+    file: "workflows/payroll_calculation.json"
+    name: "Payroll Calculation"
+    description: "Tính bảng lương hàng tháng vào ngày 25"
+    trigger: "cron"
+    cron_expression: "0 8 25 * *"
 
   - id: "wf_application_received"
     file: "workflows/application_received.json"

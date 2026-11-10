@@ -26,7 +26,7 @@ const config: Config = {
         dim: "var(--dim)",
         ghost: "var(--ghost)",
         accent: {
-          DEFAULT: "rgb(var(--accent-rgb) / <alpha-value>)",
+          DEFAULT: "var(--accent)",
           hover: "var(--accent-hover)",
           soft: "var(--accent-soft)",
           glow: "var(--accent-glow)",
@@ -49,41 +49,38 @@ const config: Config = {
           rose: "var(--rose)",
           violet: "var(--violet)",
         },
-
-        // ── Legacy aliases (Design System v2) ──────────────────────
-        // Các tab Settings và một số component cũ vẫn dùng tên token v2
-        // (text-text-primary, bg-bg-surface, border-border, bg-primary...).
-        // Map về token v3 qua kênh RGB để hỗ trợ opacity (/10, /50...).
+        // Legacy v2 color aliases compatibility (#750)
         primary: {
-          DEFAULT: "rgb(var(--accent-rgb) / <alpha-value>)",
-          hover: "rgb(var(--accent-hover-rgb) / <alpha-value>)",
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
+          dark: "var(--accent-hover)",
+          light: "var(--accent-soft)",
+          soft: "var(--accent-soft)",
+          glow: "var(--accent-glow)",
+          50: "var(--accent-soft)",
+          100: "var(--accent-soft)",
+          500: "var(--accent)",
+          600: "var(--accent-hover)",
+          700: "var(--accent-hover)",
         },
-        secondary: "rgb(var(--muted-rgb) / <alpha-value>)",
-        error: "rgb(var(--rose-rgb) / <alpha-value>)",
-        danger: "rgb(var(--rose-rgb) / <alpha-value>)",
-        success: "rgb(var(--emerald-rgb) / <alpha-value>)",
-        warning: "rgb(var(--amber-rgb) / <alpha-value>)",
-        info: "rgb(var(--cyan-rgb) / <alpha-value>)",
-        text: {
-          primary: "rgb(var(--ink-rgb) / <alpha-value>)",
-          secondary: "rgb(var(--muted-rgb) / <alpha-value>)",
-          muted: "rgb(var(--muted-rgb) / <alpha-value>)",
-          tertiary: "rgb(var(--dim-rgb) / <alpha-value>)",
-          disabled: "rgb(var(--dim-rgb) / <alpha-value>)",
-          "bg-base": "rgb(var(--paper-rgb) / <alpha-value>)",
+        "brand-primary": "var(--accent)",
+        "bg-base": "var(--paper)",
+        "bg-surface": "var(--paper-raised)",
+        "bg-hover": "var(--paper-raised)",
+        "text-primary": "var(--ink)",
+        "text-secondary": "var(--muted)",
+        border: "var(--line)",
+        error: {
+          DEFAULT: "var(--rose)",
+          light: "var(--rose-fill)",
         },
-        bg: {
-          base: "rgb(var(--paper-rgb) / <alpha-value>)",
-          surface: "rgb(var(--paper-raised-rgb) / <alpha-value>)",
-          hover: "rgb(var(--hover-rgb) / <alpha-value>)",
-          "surface-hover": "rgb(var(--hover-rgb) / <alpha-value>)",
-          "surface-elevated": "rgb(var(--paper-white-rgb) / <alpha-value>)",
-          border: "rgb(var(--line-rgb) / <alpha-value>)",
+        warning: {
+          DEFAULT: "var(--amber)",
+          light: "var(--amber-fill)",
         },
-        border: {
-          DEFAULT: "rgb(var(--line-rgb) / <alpha-value>)",
-          subtle: "rgb(var(--line-rgb) / <alpha-value>)",
-          "bg-surface": "rgb(var(--line-rgb) / <alpha-value>)",
+        success: {
+          DEFAULT: "var(--emerald)",
+          light: "var(--emerald-fill)",
         },
       },
       fontFamily: {

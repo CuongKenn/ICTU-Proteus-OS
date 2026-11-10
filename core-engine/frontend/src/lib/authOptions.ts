@@ -8,14 +8,96 @@
 
 import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
-import { refreshAccessToken } from "@/lib/tokenRefresh";
-import { SESSION_MAX_AGE, isSecureCookies, sessionCookieName } from "@/lib/sessionCookie";
+import {
+  isSecureCookies,
+  sessionCookieDomain,
+  sessionCookieName,
+  SESSION_MAX_AGE,
+} from "./sessionCookie";
 
 const publicIssuer = process.env.KEYCLOAK_ISSUER || "";
 const realm = publicIssuer.split("/realms/")[1] || "proteus";
 const internalBase = process.env.KEYCLOAK_INTERNAL_URL
   ? `${process.env.KEYCLOAK_INTERNAL_URL}/realms/${realm}`
   : publicIssuer;
+
+// ─── Silent Token Refresh ─────────────────────────────────────
+// Gọi Keycloak token endpoint để lấy access_token mới bằng refresh_token.
+// Được gọi tự động khi access_token hết hạn trong JWT callback.
+// (Xem tokenRefresh.ts cho BFF Proxy version độc lập)
+// Keyed cache per user/token để tránh concurrent refresh (race condition)
+// nhưng KHÔNG lẫn token giữa các user khác nhau (#686).
+const refreshPromises = new Map<string, Promise<JWT>>();
+
+async function refreshAccessToken(token: JWT): Promise<JWT> {
+  const key = (token.sub as string) || (token.refreshToken as string) || "anonymous";
+
+  const existing = refreshPromises.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = (async () => {
+    try {
+      const tokenUrl = `${internalBase}/protocol/openid-connect/token`;
+      const response = await fetch(tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: process.env.KEYCLOAK_CLIENT_ID!,
+          client_secret: process.env.KEYCLOAK_CLIENT_SECRET!,
+          refresh_token: token.refreshToken as string,
+        }),
+      });
+
+      const refreshed = await response.json();
+
+      if (!response.ok) {
+        return { ...token, error: "RefreshAccessTokenError" };
+      }
+
+      let refreshedRoles = token.roles as string[] | undefined;
+      let refreshedTenantId = token.tenant_id as string | undefined;
+      if (refreshed.access_token) {
+        try {
+          const payloadBase64 = refreshed.access_token.split(".")[1];
+          if (payloadBase64) {
+            const decoded = JSON.parse(
+              Buffer.from(payloadBase64, "base64url").toString("utf-8")
+            );
+            if (decoded?.realm_access?.roles) {
+              refreshedRoles = decoded.realm_access.roles;
+            }
+            if (decoded?.tenant_id) {
+              refreshedTenantId = decoded.tenant_id;
+            }
+          }
+        } catch {
+          // keep existing roles
+        }
+      }
+
+      return {
+        ...token,
+        accessToken: refreshed.access_token,
+        refreshToken: refreshed.refresh_token ?? token.refreshToken,
+        accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+        idToken: refreshed.id_token ?? token.idToken,
+        roles: refreshedRoles ?? token.roles,
+        tenant_id: refreshedTenantId ?? token.tenant_id,
+        error: undefined,
+      };
+    } catch {
+      return { ...token, error: "RefreshAccessTokenError" };
+    } finally {
+      refreshPromises.delete(key);
+    }
+  })();
+
+  refreshPromises.set(key, promise);
+  return promise;
+}
 
 // ─── NextAuth Config ──────────────────────────────────────────
 export const authOptions: NextAuthOptions = {
@@ -75,7 +157,7 @@ export const authOptions: NextAuthOptions = {
           try {
             const payloadBase64 = account.access_token.split(".")[1];
             const decoded = JSON.parse(
-              Buffer.from(payloadBase64, "base64").toString("utf-8")
+              Buffer.from(payloadBase64, "base64url").toString("utf-8")
             );
             if (decoded?.realm_access?.roles) {
               roles = decoded.realm_access.roles;
@@ -117,11 +199,16 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      // Expose access token cho BFF Proxy (server-side only).
-      // Token này KHÔNG bao giờ xuống browser — chỉ BFF API Route đọc qua getServerSession().
-      // Bắt buộc để BFF proxy có thể inject Authorization header khi forward request đến backend.
-      (session as any).accessToken = token.accessToken as string;
+      // KHÔNG expose access token vào session (#685).
+      // NextAuth serialize session về client qua /api/auth/session nên token không được nằm ở đây.
+      // Các BFF routes lấy accessToken qua getToken({ req }) ở server-side.
       session.user.roles = (token.roles as string[]) ?? [];
+      if (token.tenant_id) {
+        (session.user as any).tenant_id = token.tenant_id;
+      }
+      if (token.sub) {
+        (session.user as any).id = token.sub;
+      }
 
       // Truyền lỗi refresh lên client để hiển thị thông báo (vd: RefreshAccessTokenError)
       if (token.error) {
@@ -132,13 +219,6 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
-  session: {
-    strategy: "jwt",
-    maxAge: SESSION_MAX_AGE, // 8 giờ (session tối đa, kể cả refresh)
-  },
-
-  // PHẢI khớp tuyệt đối với lib/sessionJwt.ts (BFF proxy ghi lại session sau
-  // inline refresh). Cookie host-only + chunked — xem sessionCookie.ts.
   cookies: {
     sessionToken: {
       name: sessionCookieName(),
@@ -147,8 +227,15 @@ export const authOptions: NextAuthOptions = {
         sameSite: "lax",
         path: "/",
         secure: isSecureCookies(),
+        domain: sessionCookieDomain(),
+        maxAge: SESSION_MAX_AGE,
       },
     },
+  },
+
+  session: {
+    strategy: "jwt",
+    maxAge: SESSION_MAX_AGE, // 8 giờ (session tối đa, kể cả refresh)
   },
 
   pages: {

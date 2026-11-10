@@ -5,6 +5,7 @@
 # Kiến trúc: Hexagonal Architecture (Ports and Adapters)
 # Tham chiếu: docs/architecture.md, docs/api-swagger.yaml
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -23,7 +24,6 @@ from app import __version__
 from app.adapters.external.appsmith_adapter import AppsmithAdapter
 from app.adapters.external.keycloak_adapter import KeycloakAdapter
 from app.adapters.external.local_manifest_parser import LocalManifestParser
-import asyncio
 from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.adapters.external.metabase_adapter import MetabaseAdapter
 from app.adapters.external.n8n_adapter import N8nAdapter
@@ -36,8 +36,8 @@ from app.adapters.repositories.hr_leave_repo import SQLAlchemyHRLeaveRepository
 from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
 from app.core.domain import exceptions as domain_exc
 from app.core.use_cases.ai_timeout_worker import AITimeoutWorker
-from app.core.use_cases.plugin_cleanup_agent import PluginCleanupAgent
 from app.core.use_cases.event_subscriber_worker import EventSubscriberWorker
+from app.core.use_cases.plugin_cleanup_agent import PluginCleanupAgent
 from app.core.use_cases.proactive_monitor import ProactiveMonitorAgent
 from app.core.use_cases.rag_ingestion import RAGIngestionUseCase
 from app.entrypoints.routers import (
@@ -105,9 +105,8 @@ async def lifespan(app: FastAPI):
             )
             try:
                 mm = MattermostAdapter(client=app.state.http_client)
-                await mm.send_message(
-                    "system-alerts", f"🚨 Plugin Cleanup Job thất bại: `{e}`"
-                )
+                ch_id = settings.MATTERMOST_SYSTEM_CHANNEL_ID or "system-alerts"
+                await mm.send_message(ch_id, f"🚨 Plugin Cleanup Job thất bại: `{e}`")
             except Exception:
                 pass
 
@@ -133,16 +132,18 @@ async def lifespan(app: FastAPI):
             )
             try:
                 mm = MattermostAdapter(client=app.state.http_client)
-                await mm.send_message(
-                    "system-alerts", f"🚨 AI timeout worker thất bại: `{e}`"
-                )
+                ch_id = settings.MATTERMOST_SYSTEM_CHANNEL_ID or "system-alerts"
+                await mm.send_message(ch_id, f"🚨 AI timeout worker thất bại: `{e}`")
             except Exception:
                 pass
 
     async def sync_marketplace_plugins() -> None:
-        """Scan local plugins directory and upsert into plugins table."""
+        """Scan local plugins directory, validate manifest and upsert into plugins table."""
         try:
+            from app.core.use_cases.manifest_validator import ManifestValidator
+
             parser = LocalManifestParser()
+            validator = ManifestValidator()
             plugins_dir = parser.plugins_dir
             if not plugins_dir.exists():
                 logger.warning("Plugins directory %s not found.", plugins_dir)
@@ -153,8 +154,22 @@ async def lifespan(app: FastAPI):
                 for plugin_path in plugins_dir.iterdir():
                     if not plugin_path.is_dir():
                         continue
+                    manifest_file = plugin_path / "manifest.yaml"
+                    if not manifest_file.exists():
+                        continue
                     try:
+                        with open(manifest_file, encoding="utf-8") as mf:
+                            validator.validate_yaml_string(mf.read())
                         manifest = parser.parse(plugin_path.name)
+                        raw_creds = []
+                        for c in manifest.credentials_schema:
+                            if hasattr(c, "model_dump"):
+                                raw_creds.append(c.model_dump())
+                            elif hasattr(c, "dict"):
+                                raw_creds.append(c.dict())
+                            elif isinstance(c, dict):
+                                raw_creds.append(c)
+
                         await plugin_repo.upsert_from_manifest(
                             code_name=plugin_path.name,
                             display_name=manifest.display_name,
@@ -165,6 +180,12 @@ async def lifespan(app: FastAPI):
                             icon_url=manifest.icon_url,
                             manifest_url=f"file:///{plugin_path.name}/manifest.yaml",
                             is_official=manifest.is_official,
+                            category=manifest.category,
+                            tags=manifest.tags,
+                            screenshots=manifest.screenshots,
+                            long_description=manifest.long_description,
+                            credentials_schema=raw_creds,
+                            homepage_url=manifest.homepage_url,
                         )
                     except Exception as e:
                         logger.warning(
@@ -326,11 +347,13 @@ async def lifespan(app: FastAPI):
         id="knowledge_sync",
     )
     scheduler.start()
-        # Khởi động Event Subscriber Worker (Redis Pub/Sub)
+    # Khởi động Event Subscriber Worker (Redis Pub/Sub)
     manifest_parser = LocalManifestParser()
     n8n_adapter = N8nAdapter(client=app.state.http_client)
-    event_worker = EventSubscriberWorker(manifest_parser=manifest_parser, n8n_adapter=n8n_adapter)
-    
+    event_worker = EventSubscriberWorker(
+        manifest_parser=manifest_parser, n8n_adapter=n8n_adapter
+    )
+
     event_bus_task = asyncio.create_task(
         app.state.redis_event_bus.subscribe_and_listen(event_worker.handle_event)
     )
@@ -357,7 +380,7 @@ async def lifespan(app: FastAPI):
         await event_bus_task
     except asyncio.CancelledError:
         pass
-    
+
     await app.state.http_client.aclose()
     await app.state.qdrant_client.close()
     await app.state.redis_event_bus.aclose()

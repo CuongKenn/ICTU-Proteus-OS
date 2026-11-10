@@ -296,7 +296,8 @@ class RedisEventBusPublisher(AbstractEventBusPort):
             plugin_version: Version hiện tại.
             extra_data: Dữ liệu bổ sung (VD: error_log khi failed).
         """
-        event_type = f"plugin.{action}"
+        clean_action = action[7:] if action.startswith("plugin.") else action
+        event_type = f"plugin.{clean_action}"
         payload: dict[str, Any] = {
             "plugin_name": plugin_name,
             "plugin_version": plugin_version,
@@ -312,31 +313,64 @@ class RedisEventBusPublisher(AbstractEventBusPort):
         )
 
     async def subscribe_and_listen(
-        self, handler: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+        self,
+        handler: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
+        max_concurrency: int = 20,
     ) -> None:
         """
         Lắng nghe tất cả các sự kiện trên hệ thống Pub/Sub và đẩy vào handler.
-        Chạy vô hạn trong một background task.
+        Chạy vô hạn trong một background task với tự động kết nối lại (Issue #740)
+        và giới hạn concurrency bằng Semaphore.
         """
-        conn = await self._get_connection()
-        pubsub = conn.pubsub()
         pattern = f"{_CHANNEL_PREFIX}:*"
-        await pubsub.psubscribe(pattern)
-        logger.info(f"Event Bus Worker started listening on {pattern}")
+        semaphore = asyncio.Semaphore(max_concurrency)
+        backoff = 1.0
+        max_backoff = 30.0
 
-        try:
-            async for message in pubsub.listen():
-                if message["type"] == "pmessage":
+        async def _bounded_handler(envelope: dict[str, Any]) -> None:
+            async with semaphore:
+                try:
+                    await handler(envelope)
+                except Exception:
+                    logger.error("Error processing PubSub message in handler", exc_info=True)
+
+        while True:
+            pubsub = None
+            try:
+                conn = await self._get_connection()
+                pubsub = conn.pubsub()
+                await pubsub.psubscribe(pattern)
+                logger.info(f"Event Bus Worker started listening on {pattern}")
+                backoff = 1.0
+
+                async for message in pubsub.listen():
+                    if message["type"] == "pmessage":
+                        try:
+                            data = message["data"]
+                            if isinstance(data, bytes):
+                                data = data.decode("utf-8")
+                            envelope = json.loads(data)
+
+                            asyncio.create_task(_bounded_handler(envelope))
+                        except Exception:
+                            logger.error("Error decoding PubSub message", exc_info=True)
+            except asyncio.CancelledError:
+                if pubsub:
                     try:
-                        data = message["data"]
-                        if isinstance(data, bytes):
-                            data = data.decode("utf-8")
-                        envelope = json.loads(data)
-
-                        # Không block main loop của redis listener, spawn task để xử lý
-                        asyncio.create_task(handler(envelope))
-                    except Exception as e:
-                        logger.error("Error processing PubSub message", exc_info=True)
-        except asyncio.CancelledError:
-            await pubsub.punsubscribe(pattern)
-            logger.info("Event Bus Worker stopped")
+                        await pubsub.punsubscribe(pattern)
+                    except Exception:
+                        pass
+                logger.info("Event Bus Worker stopped")
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Redis PubSub connection lost: {e}. Reconnecting in {backoff:.1f}s..."
+                )
+                self._redis = None
+                if pubsub:
+                    try:
+                        await pubsub.close()
+                    except Exception:
+                        pass
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)

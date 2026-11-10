@@ -14,7 +14,7 @@
         }
       },
       "name": "Cron (Jan 1st)",
-      "type": "n8n-nodes-base.cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
       "position": [
         250,
@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO hr_leave_balances (employee_id, year, total_days, remaining_days) SELECT id, extract(year from current_date), max_leave_days_per_year, max_leave_days_per_year FROM hr_employees WHERE status = 'ACTIVE' ON CONFLICT (employee_id, year) DO NOTHING;"
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.hr_leave_balances (employee_id, year, remaining_days, tenant_id) SELECT id, extract(year from current_date), annual_leave_balance, tenant_id FROM {{TENANT_SCHEMA}}.hr_employees WHERE status = 'active' ON CONFLICT DO NOTHING;"
       },
       "name": "Reset Leave Balances",
       "type": "n8n-nodes-base.postgres",
@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "channelId": "hr-announcements-channel-id",
+        "channelId": "",
         "message": "🎉 **Thông báo:** Quỹ phép năm mới đã được cập nhật cho toàn bộ nhân viên. Chúc mọi người một năm làm việc hiệu quả!"
       },
       "name": "Notify General Channel",

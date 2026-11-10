@@ -43,11 +43,8 @@ _SEED_ALLOWED_STMT = re.compile(
 )
 # Denylist bổ sung: chặn sandbox-escape / side-effect ngoài schema tenant.
 _SEED_FORBIDDEN = re.compile(
-    r"(public\.|pg_\w+|pg_catalog|information_schema" r"|\bCOPY\b"
-    # Chặn DO $$ ... $$ (anonymous block) nhưng CHO PHÉP upsert
-    # "ON CONFLICT ... DO NOTHING/DO UPDATE" (hợp lệ, rất phổ biến).
-    r"|\bDO\s+(\$|LANGUAGE\b)"
-    r"|\bLISTEN\b|\bNOTIFY\b"
+    r"(public\.|pg_\w+|pg_catalog|information_schema"
+    r"|\bCOPY\b|\bDO\b(?!\s+(?:NOTHING|UPDATE)\b)|\bLISTEN\b|\bNOTIFY\b"
     r"|\bCREATE\s+(OR\s+REPLACE\s+)?(TRIGGER|VIEW|RULE|FUNCTION|PROCEDURE"
     r"|EXTENSION|SCHEMA|DATABASE|ROLE|USER|PUBLICATION|SUBSCRIPTION)\b"
     r"|\bALTER\b|\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b"
@@ -60,62 +57,12 @@ _PLUGIN_CODE_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _SEED_FILE_PATTERN = re.compile(r"^[a-zA-Z0-9_./-]+\.sql$")
 _SEED_STATEMENT_TIMEOUT = "10s"
 
-# ─── Delay simulation để UI kịp hiển thị từng bước chi tiết ───
-# Mỗi bước cài đặt sleep ngẫu nhiên trong khoảng này SAU khi persist DONE,
-# giúp frontend polling (1.5s/lần) luôn bắt được trạng thái RUNNING → DONE.
-_INSTALL_STEP_DELAY_MIN = 1.2
-_INSTALL_STEP_DELAY_MAX = 2.8
 
-# Chi tiết từng bước hiển thị trên UI (message RUNNING/DONE).
-_INSTALL_STEP_DETAILS: dict[str, dict[str, str]] = {
-    "queued": {
-        "running": "Đang xếp hàng tác vụ cài đặt...",
-        "done": "Tác vụ đã được xếp hàng, bắt đầu thực thi.",
-    },
-    "snapshot": {
-        "running": "Đang chụp snapshot trạng thái cũ để rollback khi lỗi...",
-        "done": "Đã lưu snapshot, sẵn sàng rollback nếu thất bại.",
-    },
-    "database": {
-        "running": "Đang tạo schema, chạy seed SQL và bật RLS...",
-        "done": "Hoàn tất thiết lập cơ sở dữ liệu.",
-    },
-    "credentials": {
-        "running": "Đang tạo credentials trên n8n từ thông tin người dùng...",
-        "done": "Đã khởi tạo xong credentials.",
-    },
-    "n8n": {
-        "running": "Đang import workflows vào n8n và gắn credentials...",
-        "done": "Đã import và kích hoạt workflows n8n.",
-    },
-    "metabase": {
-        "running": "Đang import dashboards vào Metabase...",
-        "done": "Đã import xong dashboards Metabase.",
-    },
-    "appsmith": {
-        "running": "Đang import giao diện Appsmith...",
-        "done": "Đã import xong ứng dụng Appsmith.",
-    },
-    "keycloak": {
-        "running": "Đang tạo roles trên Keycloak và DB roles...",
-        "done": "Đã đồng bộ phân quyền Keycloak.",
-    },
-    "events": {
-        "running": "Đang đăng ký event subscriptions (Pub/Sub)...",
-        "done": "Đã cấu hình xong sự kiện.",
-    },
-    "complete": {
-        "running": "Đang hoàn tất cài đặt...",
-        "done": "Cài đặt hoàn tất, plugin đã ACTIVE.",
-    },
-}
-
-
-async def _simulate_step_delay(step_name: str = "") -> None:
-    """Delay mô phỏng để UI kịp render chi tiết từng bước."""
-    delay = random.uniform(_INSTALL_STEP_DELAY_MIN, _INSTALL_STEP_DELAY_MAX)
-    logger.info("Delay simulation", step=step_name, delay_s=round(delay, 2))
-    await asyncio.sleep(delay)
+def _strip_sql_comments(sql: str) -> str:
+    """Bỏ comment -- và /* */ trước khi kiểm tra policy."""
+    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    sql = re.sub(r"--[^\n]*", " ", sql)
+    return sql
 
 
 def _split_seed_statements_safe(sql: str) -> list[str]:
@@ -242,21 +189,17 @@ def _split_seed_statements_safe(sql: str) -> list[str]:
 
 def _validate_seed_statement(stmt: str) -> None:
     """Raise PluginInstallError nếu statement vi phạm seed policy."""
-    stripped = stmt.strip().rstrip(";").strip()
-    if not stripped:
+    raw_stripped = stmt.strip().rstrip(";").strip()
+    if not raw_stripped:
         raise PluginInstallError("Seed file chứa statement rỗng.")
-    # Bỏ comment trước khi soi denylist: comment không thực thi được, và từ
-    # khóa tiếng Việt/tài liệu (VD "search_path da set san") có thể trùng
-    # \bSET\b gây chặn oan.
-    no_comments = re.sub(r"/\*.*?\*/", " ", stripped, flags=re.DOTALL)
-    no_comments = re.sub(r"--[^\n]*", " ", no_comments).strip()
-    # Loại phần upsert "ON CONFLICT ... DO UPDATE SET ..." trước khi soi
-    # denylist: đây là cú pháp INSERT hợp lệ, không phải UPDATE/SET/DELETE
-    # top-level.
+    no_comments = _strip_sql_comments(stmt).strip()
+    stripped = no_comments.rstrip(";").strip()
+    if not stripped:
+        return
     scan = re.sub(
         r"\bON\s+CONFLICT\b.*?\bDO\s+(?:NOTHING|UPDATE\s+SET)\b.*$",
         "",
-        no_comments,
+        stripped,
         flags=re.IGNORECASE | re.DOTALL,
     )
     if _SEED_FORBIDDEN.search(scan):
@@ -264,7 +207,7 @@ def _validate_seed_statement(stmt: str) -> None:
             "Seed file chứa từ khóa/kênh không được phép "
             "(public./pg_/information_schema/COPY/DO/TRIGGER/VIEW/RULE...)."
         )
-    if not _SEED_ALLOWED_STMT.match(no_comments):
+    if not _SEED_ALLOWED_STMT.match(stripped):
         raise PluginInstallError(
             "Seed file chỉ cho phép CREATE TABLE / CREATE INDEX / INSERT. "
             f"Statement bị chặn: {stripped[:80]}"
@@ -308,24 +251,34 @@ class PluginInstallUseCase:
         self._steps_log: list[dict[str, Any]] = []
         self._credential_ids: list[dict[str, str]] = []
 
-    async def _installation_task_id(
-        self, tenant_id: uuid.UUID, plugin_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        """Best-effort lấy install_task_id (mock/legacy repo thiếu method → None)."""
-        getter = getattr(self.plugin_repo, "get_install_task_id", None)
-        if getter is None:
-            return None
-        try:
-            return await getter(tenant_id, plugin_id)
-        except Exception:  # noqa: BLE001
-            return None
+    async def _is_own_install(
+        self,
+        tenant_id: uuid.UUID,
+        plugin_id: uuid.UUID,
+        install_task_id: uuid.UUID | None,
+    ) -> bool:
+        """True nếu trạng thái INSTALLING do chính request này tạo (cùng task_id).
+
+        Endpoint upsert INSTALLING (kèm install_task_id) trước khi queue worker;
+        worker phải nhận ra bản ghi của mình thay vì tự chặn chính nó (#682).
+        """
+        if install_task_id is None:
+            return False
+        found = await self.plugin_repo.get_installation_status_by_task_id(
+            tenant_id, install_task_id
+        )
+        return (
+            found is not None
+            and found[0] == PluginStatus.INSTALLING
+            and found[1] == plugin_id
+        )
 
     async def execute(
         self,
         context: TenantContext,
         plugin_code_name: str,
         credentials: list[CredentialInput] | None = None,
-        owner_task_id: uuid.UUID | None = None,
+        install_task_id: uuid.UUID | None = None,
     ) -> None:
         logger.info(
             "Bắt đầu cài đặt plugin",
@@ -392,18 +345,12 @@ class PluginInstallUseCase:
             raise PluginInstallError(
                 f"Plugin '{plugin_code_name}' đã được cài đặt và đang ACTIVE."
             )
-        if status == PluginStatus.INSTALLING:
-            # Cho phép worker CHÍNH resume task của nó: endpoint đã upsert
-            # INSTALLING + install_task_id trước khi queue background task,
-            # nên guard cũ tự chặn chính mình → task chết, kẹt INSTALLING.
-            if (
-                owner_task_id is None
-                or await self._installation_task_id(context.tenant_id, plugin.id)
-                != owner_task_id
-            ):
-                raise PluginInstallError(
-                    f"Plugin '{plugin_code_name}' đang trong quá trình cài đặt, vui lòng thử lại sau."
-                )
+        if status == PluginStatus.INSTALLING and not await self._is_own_install(
+            context.tenant_id, plugin.id, install_task_id
+        ):
+            raise PluginInstallError(
+                f"Plugin '{plugin_code_name}' đang trong quá trình cài đặt, vui lòng thử lại sau."
+            )
         if status == PluginStatus.UNINSTALLING:
             raise PluginInstallError(
                 f"Plugin '{plugin_code_name}' đang trong quá trình gỡ cài đặt, vui lòng thử lại sau."
@@ -427,22 +374,6 @@ class PluginInstallUseCase:
         completed_steps: list[str] = []
         created_assets: dict[str, list[str]] = created_assets_init
         try:
-            # BƯỚC 0: Queued — hiển thị ngay để UI không trống
-            self._log_step("queued", "DONE", _INSTALL_STEP_DETAILS["queued"]["done"])
-            await self._persist_steps(context, plugin.id)
-            # BƯỚC 0.5: Snapshot — chụp trạng thái cũ để rollback
-            self._log_step(
-                "snapshot",
-                "RUNNING",
-                _INSTALL_STEP_DETAILS["snapshot"]["running"],
-            )
-            await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("snapshot")
-            self._log_step(
-                "snapshot", "DONE", _INSTALL_STEP_DETAILS["snapshot"]["done"]
-            )
-            await self._persist_steps(context, plugin.id)
-
             # BƯỚC 1: Database Setup
             logger.info(
                 "Chạy bước cài đặt",
@@ -451,21 +382,9 @@ class PluginInstallUseCase:
                 plugin_code_name=plugin_code_name,
                 tenant_id=context.tenant_id,
             )
-            self._log_step(
-                "database", "RUNNING", _INSTALL_STEP_DETAILS["database"]["running"]
-            )
-            await self._persist_steps(context, plugin.id)
+            self._log_step("database", "RUNNING")
             await self._step_1_database(context, plugin_code_name, manifest)
-            tables = (
-                ", ".join(manifest.database.tables)
-                if manifest.database and manifest.database.tables
-                else "không có bảng mới"
-            )
-            self._log_step(
-                "database",
-                "DONE",
-                f"{_INSTALL_STEP_DETAILS['database']['done']} ({tables})",
-            )
+            self._log_step("database", "DONE")
             logger.info(
                 "Hoàn thành cài đặt",
                 step="database",
@@ -475,38 +394,25 @@ class PluginInstallUseCase:
             )
             completed_steps.append("database")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("database")
 
             # BƯỚC 1.5: External Credentials (n8n)
             credential_mapping: dict[str, str] = {}
             if credentials:
-                self._log_step(
-                    "credentials",
-                    "RUNNING",
-                    _INSTALL_STEP_DETAILS["credentials"]["running"],
-                )
-                await self._persist_steps(context, plugin.id)
+                self._log_step("credentials", "RUNNING")
                 cred_mapping, cred_assets = await self._step_1_5_credentials(
                     context, plugin_code_name, manifest, credentials
                 )
                 credential_mapping = cred_mapping
                 created_assets["credentials"] = cred_assets
-                self._log_step(
-                    "credentials",
-                    "DONE",
-                    f"Đã tạo {len(cred_assets)} credentials trên n8n.",
-                )
+                self._log_step("credentials", "DONE")
                 completed_steps.append("credentials")
                 await self.plugin_repo.update_credential_ids(
                     context.tenant_id, plugin.id, created_assets["credentials"]
                 )
-                await self._persist_steps(context, plugin.id)
-                await _simulate_step_delay("credentials")
 
             # BƯỚC 2: n8n Import (thu thập id dần vào created_assets
             # để fail giữa chừng vẫn rollback được partial imports)
-            self._log_step("n8n", "RUNNING", _INSTALL_STEP_DETAILS["n8n"]["running"])
-            await self._persist_steps(context, plugin.id)
+            self._log_step("n8n", "RUNNING")
             n8n_ids = await self._step_2_n8n(
                 context,
                 plugin_code_name,
@@ -514,89 +420,52 @@ class PluginInstallUseCase:
                 credential_mapping,
                 collected=created_assets["n8n"],
             )
-            self._log_step(
-                "n8n",
-                "DONE",
-                f"Đã import {len(n8n_ids)} workflows ({', '.join(str(x) for x in n8n_ids) if n8n_ids else 'không có workflow mới'}).",
-            )
+            self._log_step("n8n", "DONE")
             completed_steps.append("n8n")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("n8n")
 
             # BƯỚC 3: Metabase Import (thu thập dần như bước n8n)
-            self._log_step(
-                "metabase", "RUNNING", _INSTALL_STEP_DETAILS["metabase"]["running"]
-            )
-            await self._persist_steps(context, plugin.id)
+            self._log_step("metabase", "RUNNING")
             mb_ids = await self._step_3_metabase(
                 context,
                 plugin_code_name,
                 manifest,
                 collected=created_assets["metabase"],
             )
-            self._log_step(
-                "metabase",
-                "DONE",
-                f"Đã import {len(mb_ids)} dashboards Metabase.",
-            )
+            self._log_step("metabase", "DONE")
             completed_steps.append("metabase")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("metabase")
 
             # BƯỚC 4: Appsmith Import (thu thập dần như bước n8n)
-            self._log_step(
-                "appsmith", "RUNNING", _INSTALL_STEP_DETAILS["appsmith"]["running"]
-            )
-            await self._persist_steps(context, plugin.id)
+            self._log_step("appsmith", "RUNNING")
             app_ids = await self._step_4_appsmith(
                 context,
                 plugin_code_name,
                 manifest,
                 collected=created_assets["appsmith"],
             )
-            self._log_step(
-                "appsmith",
-                "DONE",
-                f"Đã import {len(app_ids)} Appsmith apps.",
-            )
+            self._log_step("appsmith", "DONE")
             completed_steps.append("appsmith")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("appsmith")
 
             # BƯỚC 5: Keycloak Roles + DB Roles
-            self._log_step(
-                "keycloak", "RUNNING", _INSTALL_STEP_DETAILS["keycloak"]["running"]
-            )
-            await self._persist_steps(context, plugin.id)
+            self._log_step("keycloak", "RUNNING")
             kc_roles, db_roles = await self._step_5_keycloak(
                 context, plugin_code_name, manifest
             )
             created_assets["keycloak"] = kc_roles
             created_assets["db_roles"] = db_roles
-            self._log_step(
-                "keycloak",
-                "DONE",
-                f"Đã tạo {len(kc_roles)} Keycloak roles + {len(db_roles)} DB roles.",
-            )
+            self._log_step("keycloak", "DONE")
             completed_steps.append("keycloak")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("keycloak")
 
             # BƯỚC 6: Event Subscriptions
-            self._log_step(
-                "events", "RUNNING", _INSTALL_STEP_DETAILS["events"]["running"]
-            )
-            await self._persist_steps(context, plugin.id)
+            self._log_step("events", "RUNNING")
             events = await self._step_6_events(context, plugin_code_name, manifest)
             created_assets["events"] = events
-            self._log_step(
-                "events",
-                "DONE",
-                f"Đã đăng ký {len(events)} event subscriptions.",
-            )
+            self._log_step("events", "DONE")
             completed_steps.append("events")
             await self._persist_steps(context, plugin.id)
-            await _simulate_step_delay("events")
 
             # SUCCESS
             await self.plugin_repo.update_config(
@@ -609,12 +478,8 @@ class PluginInstallUseCase:
                 plugin_id=plugin.id,
                 status=PluginStatus.ACTIVE,
             )
-            self._log_step(
-                "complete", "DONE", _INSTALL_STEP_DETAILS["complete"]["done"]
-            )
+            self._log_step("complete", "DONE")
             await self._persist_steps(context, plugin.id)
-            # Delay ngắn cuối để UI kịp hiển thị bước hoàn tất trước khi modal đóng
-            await _simulate_step_delay("complete")
             await self.session.commit()
 
             # Notify Mattermost (Best effort)
@@ -728,15 +593,21 @@ class PluginInstallUseCase:
             raise PluginInstallError(f"Cài đặt plugin thất bại: {e}") from e
 
     async def _step_1_database(
-        self, context: TenantContext, plugin_code_name: str, manifest: PluginManifest
+        self,
+        context: TenantContext,
+        plugin_code_name: str,
+        manifest: PluginManifest,
     ) -> None:
         """Thực thi seed_file của plugin và setup RLS."""
-        if manifest.database:
+        if not manifest.database:
+            return
+
+        has_schema = False
+        try:
             schema_name = f"tenant_{context.tenant_id}".replace("-", "_")
             if not re.match(r"^[a-zA-Z0-9_]+$", schema_name):
                 raise PluginInstallError("Invalid schema name.")
 
-            has_schema = False
             if manifest.database.seed_file:
                 # Chặn path traversal: plugin_code + seed_file đều phải sạch,
                 # resolve cuối cùng phải nằm trong plugins_dir.
@@ -818,6 +689,19 @@ class PluginInstallUseCase:
                                 text(f"RELEASE SAVEPOINT {sp_name}")
                             )
                         except Exception as stmt_err:
+                            stmt_upper = stmt.strip().upper()
+                            is_ddl = (
+                                stmt_upper.startswith("CREATE")
+                                or stmt_upper.startswith("ALTER")
+                                or stmt_upper.startswith("DROP")
+                            )
+                            if is_ddl:
+                                await self.session.execute(
+                                    text(f"ROLLBACK TO SAVEPOINT {sp_name}")
+                                )
+                                raise PluginInstallError(
+                                    f"DDL execution failed in seed statement: {stmt_err}"
+                                ) from stmt_err
                             logger.warning(
                                 "Seed statement %d failed (skipped): %s — %s",
                                 i,
@@ -827,10 +711,6 @@ class PluginInstallUseCase:
                             await self.session.execute(
                                 text(f"ROLLBACK TO SAVEPOINT {sp_name}")
                             )
-                    # Reset search_path về public để tránh ảnh hưởng session tiếp theo
-                    # (dù SET LOCAL đã tự reset khi commit, giữ RESET显式 cho an toàn
-                    # với session pool dùng lại transaction).
-                    await self.session.execute(text("SET search_path TO public"))
 
             # Tự động tạo RLS cho các bảng (best-effort — table có thể chưa tồn tại)
             if manifest.database.tables:
@@ -840,7 +720,10 @@ class PluginInstallUseCase:
                 await self.session.execute(
                     text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
                 )
-                await self.session.execute(text(f'SET search_path TO "{schema_name}"'))
+                await self.session.execute(
+                    text(f'SET search_path TO "{schema_name}", public')
+                )
+                has_schema = True
 
                 # Role app_user phải tồn tại thì CREATE POLICY mới chạy được
                 # (fresh install chưa có → tạo best-effort, đã có thì skip).
@@ -856,28 +739,27 @@ class PluginInstallUseCase:
                 res_cols = await self.session.execute(
                     text(
                         "SELECT table_name FROM information_schema.columns "
-                        "WHERE table_schema = :schema AND column_name = 'tenant_id'"
+                        "WHERE table_schema = :s AND column_name = 'tenant_id'",
                     ),
-                    {"schema": schema_name},
+                    {"s": schema_name},
                 )
-                tables_with_tenant = {r[0] for r in res_cols.fetchall()}
+                tenant_tables = {row[0] for row in res_cols.fetchall()}
 
                 for table in manifest.database.tables:
                     if not re.match(r"^[a-zA-Z0-9_]+$", table):
-                        raise PluginInstallError(f"Invalid table name: {table}")
-                    if table not in tables_with_tenant:
-                        logger.debug(
-                            "Bỏ qua RLS cho bảng %s (không có cột tenant_id; "
-                            "cách ly bằng schema)",
-                            table,
-                        )
+                        raise PluginInstallError("Invalid table name.")
+                    if table not in tenant_tables:
                         continue
-
                     sp = f"rls_{table}"
+                    if not re.match(r"^[a-zA-Z0-9_]+$", sp):
+                        raise PluginInstallError(f"Tên savepoint không hợp lệ: {sp}")
                     try:
                         await self.session.execute(text(f"SAVEPOINT {sp}"))
                         await self.session.execute(
                             text(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
+                        )
+                        await self.session.execute(
+                            text(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY')
                         )
                         await self.session.execute(
                             text(
@@ -885,11 +767,11 @@ class PluginInstallUseCase:
                             )
                         )
                         policy_sql = f"""
-                            CREATE POLICY tenant_isolation_policy ON "{table}"
-                            FOR ALL TO app_user
-                            USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                            WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                        """
+                                CREATE POLICY tenant_isolation_policy ON "{table}"
+                                FOR ALL TO public
+                                USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
+                                WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid)
+                            """
                         await self.session.execute(text(policy_sql))
                         await self.session.execute(text(f"RELEASE SAVEPOINT {sp}"))
                     except Exception as rls_err:
@@ -899,14 +781,13 @@ class PluginInstallUseCase:
                             rls_err,
                         )
                         await self.session.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+        finally:
+            if has_schema:
+                await self.session.execute(
+                    text("SET search_path TO public, ag_catalog")
+                )
 
-            # CRITICAL: reset search_path về public NGAY trong _step_1_database.
-            # Block RLS ở trên dùng SET (không LOCAL) nên search_path bị giữ ở
-            # schema tenant → các bước sau (_persist_steps truy vấn tenant_plugins,
-            # n8n credentials_entity...) tìm sai schema → transaction abort.
-            await self.session.execute(text("SET search_path TO public"))
-
-        # Chúng ta tạm thiết kế DB adapter bằng session execute.
+    # Chúng ta tạm thiết kế DB adapter bằng session execute.
 
     async def _step_2_n8n(
         self,
@@ -1032,14 +913,26 @@ class PluginInstallUseCase:
                 with open(wf_path, encoding="utf-8-sig") as f:
                     wf_json = json.load(f)
 
+                tenant_short = str(context.tenant_id).replace("-", "")[:8]
+                wf_orig_name = wf_json.get("name") or wf.file or "workflow"
+                wf_json["name"] = f"t_{tenant_short}_{wf_orig_name}"
+
                 # Dynamic Workflow Injection
                 for node in wf_json.get("nodes", []):
                     # Webhook nodes thiếu httpMethod mặc định về GET trong n8n
                     # trong khi backend trigger POST → 404. Ép POST nếu thiếu.
                     if (node.get("type") or "") == "n8n-nodes-base.webhook":
                         params = node.setdefault("parameters", {})
-                        if isinstance(params, dict) and not params.get("httpMethod"):
-                            params["httpMethod"] = "POST"
+                        if isinstance(params, dict):
+                            if not params.get("httpMethod"):
+                                params["httpMethod"] = "POST"
+                            raw_path = params.get("path") or ""
+                            if raw_path and not raw_path.startswith(
+                                f"t_{tenant_short}_"
+                            ):
+                                params["path"] = (
+                                    f"t_{tenant_short}_{raw_path.lstrip('/')}"
+                                )
                     # Inject Tenant Schema
                     if "parameters" in node and "query" in node["parameters"]:
                         query = node["parameters"]["query"]
@@ -1047,6 +940,17 @@ class PluginInstallUseCase:
                             node["parameters"]["query"] = query.replace(
                                 "{{TENANT_SCHEMA}}", tenant_schema
                             )
+
+                    # Standardize queryParams -> options.queryReplacement for Postgres nodes
+                    if node.get("type") == "n8n-nodes-base.postgres":
+                        params = node.setdefault("parameters", {})
+                        if isinstance(params, dict):
+                            af = params.get("additionalFields")
+                            if isinstance(af, dict) and "queryParams" in af:
+                                qp = af.pop("queryParams")
+                                params.setdefault("options", {})[
+                                    "queryReplacement"
+                                ] = qp
 
                     # Auto-bind Credentials (Internal & External).
                     # credentials có thể là null (export từ n8n) → chuẩn hóa
@@ -1072,7 +976,14 @@ class PluginInstallUseCase:
                         params = node.get("parameters")
                         if (
                             isinstance(params, dict)
-                            and not params.get("channelId")
+                            and params.get("resource", "message") in ("message", "post", None)
+                            and (
+                                not params.get("channelId")
+                                or params.get("channelId") in ("hr-announcements-channel-id", "YOUR_CHANNEL_ID")
+                                or str(params.get("channelId", "")).startswith("={{$json.channel_id")
+                                or str(params.get("channelId", "")).startswith("={{$json.alert_channel_id")
+                                or str(params.get("channelId", "")).startswith("={{$('Split Vendors').item.json.channel_id")
+                            )
                             and alerts_channel_id
                         ):
                             params["channelId"] = alerts_channel_id
@@ -1141,11 +1052,32 @@ class PluginInstallUseCase:
     ) -> list[str]:
         """Import dashboards vào Metabase."""
         dashboard_ids = []
+        tenant_schema = f"tenant_{str(context.tenant_id).replace('-', '_')}"
+        plugins_base = self.manifest_parser.plugins_dir.resolve()
         for db in manifest.dashboards:
-            db_path = self.manifest_parser.plugins_dir / plugin_code_name / db.file
+            db_rel = db.file or ""
+            if ".." in db_rel or db_rel.startswith("/"):
+                logger.warning("Bỏ qua dashboard path không hợp lệ", path=db_rel)
+                continue
+            db_path = (plugins_base / plugin_code_name / db_rel).resolve()
+            try:
+                _inside = db_path.is_relative_to(plugins_base)
+            except AttributeError:
+                _inside = plugins_base in db_path.parents
+            if not _inside:
+                logger.warning("Bỏ qua dashboard vượt ngoài plugins_dir", path=db_rel)
+                continue
             if db_path.exists():
                 with open(db_path, encoding="utf-8-sig") as f:
-                    db_json = json.load(f)
+                    try:
+                        content_str = f.read()
+                        content_str = content_str.replace("{{TENANT_SCHEMA}}", tenant_schema).replace(
+                            "{{TENANT_ID}}", str(context.tenant_id)
+                        )
+                        db_json = json.loads(content_str)
+                    except Exception:
+                        with open(db_path, encoding="utf-8-sig") as f2:
+                            db_json = json.load(f2)
                 did = await self.metabase_adapter.import_dashboard(db_json)
                 dashboard_ids.append(did)
                 if collected is not None:
@@ -1229,11 +1161,7 @@ class PluginInstallUseCase:
                         "tenant_id": context.tenant_id,
                         "plugin_code_name": plugin_code_name,
                         "name": role.name,
-                        # Manifest có thể thiếu display_name (VD: it-helpdesk) —
-                        # fallback để GET /roles không 500 vì NULL.
-                        "display_name": role.display_name
-                        or role.description
-                        or role.name,
+                        "display_name": role.display_name,
                         "description": role.description,
                         "permissions": list(role.permissions),
                     }
@@ -1300,6 +1228,7 @@ class PluginInstallUseCase:
                 if new_id:
                     credential_mapping[cred_type] = new_id
                     created_asset_ids.append(new_id)
+                    self._credential_ids.append({"id": new_id, "name": safe_name})
                 logger.info(
                     "Tạo n8n credential '%s' cho plugin %s tenant %s",
                     safe_name,
@@ -1372,6 +1301,15 @@ class PluginInstallUseCase:
                 "message": message,
             }
         )
+        # In log rõ ràng ra console
+        emoji = "⏳"
+        if status == "DONE":
+            emoji = "✅"
+        elif status == "FAILED":
+            emoji = "❌"
+
+        msg_suffix = f" - {message}" if message else ""
+        logger.info(f"{emoji} [INSTALL] Bước {step_name.upper()}: {status}{msg_suffix}")
 
     async def _persist_steps(
         self,
@@ -1388,7 +1326,8 @@ class PluginInstallUseCase:
             # Commit ngay để status endpoint thấy progress realtime
             await self.session.commit()
         except Exception as e:
-            logger.warning("Không thể persist steps_log: %s", e)
+            await self.session.rollback()
+            logger.error("Không thể persist steps_log, session rolled back: %s", e)
 
     async def _rollback(
         self,
@@ -1438,7 +1377,7 @@ class PluginInstallUseCase:
                             e,
                         )
                 elif step == "appsmith":
-                    if hasattr(self.appsmith_adapter, "delete_app"):
+                    if hasattr(self.appsmith_adapter, "delete_application"):
                         integration_config = None
                         if self.tenant_repo and hasattr(
                             self.tenant_repo, "get_integration_by_provider"
@@ -1487,15 +1426,24 @@ class PluginInstallUseCase:
                             )
                 elif step == "credentials":
                     if hasattr(self.n8n_adapter, "delete_credential"):
-                        for cred in getattr(self, "_credential_ids", []):
+                        creds_to_delete = getattr(
+                            self, "_credential_ids", []
+                        ) or created_assets.get("credentials", [])
+                        for cred in creds_to_delete:
+                            cid = cred["id"] if isinstance(cred, dict) else str(cred)
+                            cname = (
+                                cred.get("name", cid)
+                                if isinstance(cred, dict)
+                                else str(cred)
+                            )
                             try:
-                                await self.n8n_adapter.delete_credential(cred["id"])
+                                await self.n8n_adapter.delete_credential(cid)
                                 logger.info(
-                                    "Rollback: Deleted n8n credential %s", cred["name"]
+                                    "Rollback: Deleted n8n credential %s", cname
                                 )
                             except Exception as e:
                                 logger.error(
-                                    "Rollback credential %s failed: %s", cred["id"], e
+                                    "Rollback credential %s failed: %s", cid, e
                                 )
             except Exception as e:
                 logger.error(

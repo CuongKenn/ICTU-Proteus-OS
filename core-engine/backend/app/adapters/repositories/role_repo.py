@@ -61,17 +61,35 @@ class RoleRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_user_permissions(self, user_id: uuid.UUID) -> list[str]:
+    async def commit(self) -> None:
+        await self.session.commit()
+
+    async def get_user_permissions(
+        self, user_id: uuid.UUID, tenant_id: uuid.UUID | None = None
+    ) -> list[str]:
         """
         Lấy danh sách các permission strings (ví dụ: ["plugins:read", "users:write"])
         thuộc các roles mà user đang nắm giữ, hỗ trợ cả internal id và keycloak_id.
+        Lọc theo tenant_id và loại trừ user đã bị xóa (deleted_at).
         """
         stmt = (
             select(RoleModel.permissions)
             .join(UserRoleModel, UserRoleModel.role_id == RoleModel.id)
             .join(UserModel, UserModel.id == UserRoleModel.user_id)
-            .where(or_(UserModel.id == user_id, UserModel.keycloak_id == user_id))
+            .where(
+                or_(UserModel.id == user_id, UserModel.keycloak_id == user_id),
+                UserModel.deleted_at.is_(None),
+                UserModel.is_active.is_(True),
+                RoleModel.deleted_at.is_(None),
+            )
         )
+        if tenant_id is not None:
+            stmt = stmt.where(
+                UserModel.tenant_id == tenant_id,
+                or_(RoleModel.tenant_id == tenant_id, RoleModel.tenant_id.is_(None)),
+            )
+        else:
+            stmt = stmt.where(RoleModel.tenant_id.is_(None))
         result = await self.session.execute(stmt)
 
         all_permissions = set()
@@ -80,20 +98,40 @@ class RoleRepository:
             if not permissions_data:
                 continue
             if isinstance(permissions_data, list):
-                all_permissions.update(str(p) for p in permissions_data)
+                for p in permissions_data:
+                    p_str = str(p)
+                    all_permissions.add(p_str)
+                    if ":" in p_str:
+                        all_permissions.add(p_str.replace(":", "."))
+                    if "." in p_str:
+                        all_permissions.add(p_str.replace(".", ":"))
             elif isinstance(permissions_data, dict):
                 if "allowed" in permissions_data and isinstance(
                     permissions_data["allowed"], list
                 ):
-                    all_permissions.update(str(p) for p in permissions_data["allowed"])
+                    for p in permissions_data["allowed"]:
+                        p_str = str(p)
+                        all_permissions.add(p_str)
+                        if ":" in p_str:
+                            all_permissions.add(p_str.replace(":", "."))
+                        if "." in p_str:
+                            all_permissions.add(p_str.replace(".", ":"))
                 else:
                     for module, actions in permissions_data.items():
                         if isinstance(actions, list):
-                            all_permissions.update(
-                                f"{module}:{action}" for action in actions
-                            )
+                            for action in actions:
+                                all_permissions.add(f"{module}:{action}")
+                                all_permissions.add(f"{module}.{action}")
                         elif actions is True:
-                            all_permissions.add(str(module))
+                            m_str = str(module)
+                            all_permissions.add(m_str)
+                            if ":" in m_str:
+                                all_permissions.add(m_str.replace(":", "."))
+                            elif "." in m_str:
+                                all_permissions.add(m_str.replace(".", ":"))
+                            else:
+                                all_permissions.add(f"{m_str}:*")
+                                all_permissions.add(f"{m_str}.*")
 
         return list(all_permissions)
 
@@ -128,8 +166,11 @@ class RoleRepository:
 
     async def delete_role(self, role_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         """
-        Xóa Role.
+        Xóa Role. Xóa các bản ghi liên kết trong user_roles trước để tránh vi phạm foreign key.
         """
+        await self.session.execute(
+            delete(UserRoleModel).where(UserRoleModel.role_id == role_id)
+        )
         stmt = delete(RoleModel).where(
             and_(RoleModel.id == role_id, RoleModel.tenant_id == tenant_id)
         )

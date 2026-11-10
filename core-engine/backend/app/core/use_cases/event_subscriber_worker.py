@@ -28,6 +28,60 @@ class EventSubscriberWorker:
         self.manifest_parser = manifest_parser
         self.n8n_adapter = n8n_adapter
 
+    def _resolve_handler_webhook_url(
+        self, plugin_code: str, handler_workflow: str
+    ) -> str:
+        """Resolve webhook URL cho handler_workflow của event subscription (#729)."""
+        import json
+        from pathlib import Path
+
+        from app.infrastructure.config import settings
+
+        # Nếu là action name (vd plugin.resource.method), n8n_adapter.build_webhook_url xử lý được
+        if not (
+            "/" in handler_workflow
+            or "\\" in handler_workflow
+            or handler_workflow.endswith(".json")
+        ):
+            return self.n8n_adapter.build_webhook_url(handler_workflow)
+
+        # Chặn path traversal
+        if ".." in handler_workflow or handler_workflow.startswith("/"):
+            raise ValueError(f"Invalid handler_workflow path: {handler_workflow}")
+
+        plugins_dir_attr = getattr(self.manifest_parser, "plugins_dir", "plugins")
+        if callable(plugins_dir_attr):
+            plugins_dir = Path(plugins_dir_attr()).resolve()
+        else:
+            plugins_dir = Path(plugins_dir_attr).resolve()
+        if not plugins_dir.is_dir():
+            candidate = (Path(__file__).resolve().parents[5] / "plugins").resolve()
+            if candidate.is_dir():
+                plugins_dir = candidate
+        wf_path = (plugins_dir / plugin_code / handler_workflow).resolve()
+        if not wf_path.is_relative_to(plugins_dir) or not wf_path.is_file():
+            raise ValueError(
+                f"Workflow file '{handler_workflow}' not found in plugin '{plugin_code}'"
+            )
+
+        with open(wf_path, encoding="utf-8-sig") as f:
+            wf_json = json.load(f)
+
+        webhook_path = None
+        for node in wf_json.get("nodes", []):
+            if node.get("type") == "n8n-nodes-base.webhook":
+                webhook_path = (node.get("parameters", {}) or {}).get("path")
+                if webhook_path:
+                    break
+
+        if not webhook_path:
+            stem = wf_path.stem.replace("_", "-")
+            prefix = plugin_code.replace("-module", "")
+            webhook_path = f"{prefix}/{stem}"
+
+        base_url = settings.N8N_URL.rstrip("/")
+        return f"{base_url}/webhook/{str(webhook_path).lstrip('/')}"
+
     async def handle_event(self, envelope: dict[str, Any]) -> None:
         """Hàm xử lý một event đến từ Redis."""
         tenant_id_str = envelope.get("tenant_id")
@@ -56,6 +110,9 @@ class EventSubscriberWorker:
 
         # Mở session mới cho mỗi event để không giữ connection quá lâu
         async with AsyncSessionLocal() as session:
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(session, tenant_id)
             plugin_repo = SQLAlchemyPluginRepository(session=session)
             plugins, _ = await plugin_repo.list_installed(tenant_id)
 
@@ -70,22 +127,22 @@ class EventSubscriberWorker:
                             and event_type in sub.event_types
                         ):
                             # TÌM THẤY MATCH! Trigger workflow.
-                            webhook_url = self.n8n_adapter.build_webhook_url(
-                                sub.handler_workflow
-                            )
-
-                            # Đẩy thêm metadata vào payload để n8n biết source
-                            enriched_payload = {
-                                **payload,
-                                "_event_metadata": {
-                                    "event_id": event_id,
-                                    "event_type": event_type,
-                                    "source_plugin": plugin_source,
-                                    "tenant_id": tenant_id_str,
-                                },
-                            }
-
                             try:
+                                webhook_url = self._resolve_handler_webhook_url(
+                                    p.code_name, sub.handler_workflow
+                                )
+
+                                # Đẩy thêm metadata vào payload để n8n biết source
+                                enriched_payload = {
+                                    **payload,
+                                    "_event_metadata": {
+                                        "event_id": event_id,
+                                        "event_type": event_type,
+                                        "source_plugin": plugin_source,
+                                        "tenant_id": tenant_id_str,
+                                    },
+                                }
+
                                 await self.n8n_adapter.trigger_webhook(
                                     webhook_url=webhook_url, payload=enriched_payload
                                 )
@@ -100,7 +157,7 @@ class EventSubscriberWorker:
                                 )
                             except Exception as trigger_err:
                                 logger.error(
-                                    f"Failed to trigger subscriber workflow {sub.handler_workflow}",
+                                    f"Failed to trigger subscriber workflow {sub.handler_workflow}: {trigger_err}",
                                     exc_info=True,
                                 )
 

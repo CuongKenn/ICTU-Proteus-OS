@@ -42,38 +42,21 @@ class DSLDryRunEngine:
             }
 
         action = dsl_payload.get("action", "")
-        # Phân tích action:
-        # - 3-part classic "hr.leave_requests.batch_approve" → bảng hr_leave_requests.
-        # - 2-part workflow "hr.wf_application_received" → workflow n8n tự quyết
-        #   bảng (không suy ra được từ tên) nên KHÔNG đoán bừa tên bảng
-        #   (trước đây đoán "hr_wf_application_received" → allowlist chặn →
-        #   báo 0 bản ghi giả, gây hiểu lầm lệnh không làm gì).
+        # Phân tích action: vd "hr.leave_requests.batch_approve"
         parts = action.split(".")
-        if len(parts) == 2 and all(parts):
-            return {
-                "affected_count": 0,
-                "preview": [],
-                "unknown_scope": True,
-                "message": (
-                    "Workflow tự quyết phạm vi dữ liệu, dry-run theo bảng "
-                    "không áp dụng."
-                ),
-            }
-        if len(parts) >= 3:
+        if len(parts) >= 2:
             plugin_code = parts[0]
             resource = parts[1]
             candidate_table = f"{plugin_code}_{resource}"
 
             try:
-                # Manifest nằm ở {prefix}-module (VD "hr" → "hr-module").
                 try:
-                    manifest = self.manifest_parser.parse(f"{plugin_code}-module")
-                except Exception:
                     manifest = self.manifest_parser.parse(plugin_code)
+                except Exception:
+                    manifest = self.manifest_parser.parse(f"{plugin_code}-module")
                 if manifest.database and candidate_table in manifest.database.tables:
                     target_table = candidate_table
                 else:
-                    # Nếu manifest không có config database, hoặc table không khớp, fallback:
                     target_table = candidate_table
             except Exception as e:
                 logger.warning("[Dry Run] Lỗi đọc manifest cho %s: %s", plugin_code, e)

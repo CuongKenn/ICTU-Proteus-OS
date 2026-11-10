@@ -36,7 +36,7 @@ class AbstractPluginRepository(ABC):
 
     @abstractmethod
     async def list_marketplace(
-        self, limit: int = 20, offset: int = 0
+        self, limit: int = 20, offset: int = 0, category: str | None = None
     ) -> tuple[list[PluginEntity], int]:
         """Liệt kê tất cả Plugin trên Marketplace (không lọc theo Tenant)."""
         ...
@@ -217,6 +217,12 @@ class AbstractPluginRepository(ABC):
         icon_url: str,
         manifest_url: str,
         is_official: bool,
+        category: str = "Utilities",
+        tags: list[str] | None = None,
+        screenshots: list[str] | None = None,
+        long_description: str | None = None,
+        credentials_schema: list[dict] | None = None,
+        homepage_url: str | None = None,
     ) -> None:
         """
         Thêm mới hoặc cập nhật thông tin Plugin từ local manifest.
@@ -278,6 +284,11 @@ class AbstractTenantRepository(ABC):
         self, tenant_id: uuid.UUID, provider: str, config: dict
     ) -> None:
         """Cập nhật config integration nếu có, ngược lại tạo mới."""
+        ...
+
+    @abstractmethod
+    async def commit(self) -> None:
+        """Commit transaction."""
         ...
 
 

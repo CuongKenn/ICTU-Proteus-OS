@@ -68,7 +68,7 @@ class N8nAdapter(AbstractWorkflowEnginePort):
     _ACTION_3PART_PATTERN = re.compile(r"^[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$")
     _SEGMENT_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
-    def build_webhook_url(self, action: str) -> str:
+    def build_webhook_url(self, action: str, tenant_id: Any = None) -> str:
         """
         Xây dựng webhook URL từ action của DSL Command.
         Ví dụ: 'hr.leave_requests.batch_approve' -> '{N8N_URL}/webhook/hr-leave_requests-batch_approve'
@@ -94,6 +94,9 @@ class N8nAdapter(AbstractWorkflowEnginePort):
         path = action.replace(".", "-")
         if ".." in path or "/" in path or "\\" in path:
             raise N8nAdapterError(f"Invalid action path: {action!r}")
+        if tenant_id:
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            path = f"t_{tenant_short}_{path}"
         return f"{self._base_url}/webhook/{path}"
 
     async def _request_with_retry(
@@ -481,5 +484,26 @@ class N8nAdapter(AbstractWorkflowEnginePort):
         return result
 
     async def delete_credential(self, credential_id: str) -> None:
-        """Chưa implement."""
-        raise NotImplementedError("delete_credential chưa được implement")
+        """
+        Xóa vĩnh viễn một credential khỏi n8n (DELETE /api/v1/credentials/{id}).
+        """
+        url = self._build_url(f"credentials/{credential_id}")
+        logger.info("Deleting n8n credential", extra={"credential_id": credential_id})
+
+        response = await self._request_with_retry("DELETE", url)
+
+        if response.status_code == 404:
+            logger.warning(
+                "Credential not found on n8n during delete (already removed?)",
+                extra={"credential_id": credential_id},
+            )
+            return
+
+        if response.status_code not in (200, 204):
+            raise N8nAdapterError(
+                f"n8n delete_credential failed: HTTP {response.status_code} — {response.text[:200]}"
+            )
+
+        logger.info(
+            "Credential deleted successfully", extra={"credential_id": credential_id}
+        )

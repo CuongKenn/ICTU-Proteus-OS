@@ -108,23 +108,50 @@ class PluginActionUseCase:
             )
 
     async def _require_action_permission(
-        self, ctx: TenantContext, plugin_code: str, action: str
+        self, ctx: TenantContext, plugin_code: str, action: str, wf: Any = None
     ) -> None:
         # Admin bypass (đồng nhất với require_permission trong dependencies).
         if has_admin_role(ctx.roles):
             return
-        # Quyền suy ra theo convention prefix của plugin:
-        # asset-module → mọi permission bắt đầu "asset:".
-        prefix = plugin_code.split("-")[0] + ":"
-        perms = await self.role_repo.get_user_permissions(ctx.user_id)
+        perms = await self.role_repo.get_user_permissions(
+            ctx.user_id, tenant_id=ctx.tenant_id
+        )
         if has_wildcard_permission(perms):
             return
-        if not any(p.startswith(prefix) for p in perms):
+
+        prefix = plugin_code.split("-")[0]
+        prefix_colon = f"{prefix}:"
+        user_plugin_perms = [p for p in perms if p.startswith(prefix_colon)]
+        if not user_plugin_perms:
             raise InsufficientPermissionsError(
-                f"Cần quyền thuộc nhóm '{prefix}*' để gọi action '{action}'."
+                f"Cần quyền thuộc nhóm '{prefix}:*' để gọi action '{action}'."
             )
 
-    def _resolve_webhook_url(self, plugin_code: str, wf: Any) -> str:
+        # Kiểm tra action có phải read-only không
+        action_lower = action.lower()
+        wf_desc = (getattr(wf, "description", "") or "").lower()
+        wf_name = (getattr(wf, "name", "") or "").lower()
+        is_read_action = any(
+            kw in action_lower or kw in wf_name
+            for kw in ("read", "get", "list", "view", "fetch")
+        )
+
+        if is_read_action:
+            return
+
+        # Action ghi/duyệt/thay đổi: yêu cầu user phải có quyền ghi/action, không chỉ là read-only
+        has_write_perm = any(
+            not p.endswith(":read") and not p.endswith(":view")
+            for p in user_plugin_perms
+        )
+        if not has_write_perm:
+            raise InsufficientPermissionsError(
+                f"User chỉ có quyền đọc (read-only), không được dispatch workflow ghi '{action}'."
+            )
+
+    def _resolve_webhook_url(
+        self, plugin_code: str, wf: Any, tenant_id: Any = None
+    ) -> str:
         """Đọc workflow JSON, lấy webhook node path → dựng URL n8n."""
         if not _CODE_PATTERN.match(plugin_code):
             raise PluginNotFoundError(f"Plugin '{plugin_code}' không tồn tại.")
@@ -164,6 +191,11 @@ class PluginActionUseCase:
                 f"Workflow '{wf.file}' không có webhook node — "
                 f"chỉ workflow trigger='webhook' mới gọi được qua API."
             )
+        if tenant_id:
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            clean_path = str(path).lstrip("/")
+            if not clean_path.startswith(f"t_{tenant_short}_"):
+                path = f"t_{tenant_short}_{clean_path}"
         base = settings.N8N_URL.rstrip("/")
         return f"{base}/webhook/{str(path).lstrip('/')}"
 
@@ -228,8 +260,10 @@ class PluginActionUseCase:
             )
 
         await self._require_active_installation(ctx, plugin_code)
-        await self._require_action_permission(ctx, plugin_code, action)
-        webhook_url = self._resolve_webhook_url(plugin_code, wf)
+        await self._require_action_permission(ctx, plugin_code, action, wf)
+        webhook_url = self._resolve_webhook_url(
+            plugin_code, wf, tenant_id=ctx.tenant_id
+        )
 
         task_id = idempotency_key or str(uuid.uuid4())
         # Body PHẲNG (flat): business fields của payload nằm top-level để tương

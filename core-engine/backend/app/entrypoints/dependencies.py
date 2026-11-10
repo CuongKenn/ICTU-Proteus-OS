@@ -16,7 +16,7 @@ from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.external.appsmith_adapter import AppsmithAdapter
-from app.adapters.external.keycloak_adapter import KeycloakAdapter
+from app.adapters.external.keycloak_adapter import KeycloakAdapter, KeycloakAdapterError
 from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.adapters.external.metabase_adapter import MetabaseAdapter
 from app.adapters.external.n8n_adapter import N8nAdapter
@@ -107,8 +107,12 @@ async def get_mattermost_adapter(request: Request) -> MattermostAdapter:
 
 
 async def get_qdrant_adapter(request: Request) -> QdrantAdapter:
-    """Inject QdrantAdapter."""
-    return QdrantAdapter(qdrant_client=request.app.state.qdrant_client)
+    """Inject QdrantAdapter (cached on app.state as singleton)."""
+    if not hasattr(request.app.state, "qdrant_adapter") or request.app.state.qdrant_adapter is None:
+        request.app.state.qdrant_adapter = QdrantAdapter(
+            qdrant_client=getattr(request.app.state, "qdrant_client", None)
+        )
+    return request.app.state.qdrant_adapter
 
 
 async def get_n8n_adapter(request: Request) -> N8nAdapter:
@@ -149,27 +153,30 @@ async def get_rag_ingestion_use_case(
 
 async def get_plugin_credentials_use_case(
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
+    db: AsyncSession = Depends(get_db_transactional),
 ) -> ConfigurePluginCredentialsUseCase:
     """Inject Plugin Credentials Use Case."""
-    return ConfigurePluginCredentialsUseCase(n8n_adapter=n8n_adapter)
+    return ConfigurePluginCredentialsUseCase(
+        n8n_adapter=n8n_adapter,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
+        session=db,
+    )
 
 
 async def get_plugin_install_use_case(
     request: Request,
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     metabase_adapter: MetabaseAdapter = Depends(get_metabase_adapter),
     appsmith_adapter: AppsmithAdapter = Depends(get_appsmith_adapter),
     keycloak_adapter: KeycloakAdapter = Depends(get_keycloak_adapter),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    tenant_repo: AbstractTenantRepository = Depends(get_tenant_repo),
 ) -> PluginInstallUseCase:
-    """Inject Plugin Install Use Case."""
+    """Inject Plugin Install Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginInstallUseCase(
-        plugin_repo=repo,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -178,26 +185,24 @@ async def get_plugin_install_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=request.app.state.redis_event_bus,
-        tenant_repo=tenant_repo,
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
 async def get_plugin_uninstall_use_case(
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     metabase_adapter: MetabaseAdapter = Depends(get_metabase_adapter),
     appsmith_adapter: AppsmithAdapter = Depends(get_appsmith_adapter),
     keycloak_adapter: KeycloakAdapter = Depends(get_keycloak_adapter),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    tenant_repo: AbstractTenantRepository = Depends(get_tenant_repo),
     event_bus: RedisEventBusPublisher = Depends(get_redis_event_bus),
 ) -> PluginUninstallUseCase:
-    """Inject Plugin Uninstall Use Case."""
+    """Inject Plugin Uninstall Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUninstallUseCase(
-        plugin_repo=repo,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -206,33 +211,45 @@ async def get_plugin_uninstall_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=event_bus,
-        tenant_repo=tenant_repo,
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
 async def get_plugin_toggle_use_case(
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
+    request: Request = None,
+    n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
+    db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginToggleUseCase:
-    """Inject Plugin Toggle Use Case."""
-    return PluginToggleUseCase(plugin_repo=repo)
+    """Inject Plugin Toggle Use Case (cùng transactional session chống mất commit #726)."""
+    event_bus = None
+    if (
+        request is not None
+        and hasattr(request, "app")
+        and hasattr(request.app, "state")
+    ):
+        event_bus = getattr(request.app.state, "redis_event_bus", None)
+    return PluginToggleUseCase(
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
+        n8n_adapter=n8n_adapter,
+        session=db,
+        event_bus=event_bus,
+    )
 
 
 async def get_plugin_upgrade_use_case(
     request: Request,
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     metabase_adapter: MetabaseAdapter = Depends(get_metabase_adapter),
     appsmith_adapter: AppsmithAdapter = Depends(get_appsmith_adapter),
     keycloak_adapter: KeycloakAdapter = Depends(get_keycloak_adapter),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
-    tenant_repo: AbstractTenantRepository = Depends(get_tenant_repo),
 ) -> PluginUpgradeUseCase:
-    """Inject Plugin Upgrade Use Case (full adapters như install)."""
+    """Inject Plugin Upgrade Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUpgradeUseCase(
-        plugin_repo=repo,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         n8n_adapter=n8n_adapter,
         metabase_adapter=metabase_adapter,
@@ -241,7 +258,7 @@ async def get_plugin_upgrade_use_case(
         mattermost_adapter=mattermost_adapter,
         session=db,
         event_bus=request.app.state.redis_event_bus,
-        tenant_repo=tenant_repo,
+        tenant_repo=SQLAlchemyTenantRepository(session=db),
     )
 
 
@@ -275,6 +292,12 @@ async def get_current_tenant_context(
             detail="Token không hợp lệ hoặc đã hết hạn.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+    except (KeycloakAdapterError, httpx.HTTPError) as exc:
+        logger.error("Authentication service error", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ xác thực tạm thời không khả dụng.",
+        ) from exc
 
     user_id_raw = payload.get("sub")
     if not user_id_raw:
@@ -293,10 +316,19 @@ async def get_current_tenant_context(
     if not tenant_id_raw or tenant_id_raw == "default":
         try:
             keycloak_uuid = uuid.UUID(str(user_id_raw))
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(db, "__system__")
             user_repo = SQLAlchemyUserRepository(session=db)
             db_user = await user_repo.get_by_keycloak_id(keycloak_uuid)
+            if not db_user or not db_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Tài khoản đã bị vô hiệu hóa hoặc không tồn tại.",
+                )
             if db_user and db_user.tenant_id:
                 tenant_id_raw = str(db_user.tenant_id)
+                await set_session_tenant(db, tenant_id_raw)
                 logger.info(
                     "tenant_id không có trong token — resolved từ DB",
                     extra={"keycloak_id": user_id_raw, "tenant_id": tenant_id_raw},
@@ -331,16 +363,32 @@ async def get_current_tenant_context(
             ),
         ) from exc
 
+    # Kiểm tra trạng thái is_active của user trong DB (#743)
+    try:
+        user_repo = SQLAlchemyUserRepository(session=db)
+        db_user = await user_repo.get_by_keycloak_id(user_id)
+        if db_user is None:
+            db_user = await user_repo.get(user_id)
+        if db_user is not None and not db_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tài khoản đã bị vô hiệu hóa.",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Không thể kiểm tra is_active từ DB: %s", exc)
+
     realm_access = payload.get("realm_access", {})
     roles = realm_access.get("roles", [])
     name_claim = payload.get("name")
     pref_username = payload.get("preferred_username")
     full_name = name_claim or pref_username or "Unknown"
 
-    # IMPORTANT: Set contextvar cho RLS middleware
-    from app.infrastructure.database import current_tenant_id as tenant_id_ctx
+    # IMPORTANT: Set contextvar và DB session cho RLS (#728)
+    from app.infrastructure.database import set_session_tenant
 
-    tenant_id_ctx.set(str(tenant_id))
+    await set_session_tenant(db, tenant_id)
 
     return TenantContext(
         tenant_id=tenant_id,
@@ -424,15 +472,14 @@ async def get_plugin_action_use_case(
 
 
 async def get_plugin_records_use_case(
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
     role_repo: RoleRepository = Depends(get_role_repo),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginRecordsUseCase:
-    """Inject Plugin Records CRUD Use Case (generic, allowlist từ manifest)."""
+    """Inject Plugin Records CRUD Use Case (cùng transactional session chống lệch transaction #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginRecordsUseCase(
-        plugin_repo=repo,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
         manifest_parser=LocalManifestParser(),
         role_repo=role_repo,
         session=db,
@@ -466,21 +513,28 @@ async def get_audit_log_repo(
 
 
 async def get_ai_command_use_case(
-    request: Request,
     plugin_repo: AbstractPluginRepository = Depends(get_plugin_repo),
-    ai_command_repo: AbstractAICommandRepository = Depends(get_ai_command_repo),
     dsl_dry_run_repo: AbstractDSLDryRunRepository = Depends(get_dsl_dry_run_repo),
-    role_repo: RoleRepository = Depends(get_role_repo),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     qdrant_adapter: QdrantAdapter = Depends(get_qdrant_adapter),
-    audit_log_repo: AbstractAuditLogRepository = Depends(get_audit_log_repo),
-    user_repo: AbstractUserRepository = Depends(get_user_repo),
+    db: AsyncSession = Depends(get_db_transactional),
 ) -> AICommandUseCase:
-    """Inject AICommandUseCase (dynamic DSL + local core actions + audit)."""
+    """Inject AICommandUseCase (dynamic DSL + local core actions + audit).
+    Chia sẻ cùng transactional DB session cho ai_command_repo, audit_log_repo,
+    role_repo và user_repo để tránh silent rollback (#741).
+    """
     from app.adapters.external.local_manifest_parser import LocalManifestParser
+    from app.adapters.repositories.ai_command_repo import SQLAlchemyAICommandRepository
+    from app.adapters.repositories.audit_log_repo import SQLAlchemyAuditLogRepository
+    from app.adapters.repositories.role_repo import RoleRepository
+    from app.adapters.repositories.user_repo import SQLAlchemyUserRepository
 
-    outline_adapter = OutlineAdapter(client=request.app.state.http_client)
+    ai_command_repo = SQLAlchemyAICommandRepository(session=db)
+    audit_log_repo = SQLAlchemyAuditLogRepository(session=db)
+    role_repo = RoleRepository(session=db)
+    user_repo = SQLAlchemyUserRepository(session=db)
+
     return AICommandUseCase(
         plugin_repo=plugin_repo,
         ai_command_repo=ai_command_repo,
@@ -492,7 +546,6 @@ async def get_ai_command_use_case(
         qdrant_adapter=qdrant_adapter,
         audit_log_repo=audit_log_repo,
         user_repo=user_repo,
-        document_source_port=outline_adapter,
     )
 
 
@@ -509,10 +562,22 @@ def require_permission(permission: str):
         if has_admin_role(context.roles):
             return context
 
-        user_permissions = await role_repo.get_user_permissions(context.user_id)
+        user_permissions = await role_repo.get_user_permissions(
+            context.user_id, tenant_id=context.tenant_id
+        )
         if has_wildcard_permission(user_permissions):
             return context
-        if permission not in user_permissions:
+        perm_dot = permission.replace(":", ".")
+        perm_colon = permission.replace(".", ":")
+        user_perms_set = set(user_permissions or [])
+        for p in list(user_perms_set):
+            user_perms_set.add(p.replace(":", "."))
+            user_perms_set.add(p.replace(".", ":"))
+        if (
+            permission not in user_perms_set
+            and perm_dot not in user_perms_set
+            and perm_colon not in user_perms_set
+        ):
             raise InsufficientPermissionsError(
                 f"Cần quyền '{permission}' để thực hiện hành động này."
             )

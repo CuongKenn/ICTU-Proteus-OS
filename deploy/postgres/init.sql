@@ -16,13 +16,26 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- Full-text search support
 
--- Role dùng trong RLS policy của bảng plugin (FOR ALL TO app_user).
--- Phải tồn tại trước khi cài plugin đầu tiên, nếu không CREATE POLICY fail.
+-- Role dùng trong RLS policy của bảng plugin và kết nối app (Issue #690).
 DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
-    CREATE ROLE app_user NOLOGIN;
+    CREATE ROLE app_user WITH LOGIN PASSWORD 'app_user_password';
+  ELSE
+    ALTER ROLE app_user WITH LOGIN;
   END IF;
 END $$;
+
+DO $$
+DECLARE
+  current_db text := current_database();
+BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_user', current_db);
+END $$;
+GRANT USAGE ON SCHEMA public TO app_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
 
 -- ─────────────────────────────────────────────────────────────
 -- SCHEMA SEPARATION
@@ -225,11 +238,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
     actor_id        UUID,                           -- user_id hoặc NULL nếu SYSTEM
+    user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
     actor_type      actor_type NOT NULL,
     action          VARCHAR(255) NOT NULL,          -- VD: "plugin.install", "user.deactivate"
     resource_type   VARCHAR(100),                   -- VD: "Plugin", "User"
     resource_id     UUID,
     command_id      UUID,                           -- FK → ai_commands.id (nếu do AI thực hiện)
+    details         JSONB DEFAULT '{}',
     metadata        JSONB DEFAULT '{}',
     ip_address      INET,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -260,7 +275,9 @@ CREATE TABLE IF NOT EXISTS ai_commands (
     issued_by_user_id   UUID NOT NULL REFERENCES users(id),
     session_id          UUID NOT NULL,
     dsl_payload         JSONB NOT NULL,             -- Toàn bộ DX-DSL JSON
-    action              VARCHAR(255) NOT NULL,       -- VD: "hr.leave_requests.batch_approve"
+    action              VARCHAR(255) NOT NULL,
+    raw_input           TEXT,
+    parsed_dsl          JSONB,       -- VD: "hr.leave_requests.batch_approve"
     effect              VARCHAR(20)  NOT NULL,       -- read | write | critical
     status              ai_command_status NOT NULL DEFAULT 'PENDING_APPROVAL',
     dry_run_result      JSONB,
@@ -312,31 +329,66 @@ CREATE TRIGGER set_tenant_plugins_updated_at
 -- ─────────────────────────────────────────────────────────────
 -- Bật RLS cho tất cả các bảng có tenant_id
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users FORCE ROW LEVEL SECURITY;
 ALTER TABLE tenant_plugins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_plugins FORCE ROW LEVEL SECURITY;
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE roles FORCE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
 ALTER TABLE ai_commands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_commands FORCE ROW LEVEL SECURITY;
 
--- Tạo Policy áp dụng cho toàn bộ thao tác dựa trên biến session
+-- Tạo Policy áp dụng cho toàn bộ thao tác dựa trên biến session (an toàn NULLIF & hỗ trợ __system__ #728)
 CREATE POLICY tenant_isolation_policy_users ON users
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_tenant_plugins ON tenant_plugins
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_roles ON roles
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_audit_logs ON audit_logs
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_ai_commands ON ai_commands
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: TENANT_INTEGRATIONS
@@ -356,7 +408,14 @@ CREATE TABLE IF NOT EXISTS tenant_integrations (
 CREATE INDEX IF NOT EXISTS idx_tenant_integrations_tenant_id ON tenant_integrations(tenant_id);
 
 ALTER TABLE tenant_integrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_integrations FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation_policy_tenant_integrations ON tenant_integrations
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );

@@ -120,7 +120,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_assignments (asset_id, requester_name, dept_name, notes) VALUES ($1,$2,$3,$4);",
         "options": {
-          "queryReplacement": "={{$('Check Available Asset').item.json.id}},={$('Webhook - Asset Request').item.json.body.requester_name || $('Webhook - Asset Request').item.json.body.requester_id},={$('Webhook - Asset Request').item.json.body.dept_name},={$('Webhook - Asset Request').item.json.body.description}"
+          "queryReplacement": "={{$('Check Available Asset').item.json.id}},={{$('Webhook - Asset Request').item.json.body.requester_name || $('Webhook - Asset Request').item.json.body.requester_id}},={{$('Webhook - Asset Request').item.json.body.dept_name}},={{$('Webhook - Asset Request').item.json.body.description}}"
         }
       },
       "name": "Record Assignment",

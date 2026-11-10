@@ -95,6 +95,37 @@ CORE_PUBLIC_READ_ACTIONS: frozenset[str] = frozenset(
 )
 
 
+def derive_action_effect(action: str) -> str:
+    """Server-side derive effect (read | write | critical) từ action name và catalog (#684)."""
+    for ca in CORE_ACTIONS:
+        if ca.action == action:
+            return ca.effect_hint
+
+    critical_keywords = (
+        "delete",
+        "purge",
+        "destroy",
+        "drop",
+        "deactivate",
+        "revoke",
+        "reset_password",
+    )
+    action_lower = action.lower()
+    if any(k in action_lower for k in critical_keywords):
+        return "critical"
+
+    parts = action.split(".")
+    if len(parts) >= 3:
+        verb = parts[-1].lower()
+        if any(h in verb for h in READ_HINTS):
+            return "read"
+        return "write"
+
+    if any(h in action_lower for h in READ_HINTS):
+        return "read"
+    return "write"
+
+
 def infer_effect(action_id: str) -> str:
     lowered = action_id.lower()
     if any(h in lowered for h in READ_HINTS):
@@ -200,7 +231,7 @@ def render_for_prompt(actions: list[CatalogAction], limit: int = 60) -> str:
 
 
 def resolve_workflow_webhook_url(
-    manifest_parser, plugin_code: str, action_id: str
+    manifest_parser, plugin_code: str, action_id: str, tenant_id: Any = None
 ) -> str:
     """Dựng n8n webhook URL cho action 2-part {prefix}.{workflow_id}.
 
@@ -254,6 +285,11 @@ def resolve_workflow_webhook_url(
             f"Workflow '{wf_file}' không có webhook node — "
             f"chỉ workflow webhook mới gọi được."
         )
+    if tenant_id:
+        tenant_short = str(tenant_id).replace("-", "")[:8]
+        clean_path = str(path).lstrip("/")
+        if not clean_path.startswith(f"t_{tenant_short}_"):
+            path = f"t_{tenant_short}_{clean_path}"
     base = settings.N8N_URL.rstrip("/")
     return f"{base}/webhook/{str(path).lstrip('/')}"
 

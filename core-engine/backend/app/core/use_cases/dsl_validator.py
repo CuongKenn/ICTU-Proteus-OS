@@ -11,7 +11,6 @@ from typing import Any
 import jsonschema
 
 from app.adapters.repositories.base import AbstractPluginRepository
-from app.core.domain.permissions import has_wildcard_permission
 from app.core.formal_verification import Z3FormalVerifier, Z3VerificationError
 
 
@@ -47,17 +46,42 @@ class DSLValidator:
         tenant_id: str,
         user_id: str,
         manifest_parser=None,
+        roles: list[str] | None = None,
     ):
         """
         Khởi tạo Validator với Plugin Repository để kiểm tra DB constraint.
         manifest_parser (tùy chọn): cho phép action 2-part {prefix}.{workflow_id}
         của plugin đã cài (dynamic catalog) — kiểm tra workflow tồn tại trong manifest.
+        roles (tùy chọn): hỗ trợ admin bypass (#733).
         """
         self.plugin_repo = plugin_repo
         self.role_repo = role_repo
         self.tenant_id = tenant_id
         self.user_id = user_id
         self.manifest_parser = manifest_parser
+        self.roles = roles or []
+
+    async def _get_user_permissions(self) -> list[str]:
+        if not self.role_repo:
+            return []
+        tenant_uuid = None
+        if self.tenant_id:
+            try:
+                tenant_uuid = uuid.UUID(str(self.tenant_id))
+            except (ValueError, TypeError, AttributeError):
+                tenant_uuid = None
+        try:
+            user_uuid = uuid.UUID(str(self.user_id)) if self.user_id else None
+        except (ValueError, TypeError, AttributeError):
+            user_uuid = self.user_id
+
+        try:
+            perms = await self.role_repo.get_user_permissions(
+                user_id=user_uuid, tenant_id=tenant_uuid
+            )
+        except TypeError:
+            perms = await self.role_repo.get_user_permissions(user_uuid)
+        return [str(p) for p in (perms or [])]
 
     async def validate(self, dsl_payload: dict[str, Any]):
         """
@@ -74,6 +98,20 @@ class DSLValidator:
         # hoặc action 2-part "hr.leave_request" (workflow của plugin đã cài).
 
         action = dsl_payload.get("action", "")
+
+        # Rule 1: Effect validation & reconciliation (chống bypass approval #684)
+        from app.core.use_cases.action_catalog import derive_action_effect
+
+        derived_effect = derive_action_effect(action)
+        client_effect = dsl_payload.get("effect")
+        if client_effect is not None:
+            if derived_effect in ("write", "critical") and client_effect == "read":
+                raise DSLInvalidParametersError(
+                    f"Action '{action}' là hành động '{derived_effect}', "
+                    f"không thể khai báo bypass effect='{client_effect}'."
+                )
+        else:
+            dsl_payload["effect"] = derived_effect
         parts = action.split(".")
         if len(parts) == 2 and all(parts) and self.manifest_parser is not None:
             await self._validate_plugin_workflow_action(action, dsl_payload)
@@ -117,16 +155,24 @@ class DSLValidator:
         if not (
             action in CORE_PUBLIC_READ_ACTIONS and dsl_payload.get("effect") == "read"
         ):
-            req_permission = f"{plugin_code}:{resource}:{method}"
-            user_permissions = await self.role_repo.get_user_permissions(
-                uuid.UUID(self.user_id)
+            from app.core.domain.permissions import (
+                has_admin_role,
+                has_wildcard_permission,
             )
-            if has_wildcard_permission(user_permissions):
-                pass
-            elif req_permission not in user_permissions:
-                raise DSLPermissionDeniedError(
-                    f"User {self.user_id} lacks permission {req_permission}"
-                )
+
+            if not has_admin_role(self.roles):
+                perms_str = await self._get_user_permissions()
+                if not has_wildcard_permission(perms_str):
+                    req_perms = [
+                        f"{plugin_code}:{resource}:{method}",
+                        f"{plugin_code}.{resource}.{method}",
+                        f"{plugin_code}:*",
+                        f"{plugin_code}.*",
+                    ]
+                    if not any(rp in perms_str for rp in req_perms):
+                        raise DSLPermissionDeniedError(
+                            f"User {self.user_id} lacks permission {req_perms[0]}"
+                        )
 
         # Rule 4: Parameters JSON Schema
         params = dsl_payload.get("parameters", {})
@@ -201,15 +247,58 @@ class DSLValidator:
                 f"Action '{action}' không thuộc plugin '{db_plugin_code}'."
             )
 
-        user_permissions = await self.role_repo.get_user_permissions(
-            uuid.UUID(self.user_id)
+        from app.core.domain.permissions import (
+            has_admin_role,
+            has_wildcard_permission,
         )
-        if has_wildcard_permission(user_permissions):
-            pass
-        elif not any(str(p).startswith(f"{prefix}:") for p in user_permissions or []):
-            raise DSLPermissionDeniedError(
-                f"User {self.user_id} lacks permission '{prefix}:*'."
-            )
+
+        perms_str: list[str] = []
+        user_plugin_perms: list[str] = []
+        if not has_admin_role(self.roles):
+            perms_str = await self._get_user_permissions()
+            if not has_wildcard_permission(perms_str):
+                user_plugin_perms = [
+                    p
+                    for p in perms_str
+                    if p.startswith(f"{prefix}:") or p.startswith(f"{prefix}.")
+                ]
+                if not user_plugin_perms:
+                    raise DSLPermissionDeniedError(
+                        f"User {self.user_id} lacks permission '{prefix}:*'."
+                    )
+
+        from app.core.use_cases.action_catalog import derive_action_effect
+
+        derived_effect = derive_action_effect(action)
+        client_effect = dsl_payload.get("effect")
+        if client_effect is not None:
+            if derived_effect in ("write", "critical") and client_effect == "read":
+                raise DSLInvalidParametersError(
+                    f"Action '{action}' là hành động '{derived_effect}', "
+                    f"không thể khai báo bypass effect='{client_effect}'."
+                )
+        else:
+            dsl_payload["effect"] = derived_effect
+
+        # Action 2-part workflow write: user chỉ có quyền read thì phải REJECT (#684)
+        if not has_admin_role(self.roles):
+            if derived_effect in ("write", "critical") and not has_wildcard_permission(
+                perms_str
+            ):
+                has_write_perm = any(
+                    not (
+                        p.endswith(":read")
+                        or p.endswith(".read")
+                        or p.endswith(":view")
+                        or p.endswith(".view")
+                    )
+                    for p in user_plugin_perms
+                )
+                if not has_write_perm:
+                    raise DSLPermissionDeniedError(
+                        f"User {self.user_id} chỉ có quyền đọc (read-only), "
+                        f"không được kích hoạt workflow ghi '{action}'."
+                    )
 
         params = dsl_payload.get("parameters", {})
         if not isinstance(params, dict):

@@ -21,6 +21,7 @@ from fastapi import (
 )
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters.external.local_manifest_parser import ManifestParserError
 from app.adapters.external.n8n_adapter import N8nAdapter, N8nAdapterError
 from app.adapters.repositories.base import AbstractPluginRepository
 from app.core.domain.entities import CredentialInput, PluginStatus, TenantContext
@@ -145,11 +146,9 @@ async def list_marketplace_plugins(
     use_case: PluginListUseCase = Depends(get_plugin_list_use_case),
 ) -> PluginListResponse:
     """Lấy danh sách Plugin trên Marketplace (chưa cài hoặc đã cài)."""
-    plugins, total = await use_case.list_marketplace(limit=limit, offset=offset)
-    # Filter by category nếu có
-    if category:
-        plugins = [p for p in plugins if p.category == category]
-        total = len(plugins)
+    plugins, total = await use_case.list_marketplace(
+        limit=limit, offset=offset, category=category
+    )
     return PluginListResponse(
         items=[_entity_to_response(p) for p in plugins],
         total=total,
@@ -201,7 +200,8 @@ async def _run_install_plugin_background(
     plugin_code_name: str,
     credentials: list[CredentialInput],
     app_state,
-    owner_task_id: uuid.UUID | None = None,
+    install_task_id: uuid.UUID | None = None,
+    plugin_id: uuid.UUID | None = None,
 ):
     from app.infrastructure.database import current_tenant_id as tenant_id_ctx
 
@@ -233,13 +233,14 @@ async def _run_install_plugin_background(
                 keycloak_adapter=KeycloakAdapter(client=app_state.http_client),
                 mattermost_adapter=MattermostAdapter(client=app_state.http_client),
                 session=session,
+                event_bus=getattr(app_state, "redis_event_bus", None),
                 tenant_repo=tenant_repo,
             )
             await use_case.execute(
                 context=ctx,
                 plugin_code_name=plugin_code_name,
                 credentials=credentials,
-                owner_task_id=owner_task_id,
+                install_task_id=install_task_id,
             )
         logger.info("[BG_TASK] COMPLETED: %s", plugin_code_name)
     except BaseException as e:
@@ -249,6 +250,41 @@ async def _run_install_plugin_background(
             type(e).__name__,
             e,
         )
+        await _mark_install_failed_if_stuck(ctx, plugin_id, install_task_id, e)
+
+
+async def _mark_install_failed_if_stuck(
+    ctx: TenantContext,
+    plugin_id: uuid.UUID | None,
+    install_task_id: uuid.UUID | None,
+    error: BaseException,
+) -> None:
+    """Đảm bảo lỗi nền không để plugin kẹt INSTALLING (#682).
+
+    Chỉ chuyển sang FAILED_DIRTY khi bản ghi vẫn INSTALLING và thuộc đúng
+    task_id của request này (không đè lên cài đặt/trạng thái của request khác).
+    """
+    if plugin_id is None or install_task_id is None:
+        return
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.infrastructure.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            found = await repo.get_installation_status_by_task_id(
+                ctx.tenant_id, install_task_id
+            )
+            if found and found[0] == PluginStatus.INSTALLING:
+                await repo.update_status(
+                    ctx.tenant_id,
+                    plugin_id,
+                    PluginStatus.FAILED_DIRTY,
+                    error_log=f"{type(error).__name__}: {error}"[:2000],
+                )
+                await session.commit()
+    except Exception:  # noqa: BLE001 - không để lỗi dọn dẹp che lỗi gốc
+        logger.exception("[BG_TASK] Không thể đặt FAILED_DIRTY cho %s", plugin_id)
 
 
 @router.post(
@@ -260,7 +296,7 @@ async def install_plugin(
     request: Request,
     plugin_id: uuid.UUID,
     body: InstallPluginRequest = Body(default_factory=InstallPluginRequest),
-    ctx: TenantContext = Depends(require_permission("plugins:install")),
+    ctx: TenantContext = Depends(require_permission("plugins.install")),
     repo: AbstractPluginRepository = Depends(get_plugin_repo_write),
 ) -> dict[str, Any]:
     """
@@ -297,6 +333,22 @@ async def install_plugin(
         for c in (body.credentials or [])
     ]
 
+    # Chặn double-install TRƯỚC khi upsert: nếu không, worker sẽ thấy INSTALLING
+    # do chính request này tạo và tự từ chối → plugin kẹt INSTALLING (#682).
+    current_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    if current_status in (
+        PluginStatus.ACTIVE,
+        PluginStatus.INSTALLING,
+        PluginStatus.UNINSTALLING,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Plugin đang ở trạng thái {current_status.value}, "
+                "không thể cài đặt lại."
+            ),
+        )
+
     task_id = uuid.uuid4()
 
     # Persist task_id với trạng thái INSTALLING — commit ngay trong handler
@@ -321,7 +373,8 @@ async def install_plugin(
             plugin_code_name=plugin.code_name,
             credentials=credential_inputs,
             app_state=request.app.state,
-            owner_task_id=task_id,
+            install_task_id=task_id,
+            plugin_id=plugin_id,
         )
     )
 
@@ -440,54 +493,40 @@ async def _run_uninstall_plugin_background(
 
             logger.info("[BG_TASK] SUCCESS: %s", plugin_id)
 
-    except Exception:
+    except BaseException as e:
         logger.exception("[BG_TASK] FAILED: %s", plugin_id)
+        await _mark_uninstall_failed_if_stuck(ctx, plugin_id, e)
 
 
-@router.post(
-    "/{plugin_id}/reset-install",
-    status_code=status.HTTP_200_OK,
-    summary="Reset trạng thái cài đặt bị kẹt (FAILED_DIRTY/INSTALLING)",
-)
-async def reset_install_state(
-    plugin_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("plugins:install")),
-    repo: AbstractPluginRepository = Depends(get_plugin_repo_write),
-) -> dict[str, Any]:
-    """Đưa plugin từ trạng thái kẹt (INSTALLING/FAILED_DIRTY) về 'chưa cài'.
+async def _mark_uninstall_failed_if_stuck(
+    ctx: TenantContext,
+    plugin_id: uuid.UUID | None,
+    error: BaseException,
+) -> None:
+    """Đảm bảo lỗi nền không để plugin kẹt UNINSTALLING."""
+    if plugin_id is None:
+        return
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.infrastructure.database import AsyncSessionLocal
 
-    Dùng khi background task chết giữa chừng khiến UI polling mãi không xong.
-    Xóa install_task_id + steps_log để lần cài sau chạy sạch.
-    """
-    plugin = await repo.get_by_id(plugin_id)
-    if not plugin:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Plugin không tồn tại.",
-        )
-    status_val = await repo.get_installation_status(ctx.tenant_id, plugin_id)
-    if status_val == PluginStatus.ACTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Plugin đang ACTIVE — không cần reset. Gỡ cài đặt nếu muốn cài lại.",
-        )
-    await repo.upsert_installation(
-        ctx.tenant_id,
-        plugin_id,
-        PluginStatus.FAILED_DIRTY,
-        install_task_id=None,
-        error_log="Reset thủ công về trạng thái có thể cài lại.",
-    )
     try:
-        await repo.update_install_steps_log(ctx.tenant_id, plugin_id, steps_log=[])
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Không xóa được steps_log khi reset: %s", e)
-    await repo._session.commit()
-    logger.info(
-        "Plugin install state reset",
-        extra={"plugin_id": str(plugin_id), "tenant_id": str(ctx.tenant_id)},
-    )
-    return {"message": "Đã reset trạng thái cài đặt.", "plugin_id": str(plugin_id)}
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            curr = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+            if curr == PluginStatus.UNINSTALLING:
+                await repo.update_status(
+                    ctx.tenant_id,
+                    plugin_id,
+                    PluginStatus.FAILED_DIRTY,
+                    error_log=f"Uninstall failed: {type(error).__name__}: {error}"[
+                        :2000
+                    ],
+                )
+                await session.commit()
+    except Exception:
+        logger.exception(
+            "[BG_TASK] Không thể đặt FAILED_DIRTY cho uninstall %s", plugin_id
+        )
 
 
 @router.delete(
@@ -499,7 +538,7 @@ async def uninstall_plugin(
     request: Request,
     plugin_id: uuid.UUID,
     body: PluginUninstallRequest,
-    ctx: TenantContext = Depends(require_permission("plugins:uninstall")),
+    ctx: TenantContext = Depends(require_permission("plugins.uninstall")),
     repo: AbstractPluginRepository = Depends(get_plugin_repo_write),
 ) -> dict[str, str]:
     """
@@ -517,6 +556,17 @@ async def uninstall_plugin(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Tên xác nhận không khớp với mã plugin (code_name).",
+        )
+
+    curr_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    if curr_status is None or curr_status not in [
+        PluginStatus.ACTIVE,
+        PluginStatus.DISABLED,
+        PluginStatus.FAILED_DIRTY,
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plugin chưa được cài đặt hoặc đang ở trạng thái không thể gỡ cài đặt.",
         )
 
     task_id = uuid.uuid4()
@@ -560,7 +610,7 @@ async def uninstall_plugin(
 )
 async def disable_plugin(
     plugin_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("plugins:disable")),
+    ctx: TenantContext = Depends(require_permission("plugins.disable")),
     use_case: PluginToggleUseCase = Depends(get_plugin_toggle_use_case),
 ) -> dict[str, str]:
     try:
@@ -581,7 +631,7 @@ async def disable_plugin(
 )
 async def enable_plugin(
     plugin_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("plugins:enable")),
+    ctx: TenantContext = Depends(require_permission("plugins.enable")),
     use_case: PluginToggleUseCase = Depends(get_plugin_toggle_use_case),
 ) -> dict[str, str]:
     try:
@@ -600,6 +650,8 @@ async def _run_upgrade_plugin_background(
     plugin_code_name: str,
     task_id,
     app_state,
+    was_disabled: bool = False,
+    plugin_id: uuid.UUID | None = None,
 ):
     """Chạy pipeline upgrade trong background (mirror install)."""
     from app.infrastructure.database import current_tenant_id as tenant_id_ctx
@@ -640,10 +692,42 @@ async def _run_upgrade_plugin_background(
                 context=ctx,
                 plugin_code_name=plugin_code_name,
                 task_id=task_id,
+                was_disabled=was_disabled,
             )
         logger.info("[BG_TASK] UPGRADE COMPLETED: %s", plugin_code_name)
-    except BaseException:
+    except BaseException as e:
         logger.exception("[BG_TASK] UPGRADE FAILED: %s", plugin_code_name)
+        await _mark_upgrade_failed_if_stuck(ctx, plugin_id, task_id, e)
+
+
+async def _mark_upgrade_failed_if_stuck(
+    ctx: TenantContext,
+    plugin_id: uuid.UUID | None,
+    task_id: uuid.UUID | None,
+    error: BaseException,
+) -> None:
+    """Đảm bảo lỗi nền không để plugin kẹt UPGRADING."""
+    if plugin_id is None:
+        return
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.infrastructure.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            curr = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+            if curr == PluginStatus.UPGRADING:
+                await repo.update_status(
+                    ctx.tenant_id,
+                    plugin_id,
+                    PluginStatus.FAILED_DIRTY,
+                    error_log=f"Upgrade failed: {type(error).__name__}: {error}"[:2000],
+                )
+                await session.commit()
+    except Exception:
+        logger.exception(
+            "[BG_TASK] Không thể đặt FAILED_DIRTY cho upgrade %s", plugin_id
+        )
 
 
 @router.post(
@@ -654,7 +738,7 @@ async def _run_upgrade_plugin_background(
 async def upgrade_plugin(
     request: Request,
     plugin_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("plugins:upgrade")),
+    ctx: TenantContext = Depends(require_permission("plugins.upgrade")),
     use_case: PluginUpgradeUseCase = Depends(get_plugin_upgrade_use_case),
     repo: AbstractPluginRepository = Depends(get_plugin_repo),
 ) -> dict[str, Any]:
@@ -673,6 +757,9 @@ async def upgrade_plugin(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
+
+    current_inst_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    was_disabled = current_inst_status == _PluginStatus.DISABLED
 
     task_id = uuid.uuid4()
     await use_case.plugin_repo.upsert_installation(
@@ -703,6 +790,8 @@ async def upgrade_plugin(
             plugin_code_name=plugin.code_name,
             task_id=task_id,
             app_state=request.app.state,
+            was_disabled=was_disabled,
+            plugin_id=plugin_id,
         )
     )
 
@@ -787,8 +876,14 @@ async def list_plugin_actions(
     render nút động — plugin có N workflow cũng không cần thêm endpoint.
     Cron/manual không xuất hiện ở đây (chạy theo lịch hoặc bởi admin/AI).
     """
-    actions = await use_case.list_actions(ctx=ctx, plugin_code=code)
-    return PluginActionListResponse(plugin=code, actions=actions)
+    try:
+        actions = await use_case.list_actions(ctx=ctx, plugin_code=code)
+        return PluginActionListResponse(plugin=code, actions=actions)
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
 
 
 @router.post(
@@ -827,25 +922,9 @@ async def dispatch_plugin_action(
     except N8nAdapterError as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Workflow engine tạm thời không khả dụng: {_clean_engine_error(str(e))}",
+            detail=f"Workflow engine tạm thời không khả dụng: {e}",
         ) from e
     return PluginActionResponse(**result)
-
-
-def _clean_engine_error(message: str) -> str:
-    """Rút gọn lỗi n8n/Cloudflare thành thông báo đọc được (bỏ HTML/stack)."""
-    import re as _re
-
-    text = _re.sub(r"<[^>]+>", " ", message or "")
-    text = _re.sub(r"\s+", " ", text).strip()
-    low = text.lower()
-    if (
-        "cloudflare" in low
-        or "origin web server" in low
-        or "invalid or incomplete" in low
-    ):
-        return "Máy chủ workflow (n8n) đang quá tải hoặc trả về lỗi. Vui lòng thử lại sau ít phút."
-    return text[:300] or "Lỗi không xác định từ workflow engine."
 
 
 # ─────────────────────────────────────────────────────────────
@@ -877,22 +956,6 @@ async def list_plugin_records(
     return RecordListResponse(**result)
 
 
-def _integrity_detail(exc: IntegrityError) -> str:
-    """Thông báo 409 nêu rõ nguyên nhân thay vì chung chung 'trùng mã'."""
-    orig = getattr(exc, "orig", None)
-    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
-    if pgcode == "23502":
-        col = getattr(orig, "column_name", None)
-        return f"Thiếu trường bắt buộc{(' ' + col) if col else ''}."
-    if pgcode == "23503":
-        return "Tham chiếu không tồn tại (khóa ngoại)."
-    if pgcode == "23505":
-        return "Dữ liệu đã tồn tại (trùng mã/khóa duy nhất)."
-    if pgcode == "23514":
-        return "Giá trị không thỏa ràng buộc CHECK."
-    return "Dữ liệu bị trùng hoặc vi phạm ràng buộc (VD: trùng mã)."
-
-
 @router.post(
     "/{code}/records/{table}",
     response_model=dict[str, Any],
@@ -911,10 +974,15 @@ async def create_plugin_record(
         return await use_case.create_record(
             ctx=ctx, plugin_code=code, table=table, data=body
         )
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except IntegrityError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=_integrity_detail(e),
+            detail="Dữ liệu bị trùng hoặc vi phạm ràng buộc (VD: trùng mã).",
         ) from e
 
 
@@ -936,10 +1004,15 @@ async def update_plugin_record(
         return await use_case.update_record(
             ctx=ctx, plugin_code=code, table=table, record_id=record_id, data=body
         )
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except IntegrityError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=_integrity_detail(e),
+            detail="Dữ liệu bị trùng hoặc vi phạm ràng buộc (VD: trùng mã).",
         ) from e
 
 
@@ -973,20 +1046,81 @@ async def delete_plugin_record(
 )
 async def reload_plugins(
     request: Request,
-    ctx: TenantContext = Depends(require_permission("plugins:install")),
+    ctx: TenantContext = Depends(require_permission("plugins.install")),
 ) -> dict[str, str]:
     """
-    Quét lại thư mục plugins và nạp động (hot-reload) các Python extensions
-    mà không cần khởi động lại server.
+    Quét lại thư mục plugins, validate manifest, đồng bộ vào database và nạp động
+    (hot-reload) các Python extensions mà không cần khởi động lại server.
     """
+    from app.adapters.external.local_manifest_parser import LocalManifestParser
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.core.use_cases.manifest_validator import ManifestValidator
+    from app.infrastructure.database import AsyncSessionLocal
+
     loader = getattr(request.app.state, "plugin_loader", None)
-    if loader:
+    if not loader:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Plugin loader không được cấu hình.",
+        )
+
+    try:
         loader.load_all_plugins()
-        return {"message": "Đã hot-reload tất cả plugin extensions."}
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Plugin loader không được cấu hình.",
-    )
+    except Exception as e:
+        logger.warning("Plugin loader hot reload failed: %s", e)
+
+    parser = LocalManifestParser()
+    validator = ManifestValidator()
+    plugins_dir = parser.plugins_dir
+    synced_count = 0
+
+    if plugins_dir.exists():
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            for plugin_path in plugins_dir.iterdir():
+                if not plugin_path.is_dir():
+                    continue
+                manifest_file = plugin_path / "manifest.yaml"
+                if not manifest_file.exists():
+                    continue
+                try:
+                    with open(manifest_file, encoding="utf-8") as mf:
+                        validator.validate_yaml_string(mf.read())
+                    manifest = parser.parse(plugin_path.name)
+                    raw_creds = []
+                    for c in manifest.credentials_schema:
+                        if hasattr(c, "model_dump"):
+                            raw_creds.append(c.model_dump())
+                        elif hasattr(c, "dict"):
+                            raw_creds.append(c.dict())
+                        elif isinstance(c, dict):
+                            raw_creds.append(c)
+
+                    await repo.upsert_from_manifest(
+                        code_name=plugin_path.name,
+                        display_name=manifest.display_name,
+                        description=manifest.description,
+                        version=manifest.version,
+                        author=manifest.author,
+                        license=manifest.license,
+                        icon_url=manifest.icon_url,
+                        manifest_url=f"file:///{plugin_path.name}/manifest.yaml",
+                        is_official=manifest.is_official,
+                        category=manifest.category,
+                        tags=manifest.tags,
+                        screenshots=manifest.screenshots,
+                        long_description=manifest.long_description,
+                        credentials_schema=raw_creds,
+                        homepage_url=manifest.homepage_url,
+                    )
+                    synced_count += 1
+                except Exception as e:
+                    logger.warning(
+                        "Không thể reload plugin %s: %s", plugin_path.name, e
+                    )
+            await session.commit()
+
+    return {"message": f"Đã hot-reload và đồng bộ {synced_count} plugin extensions."}
 
 
 @router.post(
@@ -998,7 +1132,7 @@ async def reload_plugins(
 async def synthesize_plugin(
     request: Request,
     body: PluginSynthesizeRequest,
-    ctx: TenantContext = Depends(require_permission("plugins:install")),
+    ctx: TenantContext = Depends(require_permission("plugins.install")),
     llm: AbstractLLMPort | None = Depends(get_llm_port),
 ) -> dict[str, str]:
     """
@@ -1010,14 +1144,21 @@ async def synthesize_plugin(
     synthesizer = PluginSynthesizer(llm=llm)
     try:
         plugin_name = await synthesizer.synthesize(body.prompt)
-        loader = getattr(request.app.state, "plugin_loader", None)
-        if loader:
-            loader.load_plugin(plugin_name)
-
+        # BẢO MẬT (Issue #689): Không tự động nạp hoặc thực thi code do LLM sinh ra vào runtime!
+        # Plugin sinh ra chỉ lưu dưới dạng artifact chờ admin review và ký số trước khi nạp.
         return {
-            "message": f"Đã sinh và nạp thành công Plugin: {plugin_name}",
+            "message": f"Đã sinh cấu trúc Plugin {plugin_name} thành công. Cần kiểm duyệt (review) và ký số trước khi nạp vào hệ thống.",
             "plugin_code_name": plugin_name,
+            "status": "pending_review",
         }
+    except (PermissionError, OSError) as e:
+        logger.warning("Không thể ghi file plugin do hệ thống tập tin read-only: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Thư mục plugins đang ở chế độ Read-Only hoặc không có quyền ghi. Không thể sinh plugin trực tiếp tại runtime.",
+        ) from e
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Plugin synthesize failed")
         raise HTTPException(
@@ -1039,7 +1180,7 @@ async def synthesize_plugin(
 async def configure_plugin_credentials(
     plugin_id: uuid.UUID,
     payload: PluginCredentialPayload,
-    ctx: TenantContext = Depends(require_permission("plugins:install")),
+    ctx: TenantContext = Depends(require_permission("plugins.install")),
     use_case: ConfigurePluginCredentialsUseCase = Depends(
         get_plugin_credentials_use_case
     ),

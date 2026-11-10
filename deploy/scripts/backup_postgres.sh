@@ -1,17 +1,30 @@
 #!/bin/bash
+set -eo pipefail
+
 # Copyright (c) 2026 CuongKenn & ICTU Team
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Script thực thi sao lưu dữ liệu PostgreSQL tự động
 
-# Load biến môi trường (Script này sẽ được gọi bên trong container đã được inject env vars, nhưng có thể đọc trực tiếp nếu cần)
-# Thiết lập các biến mặc định
+# Load biến môi trường (Script này sẽ được gọi bên trong container đã được inject env vars)
 BACKUP_DIR=${BACKUP_DIR:-"/backups"}
 BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
 POSTGRES_HOST=${POSTGRES_HOST:-"postgres"}
 POSTGRES_USER=${POSTGRES_USER:-"proteus"}
 POSTGRES_DB=${POSTGRES_DB:-"proteus"}
 MATTERMOST_WEBHOOK_URL=${MATTERMOST_WEBHOOK_URL:-""}
+
+send_notification() {
+    local message="$1"
+    if [ -n "${MATTERMOST_WEBHOOK_URL}" ] && [[ "${MATTERMOST_WEBHOOK_URL}" != *"CHANGE_ME"* ]]; then
+        local payload="{\"text\": \"${message}\"}"
+        if command -v curl >/dev/null 2>&1; then
+            curl -s -X POST -H 'Content-Type: application/json' -d "${payload}" "${MATTERMOST_WEBHOOK_URL}" || true
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- --header="Content-Type: application/json" --post-data="${payload}" "${MATTERMOST_WEBHOOK_URL}" >/dev/null 2>&1 || true
+        fi
+    fi
+}
 
 # Tạo thư mục backup nếu chưa tồn tại
 mkdir -p "${BACKUP_DIR}"
@@ -32,14 +45,13 @@ if pg_dumpall -h "${POSTGRES_HOST}" -U "${POSTGRES_USER}" | gzip > "${BACKUP_FIL
     find "${BACKUP_DIR}" -name "proteus_backup_*.sql.gz" -type f -mtime +${BACKUP_RETENTION_DAYS} -delete
     
     # Gửi webhook thành công
-    if [ -n "${MATTERMOST_WEBHOOK_URL}" ] && [[ "${MATTERMOST_WEBHOOK_URL}" != *"CHANGE_ME"* ]]; then
-        curl -i -X POST -H 'Content-Type: application/json' -d '{"text": "✅ **[Proteus OS]** Backup CSDL PostgreSQL thành công! File: `'"$(basename ${BACKUP_FILE})"'\`"}' "${MATTERMOST_WEBHOOK_URL}" || true
-    fi
+    send_notification "✅ **[Proteus OS]** Backup CSDL PostgreSQL thành công! File: \`$(basename "${BACKUP_FILE}")\`"
 else
     echo "Backup failed!"
+    # Xóa file backup hỏng/rỗng nếu có
+    rm -f "${BACKUP_FILE}"
+    
     # Gửi webhook thất bại
-    if [ -n "${MATTERMOST_WEBHOOK_URL}" ] && [[ "${MATTERMOST_WEBHOOK_URL}" != *"CHANGE_ME"* ]]; then
-        curl -i -X POST -H 'Content-Type: application/json' -d '{"text": "❌ **[Proteus OS] ALERT:** Sao lưu CSDL PostgreSQL THẤT BẠI lúc '"$(date +"%Y-%m-%d %H:%M:%S")"'. Vui lòng kiểm tra ngay!"}' "${MATTERMOST_WEBHOOK_URL}" || true
-    fi
+    send_notification "❌ **[Proteus OS] ALERT:** Sao lưu CSDL PostgreSQL THẤT BẠI lúc $(date +"%Y-%m-%d %H:%M:%S"). Vui lòng kiểm tra ngay!"
     exit 1
 fi

@@ -37,9 +37,7 @@ PLUGIN_ID = uuid.UUID("123e4567-e89b-12d3-a456-426614174001")
 
 
 async def _mock_ctx():
-    return TenantContext(
-        tenant_id=TENANT_ID, user_id=USER_ID, roles=["tenant_admin"]
-    )
+    return TenantContext(tenant_id=TENANT_ID, user_id=USER_ID, roles=["tenant_admin"])
 
 
 @pytest.fixture
@@ -56,8 +54,11 @@ def _client():
 
 def _entity(**kw):
     base = dict(
-        id=PLUGIN_ID, code_name="hr-module", display_name="HR",
-        version="1.0.0", status=PluginStatus.ACTIVE,
+        id=PLUGIN_ID,
+        code_name="hr-module",
+        display_name="HR",
+        version="1.0.0",
+        status=PluginStatus.ACTIVE,
     )
     base.update(kw)
     return PluginEntity(**base)
@@ -79,15 +80,17 @@ def test_entity_to_response_helpers():
 @pytest.mark.asyncio
 async def test_list_marketplace_and_category_filter(auth):
     uc = AsyncMock()
-    uc.list_marketplace.return_value = (
-        [_entity(), _entity(code_name="crm-module", category="CRM")], 2
-    )
+    async def _mock_list_mp(limit=20, offset=0, category=None):
+        items = [_entity(), _entity(code_name="crm-module", category="CRM")]
+        if category:
+            items = [p for p in items if getattr(p, "category", None) == category]
+        return items, len(items)
+
+    uc.list_marketplace.side_effect = _mock_list_mp
     app.dependency_overrides[get_plugin_list_use_case] = lambda: uc
     try:
         async with _client() as c:
-            resp = await c.get(
-                "/api/v1/plugins", headers={"Authorization": "Bearer x"}
-            )
+            resp = await c.get("/api/v1/plugins", headers={"Authorization": "Bearer x"})
         assert resp.status_code == 200 and resp.json()["total"] == 2
         async with _client() as c:
             resp = await c.get(
@@ -118,6 +121,8 @@ async def test_list_installed(auth):
 async def test_get_detail_404_and_200(auth):
     repo = AsyncMock()
     repo.get_by_id.return_value = None
+    repo.get_installation_status.return_value = PluginStatus.ACTIVE
+    repo.get_installation_status.return_value = PluginStatus.ACTIVE
     app.dependency_overrides[get_plugin_repo] = lambda: repo
     try:
         async with _client() as c:
@@ -126,6 +131,7 @@ async def test_get_detail_404_and_200(auth):
             )
         assert resp.status_code == 404
         repo.get_by_id.return_value = _entity()
+        repo.get_installation_status.return_value = PluginStatus.ACTIVE
         async with _client() as c:
             resp = await c.get(
                 f"/api/v1/plugins/{PLUGIN_ID}", headers={"Authorization": "Bearer x"}
@@ -148,7 +154,8 @@ async def test_install_404(auth):
         async with _client() as c:
             resp = await c.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/install",
-                json={}, headers={"Authorization": "Bearer x"},
+                json={},
+                headers={"Authorization": "Bearer x"},
             )
         assert resp.status_code == 404
     finally:
@@ -181,11 +188,13 @@ async def test_install_202_queued(auth):
 async def test_uninstall_paths(auth):
     repo = AsyncMock()
     repo.get_by_id.return_value = None
+    repo.get_installation_status.return_value = PluginStatus.ACTIVE
     app.dependency_overrides[get_plugin_repo_write] = lambda: repo
     try:
         async with _client() as c:
             resp = await c.request(
-                "DELETE", f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
+                "DELETE",
+                f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
                 json={"confirm_name": "hr-module"},
                 headers={"Authorization": "Bearer x"},
             )
@@ -193,7 +202,8 @@ async def test_uninstall_paths(auth):
         repo.get_by_id.return_value = _entity()
         async with _client() as c:
             resp = await c.request(
-                "DELETE", f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
+                "DELETE",
+                f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
                 json={"confirm_name": "wrong-name"},
                 headers={"Authorization": "Bearer x"},
             )
@@ -204,7 +214,8 @@ async def test_uninstall_paths(auth):
         ):
             async with _client() as c:
                 resp = await c.request(
-                    "DELETE", f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
+                    "DELETE",
+                    f"/api/v1/plugins/{PLUGIN_ID}/uninstall",
                     json={"confirm_name": "hr-module"},
                     headers={"Authorization": "Bearer x"},
                 )
@@ -223,22 +234,30 @@ async def test_disable_enable(auth):
     app.dependency_overrides[get_plugin_toggle_use_case] = lambda: uc
     try:
         async with _client() as c:
-            assert (await c.post(
-                f"/api/v1/plugins/{PLUGIN_ID}/disable",
-                headers={"Authorization": "Bearer x"})).status_code == 200
-            assert (await c.post(
-                f"/api/v1/plugins/{PLUGIN_ID}/enable",
-                headers={"Authorization": "Bearer x"})).status_code == 200
+            assert (
+                await c.post(
+                    f"/api/v1/plugins/{PLUGIN_ID}/disable",
+                    headers={"Authorization": "Bearer x"},
+                )
+            ).status_code == 200
+            assert (
+                await c.post(
+                    f"/api/v1/plugins/{PLUGIN_ID}/enable",
+                    headers={"Authorization": "Bearer x"},
+                )
+            ).status_code == 200
         uc.disable_plugin.side_effect = PluginToggleError("cannot disable")
         uc.enable_plugin.side_effect = PluginToggleError("cannot enable")
         async with _client() as c:
             resp = await c.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/disable",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
             assert resp.status_code == 400
             resp = await c.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/enable",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
             assert resp.status_code == 400
     finally:
         app.dependency_overrides.pop(get_plugin_toggle_use_case, None)
@@ -258,7 +277,8 @@ async def test_upgrade_error_and_queued(auth):
         async with _client() as c:
             resp = await c.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/upgrade",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
         assert resp.status_code == 400
         uc.prepare_upgrade.side_effect = None
         uc.prepare_upgrade.return_value = (_entity(), "1.0.0", "1.1.0")
@@ -269,7 +289,8 @@ async def test_upgrade_error_and_queued(auth):
             async with _client() as c:
                 resp = await c.post(
                     f"/api/v1/plugins/{PLUGIN_ID}/upgrade",
-                    headers={"Authorization": "Bearer x"})
+                    headers={"Authorization": "Bearer x"},
+                )
         assert resp.status_code == 202
         assert resp.json()["status"] == "UPGRADING"
     finally:
@@ -288,14 +309,17 @@ async def test_upgrade_status_paths(auth):
         async with _client() as c:
             resp = await c.get(
                 "/api/v1/plugins/upgrade/not-a-uuid/status",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
             assert resp.status_code == 400
             resp = await c.get(
                 f"/api/v1/plugins/upgrade/{task}/status",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
             assert resp.status_code == 404
         repo.get_upgrade_status_by_task_id.return_value = (
-            PluginStatus.ACTIVE, PLUGIN_ID,
+            PluginStatus.ACTIVE,
+            PLUGIN_ID,
         )
         repo.get_install_steps_log.return_value = [
             {"step": "queued", "status": "DONE", "at": None, "message": "m"}
@@ -303,7 +327,8 @@ async def test_upgrade_status_paths(auth):
         async with _client() as c:
             resp = await c.get(
                 f"/api/v1/plugins/upgrade/{task}/status",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
         assert resp.status_code == 200
         assert resp.json()["overall_status"] == "ACTIVE"
     finally:
@@ -314,7 +339,8 @@ async def test_upgrade_status_paths(auth):
 async def test_install_status_with_steps(auth):
     repo = AsyncMock()
     repo.get_installation_status_by_task_id.return_value = (
-        PluginStatus.INSTALLING, PLUGIN_ID,
+        PluginStatus.INSTALLING,
+        PLUGIN_ID,
     )
     repo.get_install_steps_log.return_value = [{"step": "db", "status": "DONE"}]
     app.dependency_overrides[get_plugin_repo] = lambda: repo
@@ -322,7 +348,8 @@ async def test_install_status_with_steps(auth):
         async with _client() as c:
             resp = await c.get(
                 f"/api/v1/plugins/install/{uuid.uuid4()}/status",
-                headers={"Authorization": "Bearer x"})
+                headers={"Authorization": "Bearer x"},
+            )
         assert resp.status_code == 200
         assert resp.json()["steps"][0]["step"] == "db"
     finally:
@@ -413,6 +440,21 @@ async def test_synthesize_success_and_failure(auth):
             )
         assert resp.status_code == 200
         assert resp.json()["plugin_code_name"] == "new-module"
+        assert resp.json()["status"] == "pending_review"
+
+        # Read-only filesystem error returns 400 instead of 500
+        synth_cls.return_value.synthesize = AsyncMock(
+            side_effect=PermissionError("Read-only file system")
+        )
+        async with _client() as c:
+            resp = await c.post(
+                "/api/v1/plugins/synthesize",
+                json={"prompt": "fail ro"},
+                headers={"Authorization": "Bearer x"},
+            )
+        assert resp.status_code == 400
+        assert "Read-Only" in resp.json()["detail"]
+
         synth_cls.return_value.synthesize = AsyncMock(
             side_effect=RuntimeError("llm down")
         )
@@ -436,9 +478,11 @@ async def test_configure_credentials_generic_500(auth):
         async with _client() as c:
             resp = await c.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/credentials",
-                json={"credential_type": "smtp",
-                      "credential_name": "m",
-                      "data": {"user": "a"}},
+                json={
+                    "credential_type": "smtp",
+                    "credential_name": "m",
+                    "data": {"user": "a"},
+                },
                 headers={"Authorization": "Bearer x"},
             )
         assert resp.status_code == 500

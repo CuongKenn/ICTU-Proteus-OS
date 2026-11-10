@@ -28,15 +28,21 @@ class MattermostAdapter(AbstractChatOpsPort):
     async def aclose(self):
         await self.client.aclose()
 
-    async def send_message(self, channel_id: str, text: str) -> dict[str, Any]:
-        """Gửi tin nhắn thông thường tới Mattermost."""
+    async def send_message(
+        self,
+        channel_id: str,
+        message: str | None = None,
+        text: str | None = None,
+    ) -> dict[str, Any]:
+        """Gửi tin nhắn thông thường tới Mattermost (hỗ trợ cả param 'message' lẫn 'text')."""
+        msg = message if message is not None else (text or "")
         if not self.token:
             logger.warning(
                 "MATTERMOST_BOT_TOKEN chưa được cấu hình, bỏ qua send_message."
             )
             return {}
 
-        payload = {"channel_id": channel_id, "message": text}
+        payload = {"channel_id": channel_id, "message": msg}
 
         try:
             response = await self.client.post(
@@ -54,14 +60,21 @@ class MattermostAdapter(AbstractChatOpsPort):
     async def send_interactive_message(
         self,
         channel_id: str,
-        text: str,
-        action_id: str,
+        text: str | None = None,
+        action_id: str | None = None,
         extra_context: dict[str, Any] | None = None,
+        message: str | None = None,
+        command_id: str | None = None,
+        callback_url: str | None = None,
+        actions: list[dict[str, Any]] | None = None,
     ) -> str:
         """
         Gửi tin nhắn có chứa nút Interactive (Phê duyệt / Từ chối).
         - action_id: ID của lệnh (ví dụ: AI Command ID)
         """
+        msg_text = message if message is not None else (text or "")
+        act_id = action_id or command_id or ""
+
         if not self.token:
             logger.warning(
                 "MATTERMOST_BOT_TOKEN chưa được cấu hình, "
@@ -70,7 +83,7 @@ class MattermostAdapter(AbstractChatOpsPort):
             return ""
 
         context = extra_context or {}
-        context["action_id"] = action_id
+        context["action_id"] = act_id
 
         # Webhook callback URL mà Mattermost sẽ gọi về.
         # C10: dùng settings.BACKEND_URL (không hardcode proteus-backend) để
@@ -101,7 +114,7 @@ class MattermostAdapter(AbstractChatOpsPort):
                 "attachments": [
                     {
                         "pretext": "Yêu cầu phê duyệt hành động hệ thống:",
-                        "text": text,
+                        "text": msg_text,
                         "actions": [
                             {
                                 "id": "approveButton",
@@ -149,8 +162,11 @@ class MattermostAdapter(AbstractChatOpsPort):
     async def update_message(
         self, post_id: str, message: str, props: dict[str, Any] | None = None
     ) -> None:
-        """Chưa implement."""
-        raise NotImplementedError("update_message chưa được implement")
+        """Cập nhật nội dung một bài đăng Mattermost qua PUT /api/v4/posts/{post_id}."""
+        payload: dict[str, Any] = {"id": post_id, "message": message}
+        if props:
+            payload["props"] = props
+        await self._call("PUT", f"/api/v4/posts/{post_id}", json=payload)
 
     async def create_direct_channel(
         self, user_id_a: str, user_id_b: str

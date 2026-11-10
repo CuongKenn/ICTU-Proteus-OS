@@ -110,7 +110,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
         {/* Icon */}
         <div className="plugin-icon">
           {plugin.iconUrl ? (
-            <Image src={plugin.iconUrl} alt={plugin.name} width={32} height={32} className="object-contain" />
+            <Image src={plugin.iconUrl} alt={plugin.name} width={32} height={32} className="object-contain" unoptimized />
           ) : (
             <span className="text-lg font-bold font-grot" style={{ color: "var(--accent)" }}>
               {plugin.name.charAt(0)}

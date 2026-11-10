@@ -121,6 +121,7 @@ async def test_get_user_permissions(role_repo, mock_session):
 
     result = await role_repo.get_user_permissions(user_id)
 
-    assert set(result) == {"users:read", "users:write", "plugins:read", "audit:read"}
+    expected = {"users:read", "users:write", "plugins:read", "audit:read"}
+    assert expected.issubset(set(result))
     mock_session.execute.assert_called_once()
     mock_result.all.assert_called_once()

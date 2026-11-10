@@ -53,8 +53,8 @@ async def test_plugin_table_rls_isolation(db_session):
     await db_session.execute(text(f"""
         CREATE POLICY tenant_isolation_policy ON {table_name}
         FOR ALL TO public
-        USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-        WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid)
     """))
 
     # 2. Insert data for tenant A

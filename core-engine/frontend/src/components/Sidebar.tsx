@@ -14,6 +14,7 @@ import {
   Settings,
   MessageSquare,
   FileText,
+  LayoutGrid,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { id: "marketplace", label: "Marketplace", icon: Store, href: "/marketplace" },
   { id: "chat", label: "Mattermost", icon: MessageSquare, href: "/chat" },
   { id: "wiki", label: "Outline Wiki", icon: FileText, href: "/wiki" },
+  { id: "apps", label: "Apps (Low-code)", icon: LayoutGrid, href: "/apps" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ];
 

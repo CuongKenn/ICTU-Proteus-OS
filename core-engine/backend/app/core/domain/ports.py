@@ -241,9 +241,14 @@ class AbstractChatOpsPort(ABC):
     """Port cho ChatOps (Mattermost). Implement bởi MattermostAdapter."""
 
     @abstractmethod
-    async def send_message(self, channel_id: str, message: str) -> str:
+    async def send_message(
+        self,
+        channel_id: str,
+        message: str | None = None,
+        text: str | None = None,
+    ) -> str:
         """
-        Gửi tin nhắn vào channel.
+        Gửi tin nhắn vào channel (hỗ trợ cả param 'message' lẫn 'text').
         Trả về message_id.
         """
         pass
@@ -252,8 +257,13 @@ class AbstractChatOpsPort(ABC):
     async def send_interactive_message(
         self,
         channel_id: str,
-        message: str,
-        actions: list[dict[str, Any]],
+        message: str | None = None,
+        text: str | None = None,
+        action_id: str | None = None,
+        command_id: str | None = None,
+        callback_url: str | None = None,
+        actions: list[dict[str, Any]] | None = None,
+        extra_context: dict[str, Any] | None = None,
     ) -> str:
         """
         Gửi Interactive Message (với buttons) vào channel.
