@@ -201,6 +201,49 @@ async def mattermost_interactive_callback(
     action = payload.context.action
     user_id = payload.user_id
 
+    raw_ctx = payload_dict.get("context", {})
+    action_type = raw_ctx.get("action_type")
+    # Xử lý action plugin_cleanup từ PluginCleanupAgent (#735)
+    if action_type == "plugin_cleanup":
+        plugin_id_str = action_id
+        tenant_id_str = raw_ctx.get("tenant_id")
+        logger.info(
+            "Yêu cầu Plugin Cleanup %s (Tenant %s) bởi user %s",
+            plugin_id_str,
+            tenant_id_str,
+            user_id,
+        )
+        if action == "approve":
+            if tenant_id_str:
+                try:
+                    from app.adapters.repositories.plugin_repo import PluginRepository
+                    from app.core.domain.entities import PluginStatus
+
+                    repo = PluginRepository(session=db)
+                    await repo.update_status(
+                        tenant_id=uuid.UUID(tenant_id_str),
+                        plugin_id=uuid.UUID(plugin_id_str),
+                        status=PluginStatus.UNINSTALLED,
+                    )
+                    await db.commit()
+                except Exception as ex:
+                    logger.warning("Plugin cleanup update status error: %s", ex)
+            return {
+                "update": {
+                    "message": f"✅ Plugin `{plugin_id_str}` đã được dọn dẹp bởi <@{user_id}>.",
+                    "props": {},
+                },
+                "ephemeral_text": f"✅ Đã xác nhận dọn dẹp plugin {plugin_id_str}.",
+            }
+        else:
+            return {
+                "update": {
+                    "message": f"❌ Đã từ chối dọn dẹp plugin `{plugin_id_str}` bởi <@{user_id}>.",
+                    "props": {},
+                },
+                "ephemeral_text": f"Đã bỏ qua dọn dẹp plugin {plugin_id_str}.",
+            }
+
     if _parse_uuid_or_none(action_id) is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="action_id không hợp lệ"

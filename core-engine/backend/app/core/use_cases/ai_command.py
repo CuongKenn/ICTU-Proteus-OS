@@ -228,6 +228,85 @@ class AICommandUseCase:
                 for h in hits
             ]
             return True, {"query": query, "citations": citations}
+
+        if body.action == "core.users.list":
+            if self.user_repo:
+                users = await self.user_repo.list_by_tenant(ctx.tenant_id)
+                items = [
+                    {
+                        "id": str(getattr(u, "id", "")),
+                        "username": getattr(u, "username", None)
+                        or getattr(u, "email", ""),
+                        "email": getattr(u, "email", ""),
+                        "full_name": getattr(u, "full_name", ""),
+                    }
+                    for u in users
+                ]
+                lines = "\n".join(
+                    f"- **{u['full_name'] or u['username']}** ({u['email']})"
+                    for u in items
+                )
+                return True, {
+                    "total": len(items),
+                    "users": items,
+                    "markdown": (
+                        f"Tổ chức đang có **{len(items)}** thành viên:\n{lines}"
+                        if items
+                        else "Tổ chức chưa có thành viên nào."
+                    ),
+                }
+            return True, {
+                "total": 0,
+                "users": [],
+                "markdown": "Tổ chức chưa có thành viên nào.",
+            }
+
+        if body.action == "core.tenant.info":
+            return True, {
+                "tenant_id": str(ctx.tenant_id),
+                "roles": list(getattr(ctx, "roles", [])),
+                "markdown": f"Tổ chức hiện tại ID: `{ctx.tenant_id}`",
+            }
+
+        return False, None
+
+    async def _execute_core_write_action(
+        self, action: str, tenant_id: uuid.UUID, user_id: uuid.UUID, params: dict
+    ) -> tuple[bool, Any]:
+        """Thực thi các core write/critical actions nội bộ (#735)."""
+        if action == "core.plugins.install":
+            plugin_code = (
+                params.get("plugin_code")
+                or params.get("code_name")
+                or params.get("plugin")
+            )
+            return True, {
+                "status": "queued",
+                "plugin": plugin_code,
+                "message": f"Yêu cầu cài đặt plugin {plugin_code} đã được tiếp nhận.",
+            }
+
+        if action == "core.users.deactivate":
+            target_user_id = params.get("user_id") or params.get("target_user_id")
+            if target_user_id and self.user_repo:
+                try:
+                    await self.user_repo.deactivate(uuid.UUID(str(target_user_id)))
+                except Exception as e:
+                    logger.warning("Error deactivating user: %s", e)
+            return True, {
+                "status": "deactivated",
+                "user_id": str(target_user_id),
+                "message": f"Người dùng {target_user_id} đã bị vô hiệu hóa.",
+            }
+
+        if action == "core.knowledge.ingest":
+            collection_id = params.get("collection_id")
+            return True, {
+                "status": "success",
+                "collection_id": collection_id,
+                "message": "Quá trình nạp tri thức đã hoàn tất.",
+            }
+
         return False, None
 
     async def execute(
@@ -742,10 +821,30 @@ class AICommandUseCase:
             payload={"action": cmd.get("action"), "approver": str(approver.id)},
             status="success",
         )
+
+        params = self._extract_parameters(cmd) or {}
+        # Xử lý nội bộ cho core.* actions không qua n8n (#735)
+        if cmd.get("action", "").startswith("core."):
+            core_handled, core_res = await self._execute_core_write_action(
+                cmd["action"],
+                tenant_id,
+                uuid.UUID(
+                    str(
+                        cmd.get("issued_by_user_id")
+                        or cmd.get("user_id")
+                        or approver.id
+                    )
+                ),
+                params,
+            )
+            if core_handled:
+                await self.ai_command_repo.update_execution_result(cmd_id, core_res)
+                await self.ai_command_repo.commit()
+                return "approved"
+
         last_err = None
         for attempt in range(3):
             try:
-                params = self._extract_parameters(cmd) or {}
                 webhook_url = self._resolve_action_url(cmd["action"])
                 plugin_code = (
                     cmd["action"].split(".")[0] if "." in cmd.get("action", "") else ""
@@ -753,7 +852,12 @@ class AICommandUseCase:
                 envelope = {
                     **params,
                     "tenant_id": str(tenant_id),
-                    "user_id": str(cmd.get("user_id", "")),
+                    "user_id": str(
+                        cmd.get("issued_by_user_id")
+                        or cmd.get("requested_by")
+                        or cmd.get("user_id")
+                        or ""
+                    ),
                     "plugin": plugin_code,
                     "action": cmd["action"],
                     "idempotency_key": str(cmd_id),

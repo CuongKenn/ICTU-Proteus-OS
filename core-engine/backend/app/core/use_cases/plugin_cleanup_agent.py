@@ -27,6 +27,8 @@ class PluginCleanupAgent:
     bị kẹt ở trạng thái FAILED_DIRTY.
     """
 
+    _alerted_plugins: set[tuple[str, str]] = set()
+
     def __init__(
         self,
         plugin_repo: AbstractPluginRepository,
@@ -58,10 +60,15 @@ class PluginCleanupAgent:
         failed_plugins = await self.plugin_repo.get_failed_dirty_plugins()
 
         if not failed_plugins:
+            PluginCleanupAgent._alerted_plugins.clear()
             logger.info("Không có plugin nào cần dọn dẹp.")
             return
 
         for tenant_id, plugin_id, plugin_code_name in failed_plugins:
+            key = (str(tenant_id), str(plugin_id))
+            if key in PluginCleanupAgent._alerted_plugins:
+                continue
+            PluginCleanupAgent._alerted_plugins.add(key)
             try:
                 await self.mattermost_adapter.send_interactive_message(
                     channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
@@ -84,11 +91,12 @@ class PluginCleanupAgent:
                 logger.error(
                     "Cleanup warning thất bại cho plugin %s: %s", plugin_code_name, e
                 )
+                alert_msg = (
+                    "CRITICAL ALERT: Plugin Cleanup Agent thất bại "
+                    f"khi dọn dẹp plugin {plugin_code_name} "
+                    f"cho Tenant {tenant_id}. Lỗi: {str(e)}"
+                )
                 await self.mattermost_adapter.send_message(
-                    text=(
-                        "CRITICAL ALERT: Plugin Cleanup Agent thất bại "
-                        f"khi dọn dẹp plugin {plugin_code_name} "
-                        f"cho Tenant {tenant_id}. Lỗi: {str(e)}"
-                    ),
                     channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
+                    text=alert_msg,
                 )
