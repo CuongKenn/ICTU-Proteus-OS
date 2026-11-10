@@ -14,13 +14,65 @@ import { logger } from "@/lib/logger";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
+function isAllowedCorsOrigin(origin: string): boolean {
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+    if (host === "proteus.local" || host.endsWith(".proteus.local")) return true;
+    const baseHost = new URL(process.env.NEXTAUTH_URL ?? "http://localhost:3000").hostname;
+    if (host === baseHost || host.endsWith(`.${baseHost}`)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function withCorsHeaders(res: NextResponse, req: NextRequest): NextResponse {
+  const origin = req.headers.get("origin");
+  if (origin && isAllowedCorsOrigin(origin)) {
+    res.headers.set("Access-Control-Allow-Origin", origin);
+    res.headers.set("Access-Control-Allow-Credentials", "true");
+    res.headers.set(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+    );
+    res.headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Accept, X-Requested-With, X-Forwarded-Host, X-Tenant-ID"
+    );
+    res.headers.set("Access-Control-Max-Age", "86400");
+  }
+  return res;
+}
+
+export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
+  const origin = request.headers.get("origin");
+  const headers = new Headers();
+  if (origin && isAllowedCorsOrigin(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Credentials", "true");
+    headers.set(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+    );
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Accept, X-Requested-With, X-Forwarded-Host, X-Tenant-ID"
+    );
+    headers.set("Access-Control-Max-Age", "86400");
+  }
+  return new NextResponse(null, { status: 204, headers });
+}
+
 async function proxyHandler(
   request: NextRequest,
   { params }: { params: { path: string[] } }
 ): Promise<NextResponse> {
   const auth = await getBffAuth(request);
   if (!auth.success) {
-    return auth.response;
+    return withCorsHeaders(auth.response, request);
   }
 
   const { accessToken, rotatedCookieValue } = auth;
@@ -45,12 +97,15 @@ async function proxyHandler(
       body = await request.text();
     } catch (error) {
       logger.error("[BFF] Lỗi đọc request body:", error);
-      return withRotatedCookie(
-        NextResponse.json(
-          { error: "Invalid request body format or stream interrupted" },
-          { status: 400 }
+      return withCorsHeaders(
+        withRotatedCookie(
+          NextResponse.json(
+            { error: "Invalid request body format or stream interrupted" },
+            { status: 400 }
+          ),
+          rotatedCookieValue
         ),
-        rotatedCookieValue
+        request
       );
     }
   }
@@ -64,9 +119,12 @@ async function proxyHandler(
     });
   } catch (err: any) {
     logger.error(`[BFF] Fetch to backend failed: ${err.message}`);
-    return withRotatedCookie(
-      NextResponse.json({ error: "Backend unavailable" }, { status: 502 }),
-      rotatedCookieValue
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json({ error: "Backend unavailable" }, { status: 502 }),
+        rotatedCookieValue
+      ),
+      request
     );
   }
 
@@ -75,9 +133,12 @@ async function proxyHandler(
   if (response.status === 401) {
     const txt = await response.text();
     logger.error(`[BFF] Backend returned 401 for ${targetUrl}: ${txt}`);
-    return withRotatedCookie(
-      NextResponse.json({ error: "Unauthorized from backend", detail: txt }, { status: 401 }),
-      rotatedCookieValue
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json({ error: "Unauthorized from backend", detail: txt }, { status: 401 }),
+        rotatedCookieValue
+      ),
+      request
     );
   }
 
@@ -85,20 +146,26 @@ async function proxyHandler(
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const data = await response.json().catch(() => null);
-    return withRotatedCookie(
-      NextResponse.json(data, { status: response.status }),
-      rotatedCookieValue
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json(data, { status: response.status }),
+        rotatedCookieValue
+      ),
+      request
     );
   }
 
   // Non-JSON response (ví dụ: file download)
   const blob = await response.blob();
-  return withRotatedCookie(
-    new NextResponse(blob, {
-      status: response.status,
-      headers: { "Content-Type": contentType },
-    }),
-    rotatedCookieValue
+  return withCorsHeaders(
+    withRotatedCookie(
+      new NextResponse(blob, {
+        status: response.status,
+        headers: { "Content-Type": contentType },
+      }),
+      rotatedCookieValue
+    ),
+    request
   );
 }
 
@@ -107,3 +174,4 @@ export const POST = proxyHandler;
 export const PUT = proxyHandler;
 export const PATCH = proxyHandler;
 export const DELETE = proxyHandler;
+export const HEAD = proxyHandler;

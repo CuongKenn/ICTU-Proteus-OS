@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { GET } from "./route";
+import { GET, OPTIONS } from "./route";
 
 vi.mock("next-auth/jwt", () => ({
   getToken: vi.fn(),
@@ -130,5 +130,45 @@ describe("BFF Proxy Route Handler", () => {
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe("AccessTokenExpired");
+  });
+
+  it("handles OPTIONS preflight request with CORS headers (#732)", async () => {
+    const req = new NextRequest("http://localhost:3000/api/proxy/v1/plugins", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://plugins.proteus.local:5180",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    const res = await OPTIONS(req);
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://plugins.proteus.local:5180");
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("GET");
+  });
+
+  it("injects CORS headers on proxy responses from allowed origins (#732)", async () => {
+    vi.mocked(getToken).mockResolvedValue({
+      accessToken: "valid-token",
+    } as any);
+
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const req = new NextRequest("http://localhost:3000/api/proxy/v1/plugins", {
+      headers: {
+        Origin: "http://plugins.proteus.local:5180",
+      },
+    });
+
+    const res = await GET(req, { params: { path: ["v1", "plugins"] } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://plugins.proteus.local:5180");
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
   });
 });
