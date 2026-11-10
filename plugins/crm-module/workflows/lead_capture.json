@@ -5,7 +5,7 @@
     {
       "parameters": {
         "path": "crm/lead-capture",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {},
         "httpMethod": "POST"
       },

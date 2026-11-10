@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "meeting/book",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - Book Meeting",

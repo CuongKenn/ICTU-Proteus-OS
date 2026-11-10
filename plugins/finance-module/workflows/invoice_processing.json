@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "finance/invoice-processing",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - New Invoice",
@@ -53,7 +53,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.mattermost_user_id FROM users u LIMIT 1;",
+        "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
         "options": {
           "queryReplacement": ""
         }

@@ -6,7 +6,7 @@
       "parameters": {
         "path": "hr/application-screen",
         "httpMethod": "POST",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - Screen Request",
@@ -62,7 +62,7 @@
     {
       "parameters": {
         "options": {},
-        "prompt": "=B\u1ea1n l\u00e0 chuy\u00ean gia tuy\u1ec3n d\u1ee5ng. Ch\u1ea5m \u1ee9ng vi\u00ean cho v\u1ecb tr\u00ed sau theo thang 0-100 (kinh nghi\u1ec7m, k\u1ef9 n\u0103ng kh\u1edbp y\u00eau c\u1ea7u, tr\u00ecnh b\u00e0y h\u1ed3 s\u01a1).\nV\u1eca TR\u00cd: {{ $('Fetch Application').item.json.title }}.\nY\u00caU C\u1ea6U: {{ $('Fetch Application').item.json.requirements }}.\n\u1ee8NG VI\u00caN: {{ $('Fetch Application').item.json.full_name }}. TH\u01af GI\u1edaI THI\u1ec6U: {{ $('Fetch Application').item.json.cover_note }}.\nCh\u1ec9 tr\u1ea3 v\u1ec1 JSON thu\u1ea7n, kh\u00f4ng gi\u1ea3i th\u00edch: {\"score\": <s\u1ed1 0-100>, \"notes\": \"<nh\u1eadn x\u00e9t ng\u1eafn>\"}."
+        "prompt": "=Bạn là chuyên gia tuyển dụng. Chấm ứng viên cho vị trí sau theo thang 0-100 (kinh nghiệm, kỹ năng khớp yêu cầu, trình bày hồ sơ).\nVỊ TRÍ: {{ $('Fetch Application').item.json.title }}.\nYÊU CẦU: {{ $('Fetch Application').item.json.requirements }}.\nỨNG VIÊN: {{ $('Fetch Application').item.json.full_name }}. THƯ GIỚI THIỆU: {{ $('Fetch Application').item.json.cover_note }}.\nChỉ trả về JSON thuần, không giải thích: {\"score\": <số 0-100>, \"notes\": \"<nhận xét ngắn>\"}."
       },
       "name": "Score Chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
