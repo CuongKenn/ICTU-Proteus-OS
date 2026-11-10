@@ -607,6 +607,7 @@ async def _run_upgrade_plugin_background(
     plugin_code_name: str,
     task_id,
     app_state,
+    was_disabled: bool = False,
 ):
     """Chạy pipeline upgrade trong background (mirror install)."""
     from app.infrastructure.database import current_tenant_id as tenant_id_ctx
@@ -647,6 +648,7 @@ async def _run_upgrade_plugin_background(
                 context=ctx,
                 plugin_code_name=plugin_code_name,
                 task_id=task_id,
+                was_disabled=was_disabled,
             )
         logger.info("[BG_TASK] UPGRADE COMPLETED: %s", plugin_code_name)
     except BaseException:
@@ -681,6 +683,9 @@ async def upgrade_plugin(
             detail=str(e),
         ) from e
 
+    current_inst_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    was_disabled = current_inst_status == _PluginStatus.DISABLED
+
     task_id = uuid.uuid4()
     await use_case.plugin_repo.upsert_installation(
         tenant_id=ctx.tenant_id,
@@ -710,6 +715,7 @@ async def upgrade_plugin(
             plugin_code_name=plugin.code_name,
             task_id=task_id,
             app_state=request.app.state,
+            was_disabled=was_disabled,
         )
     )
 

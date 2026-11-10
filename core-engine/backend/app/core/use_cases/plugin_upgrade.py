@@ -231,6 +231,7 @@ class PluginUpgradeUseCase:
         context: TenantContext,
         plugin_code_name: str,
         task_id: uuid.UUID,
+        was_disabled: bool | None = None,
     ) -> None:
         """Chạy toàn bộ pipeline upgrade. Fail ở đâu rollback tới đó."""
         self._steps_log = []
@@ -244,9 +245,12 @@ class PluginUpgradeUseCase:
             or "unknown"
         )
         to_version = manifest.version
-        was_disabled = (
-            await self.plugin_repo.get_installation_status(context.tenant_id, plugin.id)
-        ) == PluginStatus.DISABLED
+        if was_disabled is None:
+            was_disabled = (
+                await self.plugin_repo.get_installation_status(
+                    context.tenant_id, plugin.id
+                )
+            ) == PluginStatus.DISABLED
 
         # 0. Snapshot trạng thái cũ để rollback (n8n exports + config + version)
         self._log_step("snapshot", "RUNNING")
