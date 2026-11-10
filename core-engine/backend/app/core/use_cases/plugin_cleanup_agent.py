@@ -70,12 +70,14 @@ class PluginCleanupAgent:
                 continue
             PluginCleanupAgent._alerted_plugins.add(key)
             try:
+                cleanup_text = (
+                    f"Plugin {plugin_code_name} (Tenant {tenant_id}) "
+                    "bị kẹt FAILED_DIRTY > 1 giờ. Cần thủ công gỡ cài đặt."
+                )
                 await self.mattermost_adapter.send_interactive_message(
                     channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
-                    text=(
-                        f"Plugin {plugin_code_name} (Tenant {tenant_id}) "
-                        "bị kẹt FAILED_DIRTY > 1 giờ. Cần thủ công gỡ cài đặt."
-                    ),
+                    message=cleanup_text,
+                    text=cleanup_text,
                     action_id=str(plugin_id),
                     extra_context={
                         "tenant_id": str(tenant_id),
@@ -96,7 +98,11 @@ class PluginCleanupAgent:
                     f"khi dọn dẹp plugin {plugin_code_name} "
                     f"cho Tenant {tenant_id}. Lỗi: {str(e)}"
                 )
-                await self.mattermost_adapter.send_message(
-                    channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
-                    text=alert_msg,
-                )
+                try:
+                    await self.mattermost_adapter.send_message(
+                        channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
+                        message=alert_msg,
+                        text=alert_msg,
+                    )
+                except Exception as alert_err:
+                    logger.error("Không thể gửi alert Mattermost: %s", alert_err)
