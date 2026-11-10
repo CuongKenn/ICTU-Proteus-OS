@@ -226,7 +226,7 @@ def render_for_prompt(actions: list[CatalogAction], limit: int = 60) -> str:
 
 
 def resolve_workflow_webhook_url(
-    manifest_parser, plugin_code: str, action_id: str
+    manifest_parser, plugin_code: str, action_id: str, tenant_id: Any = None
 ) -> str:
     """Dựng n8n webhook URL cho action 2-part {prefix}.{workflow_id}.
 
@@ -280,6 +280,11 @@ def resolve_workflow_webhook_url(
             f"Workflow '{wf_file}' không có webhook node — "
             f"chỉ workflow webhook mới gọi được."
         )
+    if tenant_id:
+        tenant_short = str(tenant_id).replace("-", "")[:8]
+        clean_path = str(path).lstrip("/")
+        if not clean_path.startswith(f"t_{tenant_short}_"):
+            path = f"t_{tenant_short}_{clean_path}"
     base = settings.N8N_URL.rstrip("/")
     return f"{base}/webhook/{str(path).lstrip('/')}"
 

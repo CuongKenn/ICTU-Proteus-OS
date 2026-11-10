@@ -143,7 +143,9 @@ async def test_upgrade_plugin_drop_table_forbidden(
         patch.object(
             use_case,
             "_discover_migrations",
-            return_value=[("1.1.0", "/tmp/V1.1.0__drop.sql", "V1.1.0__drop.sql", "abc")],
+            return_value=[
+                ("1.1.0", "/tmp/V1.1.0__drop.sql", "V1.1.0__drop.sql", "abc")
+            ],
         ),
         patch("builtins.open", mock_open(read_data="DROP TABLE test;")),
     ):
@@ -259,6 +261,7 @@ def _sha256_of(path):
 
 # ─── prepare_upgrade: error branches ──────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_prepare_upgrade_plugin_not_found(
     use_case, mock_plugin_repo, tenant_context, plugin_id
@@ -309,6 +312,7 @@ async def test_prepare_upgrade_invalid_manifest_version(
 
 
 # ─── _discover_migrations ─────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_discover_no_migrations_dir(use_case, mock_manifest_parser, tmp_path):
@@ -378,6 +382,7 @@ async def test_discover_invalid_manifest_version(
 
 
 # ─── _step_db_migrations: no pending / invalid schema / happy ─────────
+
 
 @pytest.mark.asyncio
 async def test_step_db_no_pending_returns_zero(
@@ -454,8 +459,10 @@ async def test_step_db_records_and_resets_search_path(
 
 # ─── run_upgrade: success / disabled / failure / not found ────────────
 
-def _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id,
-                               status=PluginStatus.ACTIVE):
+
+def _setup_run_upgrade_common(
+    mock_plugin_repo, mock_manifest_parser, plugin_id, status=PluginStatus.ACTIVE
+):
     plugin = _make_plugin(plugin_id)
     mock_plugin_repo.get_by_code_name.return_value = plugin
     mock_plugin_repo.get_installed_version.return_value = "1.0.0"
@@ -468,20 +475,36 @@ def _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id,
 
 @pytest.mark.asyncio
 async def test_run_upgrade_success(
-    use_case, mock_plugin_repo, mock_manifest_parser, mock_session,
-    mock_mattermost_adapter, tenant_context, plugin_id,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_session,
+    mock_mattermost_adapter,
+    tenant_context,
+    plugin_id,
 ):
     _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id)
     mock_event_bus = AsyncMock()
     use_case.event_bus = mock_event_bus
     with (
-        patch.object(use_case, "_snapshot",
-                     new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}})),
+        patch.object(
+            use_case,
+            "_snapshot",
+            new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}}),
+        ),
         patch.object(use_case, "_step_db_migrations", new=AsyncMock(return_value=2)),
-        patch.object(use_case, "_step_n8n_update", new=AsyncMock(return_value=["n8n-1"])),
-        patch.object(use_case, "_step_metabase_replace", new=AsyncMock(return_value=["mb-1"])),
-        patch.object(use_case, "_step_appsmith_replace", new=AsyncMock(return_value=["app-1"])),
-        patch.object(use_case, "_step_keycloak_roles", new=AsyncMock(return_value=["admin"])),
+        patch.object(
+            use_case, "_step_n8n_update", new=AsyncMock(return_value=["n8n-1"])
+        ),
+        patch.object(
+            use_case, "_step_metabase_replace", new=AsyncMock(return_value=["mb-1"])
+        ),
+        patch.object(
+            use_case, "_step_appsmith_replace", new=AsyncMock(return_value=["app-1"])
+        ),
+        patch.object(
+            use_case, "_step_keycloak_roles", new=AsyncMock(return_value=["admin"])
+        ),
     ):
         await use_case.run_upgrade(
             context=tenant_context, plugin_code_name=PLUGIN_CODE, task_id=uuid.uuid4()
@@ -496,27 +519,42 @@ async def test_run_upgrade_success(
     assert config_kwargs["config_override"]["keep"] == 1
     task_kwargs = mock_plugin_repo.set_upgrade_task_id.await_args.kwargs
     assert task_kwargs["task_id"] if "task_id" in task_kwargs else True
-    assert any(s["step"] == "complete" and s["status"] == "DONE"
-               for s in use_case._steps_log)
+    assert any(
+        s["step"] == "complete" and s["status"] == "DONE" for s in use_case._steps_log
+    )
     mock_mattermost_adapter.send_message.assert_awaited_once()
     mock_event_bus.publish_plugin_lifecycle.assert_awaited_once()
-    assert mock_event_bus.publish_plugin_lifecycle.await_args.kwargs["action"] == "upgraded"
+    assert (
+        mock_event_bus.publish_plugin_lifecycle.await_args.kwargs["action"]
+        == "upgraded"
+    )
 
 
 @pytest.mark.asyncio
 async def test_run_upgrade_success_keeps_disabled(
-    use_case, mock_plugin_repo, mock_manifest_parser, tenant_context, plugin_id,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    tenant_context,
+    plugin_id,
 ):
     _setup_run_upgrade_common(
         mock_plugin_repo, mock_manifest_parser, plugin_id, status=PluginStatus.DISABLED
     )
     with (
-        patch.object(use_case, "_snapshot",
-                     new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}})),
+        patch.object(
+            use_case,
+            "_snapshot",
+            new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}}),
+        ),
         patch.object(use_case, "_step_db_migrations", new=AsyncMock(return_value=0)),
         patch.object(use_case, "_step_n8n_update", new=AsyncMock(return_value=[])),
-        patch.object(use_case, "_step_metabase_replace", new=AsyncMock(return_value=[])),
-        patch.object(use_case, "_step_appsmith_replace", new=AsyncMock(return_value=[])),
+        patch.object(
+            use_case, "_step_metabase_replace", new=AsyncMock(return_value=[])
+        ),
+        patch.object(
+            use_case, "_step_appsmith_replace", new=AsyncMock(return_value=[])
+        ),
         patch.object(use_case, "_step_keycloak_roles", new=AsyncMock(return_value=[])),
     ):
         await use_case.run_upgrade(
@@ -528,20 +566,32 @@ async def test_run_upgrade_success_keeps_disabled(
 
 @pytest.mark.asyncio
 async def test_run_upgrade_failure_compensates_and_marks_dirty(
-    use_case, mock_plugin_repo, mock_manifest_parser, mock_session,
-    mock_mattermost_adapter, tenant_context, plugin_id,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_session,
+    mock_mattermost_adapter,
+    tenant_context,
+    plugin_id,
 ):
     _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id)
     with (
-        patch.object(use_case, "_snapshot",
-                     new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}})),
-        patch.object(use_case, "_step_db_migrations",
-                     new=AsyncMock(side_effect=RuntimeError("db boom"))),
+        patch.object(
+            use_case,
+            "_snapshot",
+            new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}}),
+        ),
+        patch.object(
+            use_case,
+            "_step_db_migrations",
+            new=AsyncMock(side_effect=RuntimeError("db boom")),
+        ),
         patch.object(use_case, "_compensate", new=AsyncMock()) as mock_comp,
     ):
         with pytest.raises(PluginUpgradeError, match="Nâng cấp plugin thất bại"):
             await use_case.run_upgrade(
-                context=tenant_context, plugin_code_name=PLUGIN_CODE,
+                context=tenant_context,
+                plugin_code_name=PLUGIN_CODE,
                 task_id=uuid.uuid4(),
             )
     mock_comp.assert_awaited_once()
@@ -549,27 +599,32 @@ async def test_run_upgrade_failure_compensates_and_marks_dirty(
     assert status_kwargs["status"] == PluginStatus.FAILED_DIRTY
     assert "db boom" in status_kwargs["error_log"]
     mock_plugin_repo.update_install_steps_log.assert_awaited()
-    assert any(s["step"] == "database" and s["status"] == "FAILED"
-               for s in use_case._steps_log)
+    assert any(
+        s["step"] == "database" and s["status"] == "FAILED" for s in use_case._steps_log
+    )
     mock_session.rollback.assert_awaited()
     mock_mattermost_adapter.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_run_upgrade_plugin_not_found(
-    use_case, mock_plugin_repo, tenant_context,
+    use_case,
+    mock_plugin_repo,
+    tenant_context,
 ):
     mock_plugin_repo.get_by_code_name.return_value = None
     with patch.object(use_case, "_snapshot", new=AsyncMock()) as mock_snap:
         with pytest.raises(PluginUpgradeError, match="không tồn tại"):
             await use_case.run_upgrade(
-                context=tenant_context, plugin_code_name="ghost",
+                context=tenant_context,
+                plugin_code_name="ghost",
                 task_id=uuid.uuid4(),
             )
     mock_snap.assert_not_awaited()
 
 
 # ─── _snapshot ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_snapshot_collects_config_and_exports(
@@ -600,17 +655,24 @@ async def test_snapshot_empty_config(
 
 # ─── _compensate ──────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_compensate_restores_and_cleans(
-    use_case, mock_n8n_adapter, mock_metabase_adapter, mock_appsmith_adapter,
-    tenant_context, plugin_id,
+    use_case,
+    mock_n8n_adapter,
+    mock_metabase_adapter,
+    mock_appsmith_adapter,
+    tenant_context,
+    plugin_id,
 ):
     snapshot = {
         "n8n_exports": {"w1": {"name": "old"}},
         "config_override": {"n8n": ["w1"]},
     }
     created = {"n8n": ["w1", "w-new"], "metabase": ["mb-new"], "appsmith": ["app-new"]}
-    await use_case._compensate(tenant_context, plugin_id, PLUGIN_CODE, snapshot, created)
+    await use_case._compensate(
+        tenant_context, plugin_id, PLUGIN_CODE, snapshot, created
+    )
     mock_n8n_adapter.update_workflow.assert_awaited_once_with("w1", {"name": "old"})
     mock_metabase_adapter.delete_dashboard.assert_awaited_once_with("mb-new")
     mock_appsmith_adapter.delete_application.assert_awaited_once_with("app-new")
@@ -619,8 +681,12 @@ async def test_compensate_restores_and_cleans(
 
 @pytest.mark.asyncio
 async def test_compensate_tolerates_adapter_errors(
-    use_case, mock_n8n_adapter, mock_metabase_adapter, mock_appsmith_adapter,
-    tenant_context, plugin_id,
+    use_case,
+    mock_n8n_adapter,
+    mock_metabase_adapter,
+    mock_appsmith_adapter,
+    tenant_context,
+    plugin_id,
 ):
     mock_n8n_adapter.update_workflow.side_effect = RuntimeError("x")
     mock_n8n_adapter.delete_workflow.side_effect = RuntimeError("x")
@@ -631,10 +697,13 @@ async def test_compensate_tolerates_adapter_errors(
         "config_override": {"n8n": ["w1"]},
     }
     created = {"n8n": ["w-new"], "metabase": ["mb-new"], "appsmith": ["app-new"]}
-    await use_case._compensate(tenant_context, plugin_id, PLUGIN_CODE, snapshot, created)
+    await use_case._compensate(
+        tenant_context, plugin_id, PLUGIN_CODE, snapshot, created
+    )
 
 
 # ─── _log_step / _persist_steps ───────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_log_step_updates_existing(use_case):
@@ -657,6 +726,7 @@ async def test_persist_steps_failure_rolls_back(
 
 # ─── _find_n8n_credential / _ensure_* ─────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_find_n8n_credential_found(use_case, mock_session):
     result = MagicMock()
@@ -667,16 +737,26 @@ async def test_find_n8n_credential_found(use_case, mock_session):
 
 @pytest.mark.asyncio
 async def test_find_n8n_credential_no_session(
-    use_case, mock_plugin_repo, mock_manifest_parser, mock_n8n_adapter,
-    mock_metabase_adapter, mock_appsmith_adapter, mock_keycloak_adapter,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    mock_metabase_adapter,
+    mock_appsmith_adapter,
+    mock_keycloak_adapter,
     mock_mattermost_adapter,
 ):
     from app.core.use_cases.plugin_upgrade import PluginUpgradeUseCase
+
     uc = PluginUpgradeUseCase(
-        plugin_repo=mock_plugin_repo, manifest_parser=mock_manifest_parser,
-        n8n_adapter=mock_n8n_adapter, metabase_adapter=mock_metabase_adapter,
-        appsmith_adapter=mock_appsmith_adapter, keycloak_adapter=mock_keycloak_adapter,
-        mattermost_adapter=mock_mattermost_adapter, session=None,
+        plugin_repo=mock_plugin_repo,
+        manifest_parser=mock_manifest_parser,
+        n8n_adapter=mock_n8n_adapter,
+        metabase_adapter=mock_metabase_adapter,
+        appsmith_adapter=mock_appsmith_adapter,
+        keycloak_adapter=mock_keycloak_adapter,
+        mattermost_adapter=mock_mattermost_adapter,
+        session=None,
     )
     assert await uc._find_n8n_credential("ProteusDB_Real") is None
 
@@ -697,17 +777,22 @@ async def test_find_n8n_credential_exception_returns_none(use_case, mock_session
 
 @pytest.mark.asyncio
 async def test_ensure_mm_credential_existing(use_case):
-    with patch.object(use_case, "_find_n8n_credential",
-                      new=AsyncMock(return_value="c1")):
+    with patch.object(
+        use_case, "_find_n8n_credential", new=AsyncMock(return_value="c1")
+    ):
         assert await use_case._ensure_mm_credential() == ("c1", "ProteusMM")
 
 
 @pytest.mark.asyncio
 async def test_ensure_mm_credential_no_token(use_case):
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(MATTERMOST_BOT_TOKEN="", MATTERMOST_URL="http://mm")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.core.use_cases.plugin_upgrade.settings",
+            MagicMock(MATTERMOST_BOT_TOKEN="", MATTERMOST_URL="http://mm"),
+        ),
     ):
         assert await use_case._ensure_mm_credential() == (None, None)
 
@@ -716,9 +801,13 @@ async def test_ensure_mm_credential_no_token(use_case):
 async def test_ensure_mm_credential_creates(use_case, mock_n8n_adapter):
     mock_n8n_adapter.create_credential.return_value = {"id": "nid"}
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(MATTERMOST_BOT_TOKEN="tok", MATTERMOST_URL="http://mm")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.core.use_cases.plugin_upgrade.settings",
+            MagicMock(MATTERMOST_BOT_TOKEN="tok", MATTERMOST_URL="http://mm"),
+        ),
     ):
         assert await use_case._ensure_mm_credential() == ("nid", "ProteusMM")
     kwargs = mock_n8n_adapter.create_credential.await_args.kwargs
@@ -729,26 +818,32 @@ async def test_ensure_mm_credential_creates(use_case, mock_n8n_adapter):
 async def test_ensure_mm_credential_create_error(use_case, mock_n8n_adapter):
     mock_n8n_adapter.create_credential.side_effect = RuntimeError("n8n down")
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(MATTERMOST_BOT_TOKEN="tok", MATTERMOST_URL="http://mm")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.core.use_cases.plugin_upgrade.settings",
+            MagicMock(MATTERMOST_BOT_TOKEN="tok", MATTERMOST_URL="http://mm"),
+        ),
     ):
         assert await use_case._ensure_mm_credential() == (None, None)
 
 
 @pytest.mark.asyncio
 async def test_ensure_ollama_credential_existing(use_case):
-    with patch.object(use_case, "_find_n8n_credential",
-                      new=AsyncMock(return_value="o1")):
+    with patch.object(
+        use_case, "_find_n8n_credential", new=AsyncMock(return_value="o1")
+    ):
         assert await use_case._ensure_ollama_credential() == ("o1", "ProteusOllama")
 
 
 @pytest.mark.asyncio
 async def test_ensure_ollama_credential_no_base_url(use_case):
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(LLM_BASE_URL="")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch("app.core.use_cases.plugin_upgrade.settings", MagicMock(LLM_BASE_URL="")),
     ):
         assert await use_case._ensure_ollama_credential() == (None, None)
 
@@ -757,9 +852,13 @@ async def test_ensure_ollama_credential_no_base_url(use_case):
 async def test_ensure_ollama_credential_strips_v1(use_case, mock_n8n_adapter):
     mock_n8n_adapter.create_credential.return_value = {"id": "oid"}
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(LLM_BASE_URL="http://ollama:11434/v1")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.core.use_cases.plugin_upgrade.settings",
+            MagicMock(LLM_BASE_URL="http://ollama:11434/v1"),
+        ),
     ):
         assert await use_case._ensure_ollama_credential() == ("oid", "ProteusOllama")
     kwargs = mock_n8n_adapter.create_credential.await_args.kwargs
@@ -770,9 +869,13 @@ async def test_ensure_ollama_credential_strips_v1(use_case, mock_n8n_adapter):
 async def test_ensure_ollama_credential_create_error(use_case, mock_n8n_adapter):
     mock_n8n_adapter.create_credential.side_effect = RuntimeError("n8n down")
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch("app.core.use_cases.plugin_upgrade.settings",
-              MagicMock(LLM_BASE_URL="http://ollama:11434")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.core.use_cases.plugin_upgrade.settings",
+            MagicMock(LLM_BASE_URL="http://ollama:11434"),
+        ),
     ):
         assert await use_case._ensure_ollama_credential() == (None, None)
 
@@ -781,14 +884,23 @@ def test_bind_workflow_credentials(use_case):
     wf_json = {
         "nodes": [
             {"type": "n8n-nodes-base.webhook", "parameters": {}},
-            {"type": "n8n-nodes-base.postgres",
-             "parameters": {"query": "SELECT * FROM {{TENANT_SCHEMA}}.t"}},
+            {
+                "type": "n8n-nodes-base.postgres",
+                "parameters": {"query": "SELECT * FROM {{TENANT_SCHEMA}}.t"},
+            },
             {"type": "n8n-nodes-base.mattermost", "parameters": {}},
             {"type": "n8n-nodes-base.ollama", "parameters": {}},
         ]
     }
     use_case._bind_workflow_credentials(
-        wf_json, "tenant_x", "db1", "mm1", "ProteusMM", "ol1", "ProteusOllama", "C123",
+        wf_json,
+        "tenant_x",
+        "db1",
+        "mm1",
+        "ProteusMM",
+        "ol1",
+        "ProteusOllama",
+        "C123",
     )
     nodes = {n["type"]: n for n in wf_json["nodes"]}
     assert nodes["n8n-nodes-base.webhook"]["parameters"]["httpMethod"] == "POST"
@@ -803,17 +915,23 @@ def test_bind_workflow_credentials(use_case):
 
 # ─── _step_n8n_update ─────────────────────────────────────────────────
 
+
 def _write_workflow(tmp_path, fname="wf.json", name="WF1"):
     plug_dir = tmp_path / PLUGIN_CODE
     plug_dir.mkdir(parents=True, exist_ok=True)
-    (plug_dir / fname).write_text(json.dumps({"name": name, "nodes": []}),
-                                  encoding="utf-8")
+    (plug_dir / fname).write_text(
+        json.dumps({"name": name, "nodes": []}), encoding="utf-8"
+    )
     return fname
 
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_in_place(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
@@ -821,13 +939,21 @@ async def test_step_n8n_update_in_place(
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file=fname)])
     snapshot = {"n8n_exports": {"old-1": {"name": "old"}}}
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
-        ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, snapshot)
+        ids = await use_case._step_n8n_update(
+            tenant_context, PLUGIN_CODE, manifest, snapshot
+        )
     assert ids == ["old-1"]
     mock_n8n_adapter.update_workflow.assert_awaited_once()
     mock_n8n_adapter.activate_workflow.assert_awaited_once_with("old-1")
@@ -835,7 +961,11 @@ async def test_step_n8n_update_in_place(
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_import_new_activate_tolerated(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
@@ -844,11 +974,17 @@ async def test_step_n8n_update_import_new_activate_tolerated(
     mock_n8n_adapter.activate_workflow.side_effect = RuntimeError("cannot activate")
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file=fname)])
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
         ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
     assert ids == ["new-9"]
@@ -857,22 +993,34 @@ async def test_step_n8n_update_import_new_activate_tolerated(
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_missing_file_skipped_and_import_error(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
     mock_n8n_adapter.list_workflows.return_value = []
     mock_n8n_adapter.import_workflow.side_effect = RuntimeError("import fail")
-    manifest = SimpleNamespace(workflows=[
-        SimpleNamespace(file="missing.json"),
-        SimpleNamespace(file=fname),
-    ])
+    manifest = SimpleNamespace(
+        workflows=[
+            SimpleNamespace(file="missing.json"),
+            SimpleNamespace(file=fname),
+        ]
+    )
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
         with pytest.raises(RuntimeError, match="import fail"):
             await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
@@ -880,9 +1028,14 @@ async def test_step_n8n_update_missing_file_skipped_and_import_error(
 
 # ─── _step_metabase_replace ───────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_step_metabase_replace_happy(
-    use_case, mock_manifest_parser, mock_metabase_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_metabase_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
@@ -892,7 +1045,9 @@ async def test_step_metabase_replace_happy(
     mock_metabase_adapter.delete_dashboard.side_effect = RuntimeError("gone")
     manifest = SimpleNamespace(dashboards=[SimpleNamespace(file="db.json")])
     snapshot = {"config_override": {"metabase": ["old-9"]}}
-    ids = await use_case._step_metabase_replace(tenant_context, PLUGIN_CODE, manifest, snapshot)
+    ids = await use_case._step_metabase_replace(
+        tenant_context, PLUGIN_CODE, manifest, snapshot
+    )
     assert ids == ["7"]
     mock_metabase_adapter.import_dashboard.assert_awaited_once()
     mock_metabase_adapter.delete_dashboard.assert_awaited_once_with("old-9")
@@ -900,7 +1055,11 @@ async def test_step_metabase_replace_happy(
 
 @pytest.mark.asyncio
 async def test_step_metabase_replace_import_error(
-    use_case, mock_manifest_parser, mock_metabase_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_metabase_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
@@ -914,20 +1073,31 @@ async def test_step_metabase_replace_import_error(
 
 @pytest.mark.asyncio
 async def test_step_metabase_replace_missing_file_skipped(
-    use_case, mock_manifest_parser, mock_metabase_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_metabase_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     manifest = SimpleNamespace(dashboards=[SimpleNamespace(file="nodash.json")])
-    ids = await use_case._step_metabase_replace(tenant_context, PLUGIN_CODE, manifest, {})
+    ids = await use_case._step_metabase_replace(
+        tenant_context, PLUGIN_CODE, manifest, {}
+    )
     assert ids == []
     mock_metabase_adapter.import_dashboard.assert_not_awaited()
 
 
 # ─── _step_appsmith_replace ───────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_step_appsmith_replace_happy(
-    use_case, mock_manifest_parser, mock_appsmith_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_appsmith_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
@@ -937,7 +1107,9 @@ async def test_step_appsmith_replace_happy(
     mock_appsmith_adapter.delete_application.side_effect = RuntimeError("gone")
     manifest = SimpleNamespace(ui=SimpleNamespace(appsmith_app="app.json"))
     snapshot = {"config_override": {"appsmith": ["old-app"]}}
-    ids = await use_case._step_appsmith_replace(tenant_context, PLUGIN_CODE, manifest, snapshot)
+    ids = await use_case._step_appsmith_replace(
+        tenant_context, PLUGIN_CODE, manifest, snapshot
+    )
     assert ids == ["app-9"]
     mock_appsmith_adapter.import_application.assert_awaited_once()
     assert mock_appsmith_adapter.delete_application.await_count == 1
@@ -945,12 +1117,18 @@ async def test_step_appsmith_replace_happy(
 
 @pytest.mark.asyncio
 async def test_step_appsmith_replace_no_ui(
-    use_case, mock_manifest_parser, mock_appsmith_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_appsmith_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     manifest = SimpleNamespace(ui=None)
     snapshot = {"config_override": {"appsmith": ["old-app"]}}
-    ids = await use_case._step_appsmith_replace(tenant_context, PLUGIN_CODE, manifest, snapshot)
+    ids = await use_case._step_appsmith_replace(
+        tenant_context, PLUGIN_CODE, manifest, snapshot
+    )
     assert ids == []
     mock_appsmith_adapter.import_application.assert_not_awaited()
     mock_appsmith_adapter.delete_application.assert_awaited_once()
@@ -958,7 +1136,11 @@ async def test_step_appsmith_replace_no_ui(
 
 @pytest.mark.asyncio
 async def test_step_appsmith_replace_import_error(
-    use_case, mock_manifest_parser, mock_appsmith_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_appsmith_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
@@ -972,18 +1154,23 @@ async def test_step_appsmith_replace_import_error(
 
 # ─── _step_keycloak_roles ─────────────────────────────────────────────
 
+
 def _kc_roles():
     return [
-        SimpleNamespace(name="admin", display_name="Admin",
-                        description="d", permissions=["p1"]),
-        SimpleNamespace(name="viewer", display_name="Viewer",
-                        description="d", permissions=[]),
+        SimpleNamespace(
+            name="admin", display_name="Admin", description="d", permissions=["p1"]
+        ),
+        SimpleNamespace(
+            name="viewer", display_name="Viewer", description="d", permissions=[]
+        ),
     ]
 
 
 @pytest.mark.asyncio
 async def test_step_keycloak_roles_happy(
-    use_case, mock_keycloak_adapter, tenant_context,
+    use_case,
+    mock_keycloak_adapter,
+    tenant_context,
 ):
     use_case.tenant_repo = AsyncMock()
     use_case.tenant_repo.get_by_id.return_value = SimpleNamespace(
@@ -1007,16 +1194,27 @@ async def test_step_keycloak_roles_happy(
 
 @pytest.mark.asyncio
 async def test_step_keycloak_roles_default_realm_no_session(
-    use_case, mock_plugin_repo, mock_manifest_parser, mock_n8n_adapter,
-    mock_metabase_adapter, mock_appsmith_adapter, mock_keycloak_adapter,
-    mock_mattermost_adapter, tenant_context,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    mock_metabase_adapter,
+    mock_appsmith_adapter,
+    mock_keycloak_adapter,
+    mock_mattermost_adapter,
+    tenant_context,
 ):
     from app.core.use_cases.plugin_upgrade import PluginUpgradeUseCase
+
     uc = PluginUpgradeUseCase(
-        plugin_repo=mock_plugin_repo, manifest_parser=mock_manifest_parser,
-        n8n_adapter=mock_n8n_adapter, metabase_adapter=mock_metabase_adapter,
-        appsmith_adapter=mock_appsmith_adapter, keycloak_adapter=mock_keycloak_adapter,
-        mattermost_adapter=mock_mattermost_adapter, session=None,
+        plugin_repo=mock_plugin_repo,
+        manifest_parser=mock_manifest_parser,
+        n8n_adapter=mock_n8n_adapter,
+        metabase_adapter=mock_metabase_adapter,
+        appsmith_adapter=mock_appsmith_adapter,
+        keycloak_adapter=mock_keycloak_adapter,
+        mattermost_adapter=mock_mattermost_adapter,
+        session=None,
     )
     manifest = SimpleNamespace(roles=_kc_roles()[:1])
     created = await uc._step_keycloak_roles(tenant_context, PLUGIN_CODE, manifest)
@@ -1026,8 +1224,9 @@ async def test_step_keycloak_roles_default_realm_no_session(
 
 
 @pytest.mark.asyncio
-async def test_step_keycloak_roles_create_error(use_case, mock_keycloak_adapter,
-                                                tenant_context):
+async def test_step_keycloak_roles_create_error(
+    use_case, mock_keycloak_adapter, tenant_context
+):
     mock_keycloak_adapter.create_role.side_effect = RuntimeError("kc down")
     manifest = SimpleNamespace(roles=_kc_roles()[:1])
     with pytest.raises(RuntimeError, match="kc down"):
@@ -1036,8 +1235,10 @@ async def test_step_keycloak_roles_create_error(use_case, mock_keycloak_adapter,
 
 # ─── SQL helpers (pure functions) ─────────────────────────────────────
 
+
 def test_split_sql_statements_basic():
     from app.core.use_cases.plugin_upgrade import _split_sql_statements
+
     stmts = _split_sql_statements("CREATE TABLE t (id INT); SELECT 1;")
     assert stmts == ["CREATE TABLE t (id INT)", "SELECT 1"]
     assert _split_sql_statements("SELECT 3") == ["SELECT 3"]
@@ -1045,6 +1246,7 @@ def test_split_sql_statements_basic():
 
 def test_split_sql_statements_dollar_quote_and_strings():
     from app.core.use_cases.plugin_upgrade import _split_sql_statements
+
     sql = (
         "CREATE FUNCTION f() RETURNS void AS $$ BEGIN RAISE NOTICE 'a;b'; END; $$; "
         "SELECT 'it''s; ok'; -- trailing; comment\nSELECT 2;"
@@ -1057,6 +1259,7 @@ def test_split_sql_statements_dollar_quote_and_strings():
 
 def test_split_sql_statements_block_comment_and_empty():
     from app.core.use_cases.plugin_upgrade import _split_sql_statements
+
     assert _split_sql_statements("") == []
     assert _split_sql_statements(";;;") == []
     stmts = _split_sql_statements("/* drop; table */ SELECT 1;")
@@ -1065,6 +1268,7 @@ def test_split_sql_statements_block_comment_and_empty():
 
 def test_strip_sql_comments():
     from app.core.use_cases.plugin_upgrade import _strip_sql_comments
+
     out = _strip_sql_comments("SELECT 1; -- DROP TABLE x\n/* TRUNCATE y */ SELECT 2;")
     assert "DROP" not in out and "TRUNCATE" not in out
     assert "SELECT" in out
@@ -1072,10 +1276,15 @@ def test_strip_sql_comments():
 
 # ─── run_upgrade: notification/session warning branches ───────────────
 
+
 @pytest.mark.asyncio
 async def test_run_upgrade_success_tolerates_notify_errors(
-    use_case, mock_plugin_repo, mock_manifest_parser,
-    mock_mattermost_adapter, tenant_context, plugin_id,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_mattermost_adapter,
+    tenant_context,
+    plugin_id,
 ):
     _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id)
     mock_mattermost_adapter.send_message.side_effect = RuntimeError("mm down")
@@ -1083,12 +1292,19 @@ async def test_run_upgrade_success_tolerates_notify_errors(
     mock_event_bus.publish_plugin_lifecycle.side_effect = RuntimeError("bus down")
     use_case.event_bus = mock_event_bus
     with (
-        patch.object(use_case, "_snapshot",
-                     new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}})),
+        patch.object(
+            use_case,
+            "_snapshot",
+            new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}}),
+        ),
         patch.object(use_case, "_step_db_migrations", new=AsyncMock(return_value=0)),
         patch.object(use_case, "_step_n8n_update", new=AsyncMock(return_value=[])),
-        patch.object(use_case, "_step_metabase_replace", new=AsyncMock(return_value=[])),
-        patch.object(use_case, "_step_appsmith_replace", new=AsyncMock(return_value=[])),
+        patch.object(
+            use_case, "_step_metabase_replace", new=AsyncMock(return_value=[])
+        ),
+        patch.object(
+            use_case, "_step_appsmith_replace", new=AsyncMock(return_value=[])
+        ),
         patch.object(use_case, "_step_keycloak_roles", new=AsyncMock(return_value=[])),
     ):
         await use_case.run_upgrade(
@@ -1099,8 +1315,13 @@ async def test_run_upgrade_success_tolerates_notify_errors(
 
 @pytest.mark.asyncio
 async def test_run_upgrade_failure_tolerates_cleanup_errors(
-    use_case, mock_plugin_repo, mock_manifest_parser, mock_session,
-    mock_mattermost_adapter, tenant_context, plugin_id,
+    use_case,
+    mock_plugin_repo,
+    mock_manifest_parser,
+    mock_session,
+    mock_mattermost_adapter,
+    tenant_context,
+    plugin_id,
 ):
     _setup_run_upgrade_common(mock_plugin_repo, mock_manifest_parser, plugin_id)
     mock_event_bus = AsyncMock()
@@ -1110,15 +1331,22 @@ async def test_run_upgrade_failure_tolerates_cleanup_errors(
     mock_session.execute.side_effect = RuntimeError("cannot reset")
     mock_plugin_repo.update_install_steps_log.side_effect = RuntimeError("log fail")
     with (
-        patch.object(use_case, "_snapshot",
-                     new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}})),
-        patch.object(use_case, "_step_db_migrations",
-                     new=AsyncMock(side_effect=RuntimeError("db boom"))),
+        patch.object(
+            use_case,
+            "_snapshot",
+            new=AsyncMock(return_value={"config_override": {}, "n8n_exports": {}}),
+        ),
+        patch.object(
+            use_case,
+            "_step_db_migrations",
+            new=AsyncMock(side_effect=RuntimeError("db boom")),
+        ),
         patch.object(use_case, "_compensate", new=AsyncMock()),
     ):
         with pytest.raises(PluginUpgradeError, match="Nâng cấp plugin thất bại"):
             await use_case.run_upgrade(
-                context=tenant_context, plugin_code_name=PLUGIN_CODE,
+                context=tenant_context,
+                plugin_code_name=PLUGIN_CODE,
                 task_id=uuid.uuid4(),
             )
     status_kwargs = mock_plugin_repo.update_status.await_args.kwargs
@@ -1126,6 +1354,7 @@ async def test_run_upgrade_failure_tolerates_cleanup_errors(
 
 
 # ─── plugins_dir fallback (LocalManifestParser) ───────────────────────
+
 
 @pytest.mark.asyncio
 async def test_discover_fallback_plugins_dir(use_case, mock_manifest_parser):
@@ -1136,8 +1365,12 @@ async def test_discover_fallback_plugins_dir(use_case, mock_manifest_parser):
 
 @pytest.mark.asyncio
 async def test_steps_fallback_plugins_dir(
-    use_case, mock_manifest_parser, mock_n8n_adapter,
-    mock_metabase_adapter, mock_appsmith_adapter, tenant_context,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    mock_metabase_adapter,
+    mock_appsmith_adapter,
+    tenant_context,
 ):
     mock_manifest_parser.plugins_dir = None
     manifest = SimpleNamespace(
@@ -1146,18 +1379,36 @@ async def test_steps_fallback_plugins_dir(
         ui=SimpleNamespace(appsmith_app="app.json"),
     )
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
-        assert await use_case._step_n8n_update(
-            tenant_context, "no-such-plugin-xyz", manifest, {}) == []
-    assert await use_case._step_metabase_replace(
-        tenant_context, "no-such-plugin-xyz", manifest, {}) == []
-    assert await use_case._step_appsmith_replace(
-        tenant_context, "no-such-plugin-xyz", manifest, {}) == []
+        assert (
+            await use_case._step_n8n_update(
+                tenant_context, "no-such-plugin-xyz", manifest, {}
+            )
+            == []
+        )
+    assert (
+        await use_case._step_metabase_replace(
+            tenant_context, "no-such-plugin-xyz", manifest, {}
+        )
+        == []
+    )
+    assert (
+        await use_case._step_appsmith_replace(
+            tenant_context, "no-such-plugin-xyz", manifest, {}
+        )
+        == []
+    )
     mock_n8n_adapter.import_workflow.assert_not_awaited()
     mock_metabase_adapter.import_dashboard.assert_not_awaited()
     mock_appsmith_adapter.import_application.assert_not_awaited()
@@ -1165,30 +1416,47 @@ async def test_steps_fallback_plugins_dir(
 
 # ─── n8n: list error + alerts channel branches ────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_step_n8n_update_existing_outside_snapshot(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
     mock_n8n_adapter.list_workflows.return_value = [{"name": "WF1", "id": "old-7"}]
+    mock_n8n_adapter.import_workflow.return_value = "new-import-7"
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file=fname)])
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
         ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
-    assert ids == ["old-7"]
-    mock_n8n_adapter.update_workflow.assert_awaited_once()
-    mock_n8n_adapter.import_workflow.assert_not_awaited()
+    # Workflow ngoài snapshot của tenant không được phép ghi đè (tránh cross-tenant overwrite)
+    assert ids == ["new-import-7"]
+    mock_n8n_adapter.update_workflow.assert_not_awaited()
+    mock_n8n_adapter.import_workflow.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_list_error_proceeds(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
@@ -1196,11 +1464,17 @@ async def test_step_n8n_update_list_error_proceeds(
     mock_n8n_adapter.import_workflow.return_value = "new-1"
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file=fname)])
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
     ):
         ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
     assert ids == ["new-1"]
@@ -1208,26 +1482,42 @@ async def test_step_n8n_update_list_error_proceeds(
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_resolves_alerts_channel(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
     plug_dir.mkdir(parents=True, exist_ok=True)
-    wf = {"name": "WF-mm",
-          "nodes": [{"type": "n8n-nodes-base.mattermost", "parameters": {}}]}
+    wf = {
+        "name": "WF-mm",
+        "nodes": [{"type": "n8n-nodes-base.mattermost", "parameters": {}}],
+    }
     (plug_dir / "wf.json").write_text(json.dumps(wf), encoding="utf-8")
     mock_n8n_adapter.list_workflows.return_value = []
     mock_n8n_adapter.import_workflow.return_value = "new-2"
     use_case.tenant_repo = AsyncMock()
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file="wf.json")])
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=("mm1", "ProteusMM"))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch("app.core.use_cases.tenant_onboarding.get_tenant_alerts_channel_id",
-              new=AsyncMock(return_value="C999")),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case,
+            "_ensure_mm_credential",
+            new=AsyncMock(return_value=("mm1", "ProteusMM")),
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
+        patch(
+            "app.core.use_cases.tenant_onboarding.get_tenant_alerts_channel_id",
+            new=AsyncMock(return_value="C999"),
+        ),
     ):
         ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
     assert ids == ["new-2"]
@@ -1238,7 +1528,11 @@ async def test_step_n8n_update_resolves_alerts_channel(
 
 @pytest.mark.asyncio
 async def test_step_n8n_update_alerts_channel_error_tolerated(
-    use_case, mock_manifest_parser, mock_n8n_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_n8n_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     fname = _write_workflow(tmp_path)
@@ -1247,13 +1541,21 @@ async def test_step_n8n_update_alerts_channel_error_tolerated(
     use_case.tenant_repo = AsyncMock()
     manifest = SimpleNamespace(workflows=[SimpleNamespace(file=fname)])
     with (
-        patch.object(use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)),
-        patch.object(use_case, "_ensure_mm_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch.object(use_case, "_ensure_ollama_credential",
-                     new=AsyncMock(return_value=(None, None))),
-        patch("app.core.use_cases.tenant_onboarding.get_tenant_alerts_channel_id",
-              new=AsyncMock(side_effect=RuntimeError("mm down"))),
+        patch.object(
+            use_case, "_find_n8n_credential", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            use_case, "_ensure_mm_credential", new=AsyncMock(return_value=(None, None))
+        ),
+        patch.object(
+            use_case,
+            "_ensure_ollama_credential",
+            new=AsyncMock(return_value=(None, None)),
+        ),
+        patch(
+            "app.core.use_cases.tenant_onboarding.get_tenant_alerts_channel_id",
+            new=AsyncMock(side_effect=RuntimeError("mm down")),
+        ),
     ):
         ids = await use_case._step_n8n_update(tenant_context, PLUGIN_CODE, manifest, {})
     assert ids == ["new-3"]
@@ -1261,9 +1563,14 @@ async def test_step_n8n_update_alerts_channel_error_tolerated(
 
 # ─── appsmith integration config + keycloak sync warning ──────────────
 
+
 @pytest.mark.asyncio
 async def test_step_appsmith_replace_with_integration_config(
-    use_case, mock_manifest_parser, mock_appsmith_adapter, tenant_context, tmp_path,
+    use_case,
+    mock_manifest_parser,
+    mock_appsmith_adapter,
+    tenant_context,
+    tmp_path,
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     plug_dir = tmp_path / PLUGIN_CODE
@@ -1275,7 +1582,9 @@ async def test_step_appsmith_replace_with_integration_config(
         "config": {"baseUrl": "http://appsmith"}
     }
     manifest = SimpleNamespace(ui=SimpleNamespace(appsmith_app="app.json"))
-    ids = await use_case._step_appsmith_replace(tenant_context, PLUGIN_CODE, manifest, {})
+    ids = await use_case._step_appsmith_replace(
+        tenant_context, PLUGIN_CODE, manifest, {}
+    )
     assert ids == ["app-1"]
     args, _ = mock_appsmith_adapter.import_application.await_args
     assert args[1] == {"baseUrl": "http://appsmith"}
@@ -1283,7 +1592,9 @@ async def test_step_appsmith_replace_with_integration_config(
 
 @pytest.mark.asyncio
 async def test_step_keycloak_roles_db_sync_warning(
-    use_case, mock_keycloak_adapter, tenant_context,
+    use_case,
+    mock_keycloak_adapter,
+    tenant_context,
 ):
     manifest = SimpleNamespace(roles=_kc_roles()[:1])
     with patch("app.core.use_cases.plugin_upgrade.RoleRepository") as mock_role_cls:
@@ -1302,4 +1613,3 @@ async def test_persist_steps_rollback_failure_suppressed(
     mock_session.rollback.side_effect = RuntimeError("rollback fail")
     use_case._log_step("snapshot", "DONE")
     await use_case._persist_steps(tenant_context, plugin_id)  # must not raise
-

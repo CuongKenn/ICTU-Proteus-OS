@@ -588,6 +588,10 @@ class PluginUpgradeUseCase:
 
         import json as _json
 
+        tenant_short = str(context.tenant_id).replace("-", "")[:8]
+        tenant_allowed_ids = set(
+            str(w) for w in snapshot.get("config_override", {}).get("n8n", []) or []
+        ) | set(str(k) for k in snapshot.get("n8n_exports", {}).keys())
         for wf in manifest.workflows:
             wf_path = plugins_dir / plugin_code_name / wf.file
             if not wf_path.exists():
@@ -604,17 +608,31 @@ class PluginUpgradeUseCase:
                 proteus_ollama_cred_id,
                 proteus_ollama_cred_name,
                 alerts_channel_id,
+                tenant_short=tenant_short,
             )
-            wf_name = wf_json.get("name") or wf.file
-            old_id = existing_by_name.get(wf_name)
-            if old_id and old_id in snapshot.get("n8n_exports", {}):
+            wf_orig_name = wf_json.get("name") or wf.file or "workflow"
+            wf_name = f"t_{tenant_short}_{wf_orig_name}"
+            wf_json["name"] = wf_name
+
+            candidate_id = existing_by_name.get(wf_name) or existing_by_name.get(
+                wf_orig_name
+            )
+            old_id = None
+            if candidate_id and candidate_id in tenant_allowed_ids:
+                old_id = candidate_id
+            else:
+                for wid, exp in snapshot.get("n8n_exports", {}).items():
+                    if str(wid) in tenant_allowed_ids and (
+                        exp.get("name") in (wf_name, wf_orig_name)
+                        or len(manifest.workflows) == 1
+                    ):
+                        old_id = str(wid)
+                        break
+
+            if old_id and old_id in tenant_allowed_ids:
                 await self.n8n_adapter.update_workflow(old_id, wf_json)
                 new_ids.append(old_id)
                 logger.info("Đã update workflow n8n tại chỗ", extra={"id": old_id})
-            elif old_id:
-                # Tồn tại trên n8n nhưng ngoài snapshot (tạo tay?) → update luôn.
-                await self.n8n_adapter.update_workflow(old_id, wf_json)
-                new_ids.append(old_id)
             else:
                 wid = await self.n8n_adapter.import_workflow(wf_json)
                 new_ids.append(wid)
@@ -831,13 +849,19 @@ class PluginUpgradeUseCase:
         proteus_ollama_cred_id: str | None,
         proteus_ollama_cred_name: str | None,
         alerts_channel_id: str | None = None,
+        tenant_short: str | None = None,
     ) -> None:
         """Gắn credentials dùng chung vào nodes (giống luồng install)."""
         for node in wf_json.get("nodes", []):
             if (node.get("type") or "") == "n8n-nodes-base.webhook":
                 params = node.setdefault("parameters", {})
-                if isinstance(params, dict) and not params.get("httpMethod"):
-                    params["httpMethod"] = "POST"
+                if isinstance(params, dict):
+                    if not params.get("httpMethod"):
+                        params["httpMethod"] = "POST"
+                    if tenant_short:
+                        raw_path = params.get("path") or ""
+                        if raw_path and not raw_path.startswith(f"t_{tenant_short}_"):
+                            params["path"] = f"t_{tenant_short}_{raw_path.lstrip('/')}"
             if "parameters" in node and "query" in node["parameters"]:
                 query = node["parameters"]["query"]
                 if "{{TENANT_SCHEMA}}" in query:

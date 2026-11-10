@@ -115,7 +115,8 @@ async def test_execute_success_envelope(tmp_path, ctx):
     assert envelope["asset_id"] == "x"
     assert "data" not in envelope
     url = n8n.trigger_webhook.call_args[0][0]
-    assert url.endswith("/webhook/asset/request")
+    tenant_short = str(ctx.tenant_id).replace("-", "")[:8]
+    assert url.endswith(f"/webhook/t_{tenant_short}_asset/request")
 
 
 async def test_execute_id_fallback_file_stem(tmp_path, ctx):
