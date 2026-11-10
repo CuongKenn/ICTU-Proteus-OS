@@ -117,9 +117,15 @@ class RoleRepository:
                                 all_permissions.add(f"{module}:{action}")
                                 all_permissions.add(f"{module}.{action}")
                         elif actions is True:
-                            all_permissions.add(str(module))
-                            all_permissions.add(f"{module}:*")
-                            all_permissions.add(f"{module}.*")
+                            m_str = str(module)
+                            all_permissions.add(m_str)
+                            if ":" in m_str:
+                                all_permissions.add(m_str.replace(":", "."))
+                            elif "." in m_str:
+                                all_permissions.add(m_str.replace(".", ":"))
+                            else:
+                                all_permissions.add(f"{m_str}:*")
+                                all_permissions.add(f"{m_str}.*")
 
         return list(all_permissions)
 

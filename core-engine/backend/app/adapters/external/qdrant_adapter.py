@@ -1,9 +1,7 @@
-# Copyright (c) 2026 CuongKenn & ICTU Team
-# SPDX-License-Identifier: AGPL-3.0-or-later
-
 import asyncio
 import logging
 import threading
+import uuid
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient
@@ -11,6 +9,10 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.domain.ports import AbstractVectorDBPort
 from app.infrastructure.config import settings
+
+# Copyright (c) 2026 CuongKenn & ICTU Team
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 logger = logging.getLogger(__name__)
 
@@ -140,16 +142,21 @@ class QdrantAdapter(AbstractVectorDBPort):
         try:
             await self._ensure_collection_exists()
 
-            # Gắn tenant_id vào mỗi metadata để đảm bảo data isolation
-            for meta in metadatas:
+            # Gắn tenant_id vào mỗi metadata và sinh deterministic UUID5 point ID (#734)
+            point_ids = []
+            for idx, meta in enumerate(metadatas):
                 meta["tenant_id"] = tenant_id
+                doc_id = meta.get("document_id") or ""
+                chunk_idx = meta.get("chunk_index", idx)
+                key = f"{tenant_id}:{doc_id}:{chunk_idx}"
+                point_ids.append(str(uuid.uuid5(uuid.NAMESPACE_DNS, key)))
 
             # fastembed client tự động sinh text embeddings và sparse vectors
-            # uuid generation cho id nếu cần, nhưng .add() có thể tự sinh id.
             await self.client.add(
                 collection_name=self.collection_name,
                 documents=chunks,
                 metadata=metadatas,
+                ids=point_ids,
             )
         except Exception as e:
             logger.error("Error upserting vectors to Qdrant: %s", e)

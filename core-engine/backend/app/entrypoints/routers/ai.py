@@ -23,6 +23,7 @@ from app.entrypoints.dependencies import (
     get_plugin_repo,
     get_qdrant_adapter,
     get_rag_ingestion_use_case,
+    require_permission,
 )
 from app.entrypoints.schemas.ai_command import (
     AIChatRequest,
@@ -79,7 +80,12 @@ async def submit_ai_chat(
                 pass
         if not real_command_id and result.get("steps"):
             steps = result["steps"]
-            if steps and isinstance(steps, list) and isinstance(steps[-1], dict) and steps[-1].get("command_id"):
+            if (
+                steps
+                and isinstance(steps, list)
+                and isinstance(steps[-1], dict)
+                and steps[-1].get("command_id")
+            ):
                 try:
                     real_command_id = uuid.UUID(str(steps[-1]["command_id"]))
                 except (ValueError, TypeError):
@@ -195,16 +201,25 @@ async def submit_ai_command(
     "/knowledge/ingest",
     status_code=status.HTTP_200_OK,
     summary="Manual Trigger: RAG Document Ingestion",
+    dependencies=[Depends(require_permission("ai.knowledge.ingest"))],
 )
+@limiter.limit("5/minute")
 async def trigger_rag_ingestion(
+    request: Request,
+    collection_id: str | None = None,
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: RAGIngestionUseCase = Depends(get_rag_ingestion_use_case),
 ):
     """
     Kích hoạt thủ công quá trình Ingestion tài liệu từ Outline vào Qdrant
-    cho tenant hiện tại.
+    cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734).
     """
-    result = await use_case.execute(str(ctx.tenant_id))
+    target_collection = (
+        collection_id
+        or getattr(ctx, "outline_collection_id", None)
+        or str(ctx.tenant_id)
+    )
+    result = await use_case.execute(str(ctx.tenant_id), collection_id=target_collection)
     return result
 
 

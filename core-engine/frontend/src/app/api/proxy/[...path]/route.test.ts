@@ -171,4 +171,28 @@ describe("BFF Proxy Route Handler", () => {
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://plugins.proteus.local:5180");
     expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
   });
+
+  it("blocks path traversal attempts with 400 (#734)", async () => {
+    vi.mocked(getToken).mockResolvedValue({
+      accessToken: "valid-token",
+    } as any);
+
+    const req = new NextRequest("http://localhost:3000/api/proxy/v1/..%2F..%2Fsecret");
+    const res = await GET(req, { params: { path: ["v1", "..", "secret"] } });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("Path traversal forbidden");
+  });
+
+  it("blocks access to internal webhook routes with 403 (#734)", async () => {
+    vi.mocked(getToken).mockResolvedValue({
+      accessToken: "valid-token",
+    } as any);
+
+    const req = new NextRequest("http://localhost:3000/api/proxy/v1/webhooks/mattermost");
+    const res = await GET(req, { params: { path: ["v1", "webhooks", "mattermost"] } });
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe("Access to internal routes is forbidden");
+  });
 });

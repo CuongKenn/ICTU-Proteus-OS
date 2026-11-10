@@ -57,7 +57,14 @@ class MetabaseAdapter(AbstractAnalyticsPort):
         self._base_url: str = (
             settings.METABASE_INTERNAL_URL or settings.METABASE_SITE_URL
         ).rstrip("/")
-        self._embedding_key: str | None = settings.METABASE_EMBEDDING_KEY
+        public_url = getattr(settings, "METABASE_PUBLIC_URL", None)
+        if not public_url or not isinstance(public_url, str):
+            public_url = settings.METABASE_SITE_URL
+        self._public_url: str = str(public_url).rstrip("/")
+        self._embedding_key: str | None = (
+            settings.METABASE_EMBEDDING_KEY or settings.METABASE_SECRET_KEY
+        )
+        self._api_key: str | None = getattr(settings, "METABASE_API_KEY", None)
         self._headers: dict[str, str] = {
             "Content-Type": "application/json",
         }
@@ -72,14 +79,40 @@ class MetabaseAdapter(AbstractAnalyticsPort):
         """Tạo URL đầy đủ từ base URL và path tương đối."""
         return f"{self._base_url}/api/{path.lstrip('/')}"
 
-    async def _ensure_session(self) -> str:
+    async def _ensure_session(self) -> str | None:
         """
-        Lấy session token để gọi Metabase Admin API.
-        Sử dụng API Key (METABASE_EMBEDDING_KEY) làm session header.
-        Metabase OSS hỗ trợ API key authentication.
+        Lấy session token hoặc API key để gọi Metabase Admin API (#734).
         """
-        if self._session_token is None:
-            self._session_token = self._embedding_key
+        if self._session_token is not None:
+            return self._session_token
+
+        # 1. Ưu tiên METABASE_API_KEY
+        if self._api_key:
+            self._session_token = self._api_key
+            return self._session_token
+
+        # 2. Hoặc xác thực qua /api/session
+        admin_user = getattr(settings, "METABASE_ADMIN_USERNAME", None)
+        admin_pass = getattr(settings, "METABASE_ADMIN_PASSWORD", None)
+        if admin_user and admin_pass:
+            try:
+                resp = await self._client.post(
+                    f"{self._base_url}/api/session",
+                    json={"username": admin_user, "password": admin_pass},
+                    timeout=5.0,
+                )
+                if resp.status_code == 200:
+                    token = resp.json().get("id")
+                    if token:
+                        self._session_token = str(token)
+                        return self._session_token
+            except Exception as e:
+                logger.warning(
+                    "Không thể xác thực với Metabase qua /api/session: %s", e
+                )
+
+        # 3. Fallback: dùng embedding key làm token cho mock test
+        self._session_token = self._embedding_key
         return self._session_token
 
     async def _request_with_retry(
@@ -101,10 +134,14 @@ class MetabaseAdapter(AbstractAnalyticsPort):
 
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
-                # Gắn API Key (nếu có)
+                # Gắn API Key / Session token (#734)
                 headers = dict(self._headers)
                 if session_token:
-                    headers["X-Metabase-Session"] = session_token
+                    if self._api_key and session_token == self._api_key:
+                        headers["x-api-key"] = session_token
+                    else:
+                        headers["X-Metabase-Session"] = session_token
+                        headers["x-api-key"] = session_token
 
                 response = await self._client.request(
                     method,
@@ -287,7 +324,7 @@ class MetabaseAdapter(AbstractAnalyticsPort):
         )
 
         embed_url = (
-            f"{self._base_url}/embed/dashboard/{token}" "#bordered=true&titled=true"
+            f"{self._public_url}/embed/dashboard/{token}#bordered=true&titled=true"
         )
 
         logger.debug(
