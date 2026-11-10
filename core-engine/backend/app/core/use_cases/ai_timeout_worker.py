@@ -39,6 +39,11 @@ class AITimeoutWorker:
         now = datetime.now(UTC)
 
         try:
+            _active_sess = getattr(self.ai_command_repo, "_session", None)
+            if _active_sess is not None:
+                from app.infrastructure.database import set_session_tenant
+
+                await set_session_tenant(_active_sess, "__system__")
             # 1. Tìm các lệnh đã quá hạn
             expired_commands = await self.ai_command_repo.get_expired_pending_commands()
 

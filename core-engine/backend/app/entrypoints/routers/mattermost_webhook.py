@@ -213,9 +213,18 @@ async def mattermost_interactive_callback(
             "Yêu cầu %s được PHÊ DUYỆT bởi user %s. Kích hoạt n8n.", action_id, user_id
         )
         try:
+            _mm_sess = getattr(ai_command_use_case.ai_command_repo, "_session", None)
+            if _mm_sess is not None:
+                from app.infrastructure.database import set_session_tenant
+
+                await set_session_tenant(_mm_sess, "__system__")
             cmd = await ai_command_use_case.ai_command_repo.get_command_by_id(
                 uuid.UUID(action_id)
             )
+            if cmd and cmd.get("tenant_id") and _mm_sess is not None:
+                from app.infrastructure.database import set_session_tenant
+
+                await set_session_tenant(_mm_sess, cmd["tenant_id"])
         except (ValueError, AttributeError, TypeError):
             cmd = None
         try:
