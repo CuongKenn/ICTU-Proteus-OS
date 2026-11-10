@@ -21,6 +21,7 @@ from fastapi import (
 )
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters.external.local_manifest_parser import ManifestParserError
 from app.adapters.external.n8n_adapter import N8nAdapter, N8nAdapterError
 from app.adapters.repositories.base import AbstractPluginRepository
 from app.core.domain.entities import CredentialInput, PluginStatus, TenantContext
@@ -811,8 +812,14 @@ async def list_plugin_actions(
     render nút động — plugin có N workflow cũng không cần thêm endpoint.
     Cron/manual không xuất hiện ở đây (chạy theo lịch hoặc bởi admin/AI).
     """
-    actions = await use_case.list_actions(ctx=ctx, plugin_code=code)
-    return PluginActionListResponse(plugin=code, actions=actions)
+    try:
+        actions = await use_case.list_actions(ctx=ctx, plugin_code=code)
+        return PluginActionListResponse(plugin=code, actions=actions)
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
 
 
 @router.post(
@@ -903,6 +910,11 @@ async def create_plugin_record(
         return await use_case.create_record(
             ctx=ctx, plugin_code=code, table=table, data=body
         )
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except IntegrityError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -928,6 +940,11 @@ async def update_plugin_record(
         return await use_case.update_record(
             ctx=ctx, plugin_code=code, table=table, record_id=record_id, data=body
         )
+    except ManifestParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except IntegrityError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -315,6 +315,8 @@ async def ensure_ai_session(
         )
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return SessionResponse(session_id=session_id)
 
@@ -330,7 +332,10 @@ async def list_ai_sessions(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    return await use_case.sessions(ctx.tenant_id, ctx.user_id)
+    try:
+        return await use_case.sessions(ctx.tenant_id, ctx.user_id)
+    except ValueError:
+        return []
 
 
 @router.get(
@@ -349,6 +354,8 @@ async def list_ai_messages(
         return await use_case.history(ctx.tenant_id, ctx.user_id, session_id)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post(
@@ -380,6 +387,8 @@ async def append_ai_message(
         )
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return ChatMessageResponse(
         id=msg_id,

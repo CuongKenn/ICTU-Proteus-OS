@@ -166,8 +166,11 @@ class RoleRepository:
 
     async def delete_role(self, role_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         """
-        Xóa Role.
+        Xóa Role. Xóa các bản ghi liên kết trong user_roles trước để tránh vi phạm foreign key.
         """
+        await self.session.execute(
+            delete(UserRoleModel).where(UserRoleModel.role_id == role_id)
+        )
         stmt = delete(RoleModel).where(
             and_(RoleModel.id == role_id, RoleModel.tenant_id == tenant_id)
         )

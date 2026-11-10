@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from app.core.domain.exceptions import ProteusBaseException
 from app.core.domain.plugin_manifest import PluginManifest
 from app.core.domain.ports import AbstractManifestParserPort
 from app.infrastructure.config import settings
@@ -16,7 +17,7 @@ from app.infrastructure.config import settings
 logger = logging.getLogger(__name__)
 
 
-class ManifestParserError(Exception):
+class ManifestParserError(ProteusBaseException):
     """Lỗi khi đọc hoặc parse manifest."""
 
 
