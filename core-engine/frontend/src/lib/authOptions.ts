@@ -57,11 +57,35 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
         return { ...token, error: "RefreshAccessTokenError" };
       }
 
+      let refreshedRoles = token.roles as string[] | undefined;
+      let refreshedTenantId = token.tenant_id as string | undefined;
+      if (refreshed.access_token) {
+        try {
+          const payloadBase64 = refreshed.access_token.split(".")[1];
+          if (payloadBase64) {
+            const decoded = JSON.parse(
+              Buffer.from(payloadBase64, "base64url").toString("utf-8")
+            );
+            if (decoded?.realm_access?.roles) {
+              refreshedRoles = decoded.realm_access.roles;
+            }
+            if (decoded?.tenant_id) {
+              refreshedTenantId = decoded.tenant_id;
+            }
+          }
+        } catch {
+          // keep existing roles
+        }
+      }
+
       return {
         ...token,
         accessToken: refreshed.access_token,
         refreshToken: refreshed.refresh_token ?? token.refreshToken,
         accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+        idToken: refreshed.id_token ?? token.idToken,
+        roles: refreshedRoles ?? token.roles,
+        tenant_id: refreshedTenantId ?? token.tenant_id,
         error: undefined,
       };
     } catch {
@@ -133,7 +157,7 @@ export const authOptions: NextAuthOptions = {
           try {
             const payloadBase64 = account.access_token.split(".")[1];
             const decoded = JSON.parse(
-              Buffer.from(payloadBase64, "base64").toString("utf-8")
+              Buffer.from(payloadBase64, "base64url").toString("utf-8")
             );
             if (decoded?.realm_access?.roles) {
               roles = decoded.realm_access.roles;
@@ -179,6 +203,12 @@ export const authOptions: NextAuthOptions = {
       // NextAuth serialize session về client qua /api/auth/session nên token không được nằm ở đây.
       // Các BFF routes lấy accessToken qua getToken({ req }) ở server-side.
       session.user.roles = (token.roles as string[]) ?? [];
+      if (token.tenant_id) {
+        (session.user as any).tenant_id = token.tenant_id;
+      }
+      if (token.sub) {
+        (session.user as any).id = token.sub;
+      }
 
       // Truyền lỗi refresh lên client để hiển thị thông báo (vd: RefreshAccessTokenError)
       if (token.error) {
