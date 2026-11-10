@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "helpdesk/ticket/feedback",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - Feedback Submitted",
@@ -57,7 +57,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users LIMIT 1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE tenant_id = $1::uuid LIMIT 1;",
         "options": {
           "queryReplacement": ""
         }

@@ -14,7 +14,7 @@
         }
       },
       "name": "Cron (Jan 1st)",
-      "type": "n8n-nodes-base.cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
       "position": [
         250,

@@ -5,7 +5,12 @@
     {
       "parameters": {
         "rule": {
-          "cronExpression": "0 2 1 1 *"
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 1 1 *"
+            }
+          ]
         }
       },
       "name": "Schedule - Annually Jan 1",

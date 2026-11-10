@@ -6,7 +6,7 @@
       "parameters": {
         "path": "hr/application-received",
         "httpMethod": "POST",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - New Application",

@@ -5,7 +5,12 @@
     {
       "parameters": {
         "rule": {
-          "cronExpression": "0 8 * * *"
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
         }
       },
       "name": "Schedule - Daily 8AM",

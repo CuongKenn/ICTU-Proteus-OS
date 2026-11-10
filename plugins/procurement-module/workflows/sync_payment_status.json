@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "procurement/sync-payment",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook - Payment Update",
