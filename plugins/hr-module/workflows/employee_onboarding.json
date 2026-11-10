@@ -38,7 +38,7 @@
     {
       "parameters": {
         "operation": "addUser",
-        "teamId": "={{$json.body.team_id}}",
+        "teamId": "={{$('Webhook').item.json.body.team_id || $json.body?.team_id}}",
         "userId": "={{$json.id}}"
       },
       "name": "Add to Mattermost Team",
@@ -53,8 +53,8 @@
       "parameters": {
         "resource": "channel",
         "operation": "addUser",
-        "channelId": "={{$json.body.department_channel_id}}",
-        "userId": "={{$json.id}}"
+        "channelId": "={{$('Webhook').item.json.body.department_channel_id || $json.body?.department_channel_id}}",
+        "userId": "={{$json.user_id || $('Create Mattermost User').item.json.id}}"
       },
       "name": "Add to Department Channel",
       "type": "n8n-nodes-base.mattermost",

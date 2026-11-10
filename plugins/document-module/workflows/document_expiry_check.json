@@ -70,7 +70,7 @@
     },
     {
       "parameters": {
-        "channelId": "={{$json.channel_id}}",
+        "channelId": "",
         "message": "=⚠️ **Văn bản sắp hết hiệu lực**\nMã: {{$json.doc_code}}\nTiêu đề: {{$json.title}}\nHết hạn: {{$json.expiry_date}}\nPhụ trách: {{$json.assigned_to}}\n\nVui lòng gia hạn hoặc thanh lý văn bản này."
       },
       "name": "Alert Channel",
@@ -118,9 +118,21 @@
     },
     "Split Docs": {
       "main": [
+        [],
         [
           {
             "node": "Alert Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Channel": {
+      "main": [
+        [
+          {
+            "node": "Split Docs",
             "type": "main",
             "index": 0
           }

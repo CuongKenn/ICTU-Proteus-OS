@@ -70,7 +70,7 @@
     },
     {
       "parameters": {
-        "channelId": "={{$json.alert_channel_id}}",
+        "channelId": "",
         "message": "=⚠️ **Cảnh báo ngân sách!**\nNgân sách: **{{$json.name}}**\nTổng ngân sách: {{$json.budget}} VND\nĐã chi: {{$json.spent}} VND ({{Math.round($json.spent/$json.budget*100)}}%)\n\nNgân sách đã sử dụng trên 80%. Vui lòng kiểm tra và điều chỉnh."
       },
       "name": "Alert Finance Team",
@@ -118,9 +118,21 @@
     },
     "Split By Budget": {
       "main": [
+        [],
         [
           {
             "node": "Alert Finance Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Finance Team": {
+      "main": [
+        [
+          {
+            "node": "Split By Budget",
             "type": "main",
             "index": 0
           }

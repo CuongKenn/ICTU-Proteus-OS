@@ -138,6 +138,7 @@
     },
     "Split Assets": {
       "main": [
+        [],
         [
           {
             "node": "Calculate Depreciation",
@@ -163,6 +164,17 @@
         [
           {
             "node": "Update Book Value",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Book Value": {
+      "main": [
+        [
+          {
+            "node": "Split Assets",
             "type": "main",
             "index": 0
           }

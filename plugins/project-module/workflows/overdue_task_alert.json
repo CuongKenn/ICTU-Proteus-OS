@@ -131,14 +131,32 @@
     },
     "Split Tasks": {
       "main": [
+        [],
         [
           {
             "node": "Remind Assignee",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Remind Assignee": {
+      "main": [
+        [
           {
             "node": "Alert Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Manager": {
+      "main": [
+        [
+          {
+            "node": "Split Tasks",
             "type": "main",
             "index": 0
           }

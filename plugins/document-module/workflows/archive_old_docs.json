@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.document_incoming SET status = 'done', updated_at = NOW() WHERE status = 'processing' AND created_at < NOW() - INTERVAL '2 years' RETURNING id;",
+        "query": "WITH archived AS (UPDATE {{TENANT_SCHEMA}}.document_incoming SET status = 'done', updated_at = NOW() WHERE status = 'processing' AND created_at < NOW() - INTERVAL '2 years' RETURNING id) SELECT COUNT(*) as archived_count FROM archived;",
         "additionalFields": {}
       },
       "name": "Archive Old Docs",

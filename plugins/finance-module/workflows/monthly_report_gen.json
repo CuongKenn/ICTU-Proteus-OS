@@ -119,6 +119,7 @@
     },
     "Split By Tenant": {
       "main": [
+        [],
         [
           {
             "node": "Save Report",
@@ -144,6 +145,17 @@
         [
           {
             "node": "Send Report Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Report Summary": {
+      "main": [
+        [
+          {
+            "node": "Split By Tenant",
             "type": "main",
             "index": 0
           }

@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS hr_employees (
     hire_date DATE,
     status VARCHAR(50) DEFAULT 'active',
     annual_leave_balance INTEGER DEFAULT 0,
+    base_salary NUMERIC(15,2) DEFAULT 15000000,
     tenant_id UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

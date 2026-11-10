@@ -87,9 +87,21 @@
     },
     "Split By Tenant": {
       "main": [
+        [],
         [
           {
             "node": "Send Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Weekly Report": {
+      "main": [
+        [
+          {
+            "node": "Split By Tenant",
             "type": "main",
             "index": 0
           }

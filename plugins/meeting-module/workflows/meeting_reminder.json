@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT b.id, b.title, b.start_time, b.end_time, b.organizer_id, r.name as room_name FROM {{TENANT_SCHEMA}}.meeting_bookings b JOIN {{TENANT_SCHEMA}}.meeting_rooms r ON r.id = b.room_id WHERE b.status = 'SCHEDULED' AND b.start_time BETWEEN NOW() + INTERVAL '10 minutes' AND NOW() + INTERVAL '20 minutes';",
+        "query": "SELECT b.id, b.title, b.start_time, b.end_time, b.organizer_id, r.name as room_name, COALESCE(r.location, 'Online') as location, ARRAY[b.organizer_id] as attendees FROM {{TENANT_SCHEMA}}.meeting_bookings b JOIN {{TENANT_SCHEMA}}.meeting_rooms r ON r.id = b.room_id WHERE b.status = 'SCHEDULED' AND b.start_time BETWEEN NOW() + INTERVAL '10 minutes' AND NOW() + INTERVAL '20 minutes';",
         "additionalFields": {}
       },
       "name": "Find Upcoming Meetings",
@@ -162,6 +162,7 @@
     },
     "Split Meetings": {
       "main": [
+        [],
         [
           {
             "node": "Get Attendee IDs",
@@ -198,6 +199,17 @@
         [
           {
             "node": "Mark Reminder Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Reminder Sent": {
+      "main": [
+        [
+          {
+            "node": "Split Meetings",
             "type": "main",
             "index": 0
           }
