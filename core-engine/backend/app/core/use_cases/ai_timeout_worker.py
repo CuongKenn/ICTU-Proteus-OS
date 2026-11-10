@@ -74,15 +74,23 @@ class AITimeoutWorker:
                     status="failed",
                 )
 
-                # 4. Gửi thông báo Mattermost
+                # 4. Gửi thông báo Mattermost (best-effort trong try...except)
                 msg = (
                     f"🚫 **[Hủy Lệnh Tự Động]**\n"
                     f"Lệnh `{action}` do <@{issued_by_user_id}> yêu cầu đã hết hạn phê duyệt.\n"
                     f"Trạng thái: `TIMEOUT`. Hệ thống đã tự động hủy lệnh này để đảm bảo an toàn."
                 )
-                await self.mattermost_adapter.send_message(
-                    channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID, text=msg
-                )
+                try:
+                    await self.mattermost_adapter.send_message(
+                        channel_id=settings.MATTERMOST_SYSTEM_CHANNEL_ID,
+                        message=msg,
+                        text=msg,
+                    )
+                except Exception as mm_err:
+                    logger.warning(
+                        "[AI Timeout Worker] Không thể gửi thông báo Mattermost: %s",
+                        mm_err,
+                    )
 
                 logger.info(
                     "[AI Timeout Worker] Đã hủy lệnh %s (action: %s)", cmd_id, action
