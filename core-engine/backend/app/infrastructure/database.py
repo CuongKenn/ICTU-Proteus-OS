@@ -56,6 +56,11 @@ def receive_after_begin(
     # chỉ được set sau JWT verify ở dependencies.get_current_tenant_context.
     tenant_id = current_tenant_id.get()
     if tenant_id:
+        if tenant_id in ("__system__", "system"):
+            connection.execute(
+                text("SELECT set_config('app.current_tenant_id', '__system__', true)")
+            )
+            return
         # Chuỗi rỗng '' là falsy → rơi xuống nhánh else (fail-closed).
         logger.debug("RLS Enabled: Setting app.current_tenant_id = '%s'", tenant_id)
         # Validate UUID format trước — chặn injection
@@ -107,3 +112,25 @@ async def get_db_transactional() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
             logger.exception("Database session error — rolling back")
             raise
+
+
+async def set_session_tenant(
+    session: AsyncSession, tenant_id: str | uuid.UUID | None
+) -> None:
+    """Thiết lập ngữ cảnh tenant cho cả ContextVar và transaction CSDL hiện tại (#728)."""
+    if not tenant_id:
+        current_tenant_id.set("")
+        await session.execute(text("SET LOCAL app.current_tenant_id = ''"))
+        return
+    if str(tenant_id) in ("__system__", "system"):
+        current_tenant_id.set("__system__")
+        await session.execute(
+            text("SELECT set_config('app.current_tenant_id', '__system__', true)")
+        )
+        return
+    tid_str = str(uuid.UUID(str(tenant_id)))
+    current_tenant_id.set(tid_str)
+    await session.execute(
+        text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+        {"tid": tid_str},
+    )

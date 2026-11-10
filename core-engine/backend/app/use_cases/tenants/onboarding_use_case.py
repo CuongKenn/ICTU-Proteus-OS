@@ -156,6 +156,19 @@ class OnboardingUseCase:
                     raise ValueError("Tên tổ chức vừa được đăng ký, vui lòng thử lại.")
                 slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
 
+        # Thiết lập session tenant context để vượt qua RLS WITH CHECK (#728)
+        from app.infrastructure.database import set_session_tenant
+
+        _active_sess = getattr(self.user_repo, "_session", None) or getattr(
+            self.tenant_repo, "_session", None
+        )
+        if _active_sess is not None:
+            await set_session_tenant(_active_sess, tenant_id)
+        else:
+            from app.infrastructure.database import current_tenant_id as _tid_ctx
+
+            _tid_ctx.set(str(tenant_id))
+
         # 6. Lưu User vào Database
         user_entity = UserEntity(
             id=uuid.uuid4(),

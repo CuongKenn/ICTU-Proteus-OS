@@ -56,6 +56,9 @@ class EventSubscriberWorker:
 
         # Mở session mới cho mỗi event để không giữ connection quá lâu
         async with AsyncSessionLocal() as session:
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(session, tenant_id)
             plugin_repo = SQLAlchemyPluginRepository(session=session)
             plugins, _ = await plugin_repo.list_installed(tenant_id)
 

@@ -330,26 +330,56 @@ ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
 ALTER TABLE ai_commands ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_commands FORCE ROW LEVEL SECURITY;
 
--- Tạo Policy áp dụng cho toàn bộ thao tác dựa trên biến session
+-- Tạo Policy áp dụng cho toàn bộ thao tác dựa trên biến session (an toàn NULLIF & hỗ trợ __system__ #728)
 CREATE POLICY tenant_isolation_policy_users ON users
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_tenant_plugins ON tenant_plugins
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_roles ON roles
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_audit_logs ON audit_logs
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 CREATE POLICY tenant_isolation_policy_ai_commands ON ai_commands
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: TENANT_INTEGRATIONS
@@ -372,5 +402,11 @@ ALTER TABLE tenant_integrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_integrations FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation_policy_tenant_integrations ON tenant_integrations
-    FOR ALL TO PUBLIC USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );

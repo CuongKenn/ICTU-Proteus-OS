@@ -299,10 +299,14 @@ async def get_current_tenant_context(
     if not tenant_id_raw or tenant_id_raw == "default":
         try:
             keycloak_uuid = uuid.UUID(str(user_id_raw))
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(db, "__system__")
             user_repo = SQLAlchemyUserRepository(session=db)
             db_user = await user_repo.get_by_keycloak_id(keycloak_uuid)
             if db_user and db_user.tenant_id:
                 tenant_id_raw = str(db_user.tenant_id)
+                await set_session_tenant(db, tenant_id_raw)
                 logger.info(
                     "tenant_id không có trong token — resolved từ DB",
                     extra={"keycloak_id": user_id_raw, "tenant_id": tenant_id_raw},
@@ -343,10 +347,10 @@ async def get_current_tenant_context(
     pref_username = payload.get("preferred_username")
     full_name = name_claim or pref_username or "Unknown"
 
-    # IMPORTANT: Set contextvar cho RLS middleware
-    from app.infrastructure.database import current_tenant_id as tenant_id_ctx
+    # IMPORTANT: Set contextvar và DB session cho RLS (#728)
+    from app.infrastructure.database import set_session_tenant
 
-    tenant_id_ctx.set(str(tenant_id))
+    await set_session_tenant(db, tenant_id)
 
     return TenantContext(
         tenant_id=tenant_id,
