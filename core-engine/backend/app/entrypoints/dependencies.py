@@ -16,7 +16,7 @@ from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.external.appsmith_adapter import AppsmithAdapter
-from app.adapters.external.keycloak_adapter import KeycloakAdapter
+from app.adapters.external.keycloak_adapter import KeycloakAdapter, KeycloakAdapterError
 from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.adapters.external.metabase_adapter import MetabaseAdapter
 from app.adapters.external.n8n_adapter import N8nAdapter
@@ -107,8 +107,12 @@ async def get_mattermost_adapter(request: Request) -> MattermostAdapter:
 
 
 async def get_qdrant_adapter(request: Request) -> QdrantAdapter:
-    """Inject QdrantAdapter."""
-    return QdrantAdapter(qdrant_client=request.app.state.qdrant_client)
+    """Inject QdrantAdapter (cached on app.state as singleton)."""
+    if not hasattr(request.app.state, "qdrant_adapter") or request.app.state.qdrant_adapter is None:
+        request.app.state.qdrant_adapter = QdrantAdapter(
+            qdrant_client=getattr(request.app.state, "qdrant_client", None)
+        )
+    return request.app.state.qdrant_adapter
 
 
 async def get_n8n_adapter(request: Request) -> N8nAdapter:
@@ -287,6 +291,12 @@ async def get_current_tenant_context(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token không hợp lệ hoặc đã hết hạn.",
             headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    except (KeycloakAdapterError, httpx.HTTPError) as exc:
+        logger.error("Authentication service error", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ xác thực tạm thời không khả dụng.",
         ) from exc
 
     user_id_raw = payload.get("sub")

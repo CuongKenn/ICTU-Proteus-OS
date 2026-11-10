@@ -252,10 +252,15 @@ async def transmit_kv_cache_ipc(
     if redis_publisher is None:
         redis_publisher = RedisEventBusPublisher()
 
-    manager = KVCacheIPCManager(
-        qdrant_adapter=QdrantAdapter(
+    qdrant_adapter = getattr(request.app.state, "qdrant_adapter", None)
+    if qdrant_adapter is None:
+        qdrant_adapter = QdrantAdapter(
             qdrant_client=getattr(request.app.state, "qdrant_client", None)
-        ),
+        )
+        request.app.state.qdrant_adapter = qdrant_adapter
+
+    manager = KVCacheIPCManager(
+        qdrant_adapter=qdrant_adapter,
         redis_publisher=redis_publisher,
     )
 

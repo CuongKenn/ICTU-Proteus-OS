@@ -18,6 +18,7 @@ from app.entrypoints.dependencies import (
     get_keycloak_adapter,
     require_permission,
 )
+from app.infrastructure.config import settings
 from app.entrypoints.schemas.role import (
     ApplyTemplateRequest,
     ApplyTemplateResponse,
@@ -192,7 +193,7 @@ async def assign_role_to_user(
         )
         try:
             await keycloak.assign_role_to_user(
-                realm="proteus", user_id=str(user.keycloak_id), role_name=kc_role_name
+                realm=getattr(tenant_context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(user.keycloak_id), role_name=kc_role_name
             )
         except Exception as exc:
             import logging
@@ -247,7 +248,7 @@ async def revoke_role_from_user(
         )
         try:
             await keycloak.revoke_role_from_user(
-                realm="proteus", user_id=str(user.keycloak_id), role_name=kc_role_name
+                realm=getattr(tenant_context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(user.keycloak_id), role_name=kc_role_name
             )
         except Exception as exc:
             import logging

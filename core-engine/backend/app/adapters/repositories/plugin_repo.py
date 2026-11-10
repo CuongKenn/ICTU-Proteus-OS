@@ -53,20 +53,27 @@ class SQLAlchemyPluginRepository(AbstractPluginRepository):
         return self._to_entity(dict(row))
 
     async def list_marketplace(
-        self, limit: int = 20, offset: int = 0
+        self, limit: int = 20, offset: int = 0, category: str | None = None
     ) -> tuple[list[PluginEntity], int]:
+        where_clause = "WHERE deleted_at IS NULL"
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if category:
+            where_clause += " AND category = :category"
+            params["category"] = category
+
         count_result = await self._session.execute(
-            text("SELECT COUNT(*) FROM plugins WHERE deleted_at IS NULL")
+            text(f"SELECT COUNT(*) FROM plugins {where_clause}"),
+            params,
         )
         total = count_result.scalar() or 0
 
         result = await self._session.execute(
             text(
-                "SELECT * FROM plugins WHERE deleted_at IS NULL "
+                f"SELECT * FROM plugins {where_clause} "
                 "ORDER BY is_official DESC, download_count DESC "
                 "LIMIT :limit OFFSET :offset"
             ),
-            {"limit": limit, "offset": offset},
+            params,
         )
         plugins = [self._to_entity(dict(row)) for row in result.mappings()]
         return plugins, total

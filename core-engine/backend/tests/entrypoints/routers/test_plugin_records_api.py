@@ -6,7 +6,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.core.domain.entities import TenantContext
 from app.core.domain.exceptions import (
@@ -49,7 +49,8 @@ async def test_list_records_200(override_auth):
     mock_uc.list_records.return_value = {"rows": [{"id": "a"}], "total": 1}
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             "/api/v1/plugins/asset-module/records/asset_items",
             headers={"Authorization": "Bearer fake"},
@@ -66,7 +67,8 @@ async def test_list_records_unknown_table_400(override_auth):
     mock_uc.list_records.side_effect = DSLInvalidActionError("bad table")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             "/api/v1/plugins/asset-module/records/users",
             headers={"Authorization": "Bearer fake"},
@@ -82,7 +84,8 @@ async def test_create_record_201(override_auth):
     mock_uc.create_record.return_value = {"id": "n", "code": "X"}
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/records/asset_items",
             json={"code": "X"},
@@ -104,7 +107,8 @@ async def test_create_conflict_409(override_auth):
     )
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/records/asset_items",
             json={"code": "LAP-001"},
@@ -122,7 +126,8 @@ async def test_update_and_delete(override_auth):
     mock_uc.update_record.return_value = {"id": rid, "name": "New"}
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.patch(
             f"/api/v1/plugins/asset-module/records/asset_items/{rid}",
             json={"name": "New"},
@@ -145,7 +150,8 @@ async def test_records_forbidden_403(override_auth):
     mock_uc.list_records.side_effect = InsufficientPermissionsError("deny")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             "/api/v1/plugins/asset-module/records/asset_items",
             headers={"Authorization": "Bearer fake"},
@@ -161,7 +167,8 @@ async def test_records_plugin_404(override_auth):
     mock_uc.delete_record.side_effect = PluginNotFoundError("gone")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.delete(
             "/api/v1/plugins/asset-module/records/asset_items/123e4567-e89b-12d3-a456-426614174000",
             headers={"Authorization": "Bearer fake"},
