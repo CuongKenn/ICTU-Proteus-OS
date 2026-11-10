@@ -47,6 +47,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const isNaturalLanguage = typeof body?.natural_language_input === "string" && !body?.action;
+  if (isNaturalLanguage && (!body?.session_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.session_id))) {
+    body = { ...body, session_id: crypto.randomUUID() };
+  }
+
   const targetUrl = isNaturalLanguage
     ? `${BACKEND_URL}/api/v1/ai/chat`
     : `${BACKEND_URL}/api/v1/ai/command`;

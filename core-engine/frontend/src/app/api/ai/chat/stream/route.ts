@@ -33,7 +33,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const backendPayload = {
     session_id: (bodyAny.session_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bodyAny.session_id))
                 ? bodyAny.session_id
-                : "11111111-1111-1111-1111-111111111111",
+                : crypto.randomUUID(),
     natural_language_input: bodyAny.natural_language_input || ""
   };
 

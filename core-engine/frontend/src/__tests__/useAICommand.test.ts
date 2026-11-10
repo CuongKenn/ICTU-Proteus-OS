@@ -3,7 +3,7 @@
 
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useAICommand } from "@/hooks/useAICommand";
+import { useAICommand, uuid } from "@/hooks/useAICommand";
 
 vi.mock("@/store/notificationStore", () => ({
   useNotificationStore: () => ({
@@ -23,7 +23,7 @@ describe("useAICommand", () => {
     mockFetch.mockReset();
   });
 
-  it("should initialize with default state", () => {
+  it("should initialize with default state and valid UUID sessionId", () => {
     const { result } = renderHook(() => useAICommand());
 
     expect(result.current.widgetState).toBe("collapsed");
@@ -31,6 +31,22 @@ describe("useAICommand", () => {
     expect(result.current.messages[0].role).toBe("assistant");
     expect(result.current.inputValue).toBe("");
     expect(result.current.dslPreview).toBeNull();
+    // Validate RFC-4122 UUID v4 format
+    expect(result.current.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it("uuid() helper produces valid RFC-4122 UUID even without crypto.randomUUID", () => {
+    const spy = vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+      throw new Error("HTTP context - randomUUID not available");
+    });
+    try {
+      const id = uuid();
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("should handle widget open/close", () => {
@@ -48,12 +64,13 @@ describe("useAICommand", () => {
     expect(result.current.widgetState).toBe("collapsed");
   });
 
-  it("should process a read command successfully", async () => {
+  it("should process a read command successfully and prioritize message", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         status: "completed",
-        result: "Read result",
+        message: "Câu trả lời tiếng Việt từ AI",
+        result: { plan_total: 1, steps: [] },
       }),
     });
 
@@ -68,7 +85,9 @@ describe("useAICommand", () => {
     });
 
     expect(result.current.widgetState).toBe("expanded");
-    expect(result.current.messages[result.current.messages.length - 1].content).toBe("Read result");
+    expect(result.current.messages[result.current.messages.length - 1].content).toBe(
+      "Câu trả lời tiếng Việt từ AI"
+    );
     expect(result.current.messages[result.current.messages.length - 1].role).toBe("assistant");
     expect(result.current.inputValue).toBe("");
   });
@@ -101,5 +120,18 @@ describe("useAICommand", () => {
 
     expect(result.current.widgetState).toBe("awaiting_approval");
     expect(result.current.dslPreview).toEqual(dsl_preview);
+
+    // Test cancelApproval calls cancel endpoint on backend
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: "CANCELLED" }) });
+    await act(async () => {
+      await result.current.cancelApproval();
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/proxy/v1/ai/commands/cmd-1/cancel",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(result.current.dslPreview).toBeNull();
+    expect(result.current.widgetState).toBe("expanded");
   });
 });

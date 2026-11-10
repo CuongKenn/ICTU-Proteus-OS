@@ -9,10 +9,28 @@
 import { useState, useCallback, useRef } from "react";
 import { useNotificationStore } from "@/store/notificationStore";
 
-// Helper: dùng fallback khi chạy trên HTTP không có crypto.randomUUID
-const uuid = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+// Helper: sinh UUID v4 RFC-4122 chuẩn cho cả HTTPS và HTTP
+export const uuid = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // Fallback
+    }
+  }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10xx
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -154,10 +172,20 @@ export function useAICommand(): UseAICommandReturn {
 
       const statusLower = String(data.status || "").toLowerCase();
       const preview = data.dsl_preview || (data as any).dry_run;
-      if (statusLower === "completed" && data.result) {
-        // effect=read: hiển thị kết quả ngay
-        const resultText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
-        appendMessage("assistant", resultText);
+      if (statusLower === "completed") {
+        // Ưu tiên hiển thị data.message (câu trả lời tự nhiên từ AI) (#731)
+        let replyText = data.message;
+        if (!replyText) {
+          if (typeof data.result === "string") {
+            replyText = data.result;
+          } else if (data.result && typeof data.result === "object") {
+            const resAny = data.result as any;
+            replyText = resAny.message || resAny.text || JSON.stringify(data.result, null, 2);
+          } else {
+            replyText = "Lệnh đã được thực hiện thành công.";
+          }
+        }
+        appendMessage("assistant", replyText);
         setWidgetState("expanded");
       } else if (statusLower === "pending_approval" && preview) {
         // effect=write/critical: chờ phê duyệt
@@ -213,13 +241,24 @@ export function useAICommand(): UseAICommandReturn {
   }, [addToast]);
 
   /**
-   * cancelApproval — Huỷ lệnh đang chờ phê duyệt.
+   * cancelApproval — Huỷ lệnh đang chờ phê duyệt trên cả server và client (#731).
    */
-  const cancelApproval = useCallback(() => {
+  const cancelApproval = useCallback(async () => {
+    const cmdId = dslPreview?.command_id;
+    if (cmdId) {
+      try {
+        await fetch(`/api/proxy/v1/ai/commands/${cmdId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        // Best-effort cancel
+      }
+    }
     setDslPreview(null);
     appendMessage("assistant", "🚫 Lệnh đã được huỷ bỏ.");
     setWidgetState("expanded");
-  }, [appendMessage]);
+  }, [dslPreview, appendMessage]);
 
   return {
     widgetState,

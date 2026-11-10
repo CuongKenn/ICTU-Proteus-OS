@@ -67,12 +67,26 @@ async def submit_ai_chat(
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
-    # We reuse AICommandResponse but command_id might be newly generated
+    # Trả đúng command_id từ execution kết quả hoặc dsl_preview (#731)
     preview = None
+    real_command_id = None
     if isinstance(result, dict):
         preview = result.get("dsl_preview")
+        if preview and isinstance(preview, dict) and preview.get("command_id"):
+            try:
+                real_command_id = uuid.UUID(str(preview["command_id"]))
+            except (ValueError, TypeError):
+                pass
+        if not real_command_id and result.get("steps"):
+            steps = result["steps"]
+            if steps and isinstance(steps, list) and isinstance(steps[-1], dict) and steps[-1].get("command_id"):
+                try:
+                    real_command_id = uuid.UUID(str(steps[-1]["command_id"]))
+                except (ValueError, TypeError):
+                    pass
+
     return AICommandResponse(
-        command_id=uuid.uuid4(),  # Or return the one generated inside if available, but for simplicity we generate a new one if not passed out
+        command_id=real_command_id or uuid.uuid4(),
         status=status_code,
         message=message,
         result=result if status_code == AICommandStatus.COMPLETED else None,
