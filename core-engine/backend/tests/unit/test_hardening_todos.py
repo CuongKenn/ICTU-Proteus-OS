@@ -1,13 +1,14 @@
 ﻿# Copyright (c) 2026 CuongKenn & ICTU Team
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
 
-from app.core.use_cases.plugin_upgrade import _DANGEROUS_SQL, _strip_sql_comments
+import httpx
+import pytest
+
 from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.adapters.external.n8n_adapter import N8nAdapter, N8nAdapterError
+from app.core.use_cases.plugin_upgrade import _DANGEROUS_SQL, _strip_sql_comments
 
 
 def test_upgrade_dangerous_sql_denylist_blocks_risky_ddl():
@@ -34,7 +35,9 @@ def test_upgrade_dangerous_sql_denylist_blocks_risky_ddl():
 
     for stmt in dangerous_statements:
         safe_stmt = _strip_sql_comments(stmt)
-        assert _DANGEROUS_SQL.search(safe_stmt) is not None, f"Dangerous SQL not blocked: {stmt}"
+        assert (
+            _DANGEROUS_SQL.search(safe_stmt) is not None
+        ), f"Dangerous SQL not blocked: {stmt}"
 
 
 def test_upgrade_dangerous_sql_denylist_allows_safe_ddl():
@@ -43,11 +46,16 @@ def test_upgrade_dangerous_sql_denylist_allows_safe_ddl():
         "CREATE TABLE IF NOT EXISTS hr_payroll_config (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);",
         "CREATE INDEX IF NOT EXISTS idx_hr_employees_status ON hr_employees(status);",
         "INSERT INTO hr_payroll_config (id, tenant_id) VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');",
+        "ALTER TABLE IF EXISTS asset_assignments ALTER COLUMN user_id DROP NOT NULL;",
+        "ALTER TABLE IF EXISTS asset_disposal_requests ALTER COLUMN requester_id DROP NOT NULL;",
+        "ALTER TABLE IF EXISTS crm_ticket_comments ALTER COLUMN user_id DROP NOT NULL;",
     ]
 
     for stmt in safe_statements:
         safe_stmt = _strip_sql_comments(stmt)
-        assert _DANGEROUS_SQL.search(safe_stmt) is None, f"Safe SQL incorrectly blocked: {stmt}"
+        assert (
+            _DANGEROUS_SQL.search(safe_stmt) is None
+        ), f"Safe SQL incorrectly blocked: {stmt}"
 
 
 @pytest.mark.asyncio
@@ -68,7 +76,11 @@ async def test_mattermost_adapter_update_message():
     args, kwargs = mock_client.request.call_args
     assert args[0] == "PUT"
     assert "/api/v4/posts/post123" in args[1]
-    assert kwargs["json"] == {"id": "post123", "message": "updated content", "props": {"custom": "prop"}}
+    assert kwargs["json"] == {
+        "id": "post123",
+        "message": "updated content",
+        "props": {"custom": "prop"},
+    }
 
 
 @pytest.mark.asyncio

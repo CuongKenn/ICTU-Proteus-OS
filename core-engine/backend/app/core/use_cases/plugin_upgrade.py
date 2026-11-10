@@ -51,7 +51,7 @@ class PluginUpgradeError(Exception):
 _DANGEROUS_SQL = re.compile(
     r"\bDROP\s+(TABLE|COLUMN|SCHEMA|DATABASE|FUNCTION|PROCEDURE|INDEX|VIEW|TRIGGER|POLICY|EXTENSION|ROLE|USER)\b"
     r"|\bTRUNCATE\b"
-    r"|\bALTER\s+TABLE\b.{0,200}?\bDROP\b"
+    r"|\bALTER\s+TABLE\b[^;]{0,200}?\bDROP\s+(?:COLUMN|CONSTRAINT|PRIMARY|FOREIGN)\b"
     r"|\bGRANT\b|\bREVOKE\b"
     r"|\bSECURITY\s+DEFINER\b"
     r"|\b(public\.|pg_\w+|pg_catalog|information_schema)",

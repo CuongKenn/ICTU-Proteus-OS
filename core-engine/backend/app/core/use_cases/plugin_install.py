@@ -44,7 +44,7 @@ _SEED_ALLOWED_STMT = re.compile(
 # Denylist bổ sung: chặn sandbox-escape / side-effect ngoài schema tenant.
 _SEED_FORBIDDEN = re.compile(
     r"(public\.|pg_\w+|pg_catalog|information_schema"
-    r"|\bCOPY\b|\bDO\b|\bLISTEN\b|\bNOTIFY\b"
+    r"|\bCOPY\b|\bDO\b(?!\s+(?:NOTHING|UPDATE)\b)|\bLISTEN\b|\bNOTIFY\b"
     r"|\bCREATE\s+(OR\s+REPLACE\s+)?(TRIGGER|VIEW|RULE|FUNCTION|PROCEDURE"
     r"|EXTENSION|SCHEMA|DATABASE|ROLE|USER|PUBLICATION|SUBSCRIPTION)\b"
     r"|\bALTER\b|\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b"
@@ -56,6 +56,13 @@ _SEED_FORBIDDEN = re.compile(
 _PLUGIN_CODE_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _SEED_FILE_PATTERN = re.compile(r"^[a-zA-Z0-9_./-]+\.sql$")
 _SEED_STATEMENT_TIMEOUT = "10s"
+
+
+def _strip_sql_comments(sql: str) -> str:
+    """Bỏ comment -- và /* */ trước khi kiểm tra policy."""
+    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    sql = re.sub(r"--[^\n]*", " ", sql)
+    return sql
 
 
 def _split_seed_statements_safe(sql: str) -> list[str]:
@@ -182,10 +189,20 @@ def _split_seed_statements_safe(sql: str) -> list[str]:
 
 def _validate_seed_statement(stmt: str) -> None:
     """Raise PluginInstallError nếu statement vi phạm seed policy."""
-    stripped = stmt.strip().rstrip(";").strip()
-    if not stripped:
+    raw_stripped = stmt.strip().rstrip(";").strip()
+    if not raw_stripped:
         raise PluginInstallError("Seed file chứa statement rỗng.")
-    if _SEED_FORBIDDEN.search(stripped):
+    no_comments = _strip_sql_comments(stmt).strip()
+    stripped = no_comments.rstrip(";").strip()
+    if not stripped:
+        return
+    scan = re.sub(
+        r"\bON\s+CONFLICT\b.*?\bDO\s+(?:NOTHING|UPDATE\s+SET)\b.*$",
+        "",
+        stripped,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if _SEED_FORBIDDEN.search(scan):
         raise PluginInstallError(
             "Seed file chứa từ khóa/kênh không được phép "
             "(public./pg_/information_schema/COPY/DO/TRIGGER/VIEW/RULE...)."

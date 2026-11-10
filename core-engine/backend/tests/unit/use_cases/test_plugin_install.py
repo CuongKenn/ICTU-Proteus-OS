@@ -248,7 +248,9 @@ async def test_execute_rollback_on_failure(
     # Dùng seed hợp lệ để qua được validation C4, lỗi DB mới bộc lộ ở
     # CREATE SCHEMA (advisory lock best-effort đã nuốt lỗi đầu nên message
     # vẫn là "DB Error" như kỳ vọng).
-    with patch("builtins.open", mock_open(read_data="CREATE TABLE test (id UUID PRIMARY KEY);")):
+    with patch(
+        "builtins.open", mock_open(read_data="CREATE TABLE test (id UUID PRIMARY KEY);")
+    ):
         with patch("pathlib.Path.exists", return_value=True):
             with pytest.raises(PluginInstallError, match="DB Error"):
                 await plugin_install_use_case.execute(tenant_context, "hr-module")
@@ -376,8 +378,16 @@ def test_validate_seed_statement_policy():
         "CREATE TABLE t (id UUID PRIMARY KEY);",
         "  create unique index ix_t ON t (a)  ",
         "INSERT INTO t (id) VALUES ('x');",
+        "-- Copyright (c) 2026\nCREATE TABLE t (id UUID PRIMARY KEY);",
+        "/* header block */ INSERT INTO t (id) VALUES ('x');",
+        "INSERT INTO t (id, name) VALUES ('x','y') ON CONFLICT (id) DO NOTHING;",
+        "INSERT INTO t (id, name) VALUES ('x','y') ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;",
     ]:
         _validate_seed_statement(ok)
+
+    # Statement chỉ chứa comment không bị lỗi
+    _validate_seed_statement("-- Chỉ là comment\n")
+    _validate_seed_statement("/* Block comment */")
 
     # Statement rỗng
     with pytest.raises(PluginInstallError, match="statement rỗng"):
@@ -389,9 +399,7 @@ def test_validate_seed_statement_policy():
 
     # Denylist chặn
     for bad in _FORBIDDEN_STMTS[:-1]:  # trừ SELECT 1 đã check allowlist ở trên
-        with pytest.raises(
-            PluginInstallError, match="từ khóa/kênh không được phép"
-        ):
+        with pytest.raises(PluginInstallError, match="từ khóa/kênh không được phép"):
             _validate_seed_statement(bad)
 
 
@@ -436,6 +444,7 @@ def test_split_seed_statements_sqlparse_path():
 
 # ─── 3. Guard INSTALLING / UNINSTALLING ───────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_execute_guards_installing_and_uninstalling(
     plugin_install_use_case, mock_plugin_repo, tenant_context, sample_plugin
@@ -451,6 +460,7 @@ async def test_execute_guards_installing_and_uninstalling(
 
 
 # ─── 4. Advisory lock best-effort fail vẫn cài thành công ─────────
+
 
 @pytest.mark.asyncio
 async def test_execute_advisory_lock_best_effort(
@@ -489,6 +499,7 @@ async def test_execute_advisory_lock_best_effort(
 
 # ─── 5. Credentials flow (step 1.5) qua execute() ─────────────────
 
+
 @pytest.mark.asyncio
 async def test_execute_credentials_flow(
     plugin_install_use_case,
@@ -500,7 +511,11 @@ async def test_execute_credentials_flow(
 ):
     manifest = _minimal_manifest(
         credentials_schema=[
-            {"key": "api_key", "label": "API Key", "credential_type_name": "gmailOAuth2"}
+            {
+                "key": "api_key",
+                "label": "API Key",
+                "credential_type_name": "gmailOAuth2",
+            }
         ]
     )
     plugin = _setup_execute_basics(
@@ -536,9 +551,7 @@ async def test_step_1_5_credentials_create_error(
     plugin_install_use_case.n8n_adapter.create_credential = AsyncMock(
         side_effect=Exception("n8n down")
     )
-    manifest = _minimal_manifest(
-        credentials_schema=[{"key": "k", "label": "K"}]
-    )
+    manifest = _minimal_manifest(credentials_schema=[{"key": "k", "label": "K"}])
     mapping, assets = await plugin_install_use_case._step_1_5_credentials(
         tenant_context, "mini-plugin", manifest, [CredentialInput(key="k", value="v")]
     )
@@ -569,16 +582,24 @@ async def test_rollback_db_roles_error_best_effort(
     plugin_install_use_case, tenant_context
 ):
     assets = {
-        "n8n": [], "metabase": [], "appsmith": [], "keycloak": [],
-        "db_roles": ["hr_manager"], "events": [], "credentials": [],
+        "n8n": [],
+        "metabase": [],
+        "appsmith": [],
+        "keycloak": [],
+        "db_roles": ["hr_manager"],
+        "events": [],
+        "credentials": [],
     }
     with patch(
         "app.core.use_cases.plugin_install.RoleRepository",
         side_effect=Exception("db down"),
     ):
         await plugin_install_use_case._rollback(
-            ["keycloak"], tenant_context, "mini-plugin",
-            _minimal_manifest(), assets,
+            ["keycloak"],
+            tenant_context,
+            "mini-plugin",
+            _minimal_manifest(),
+            assets,
         )  # nuốt lỗi, không raise
 
 
@@ -587,9 +608,7 @@ async def test_step_1_5_credentials_without_adapter_support(
     plugin_install_use_case, tenant_context
 ):
     plugin_install_use_case.n8n_adapter = object()
-    manifest = _minimal_manifest(
-        credentials_schema=[{"key": "k", "label": "K"}]
-    )
+    manifest = _minimal_manifest(credentials_schema=[{"key": "k", "label": "K"}])
     mapping, assets = await plugin_install_use_case._step_1_5_credentials(
         tenant_context, "mini-plugin", manifest, [CredentialInput(key="k", value="v")]
     )
@@ -598,14 +617,13 @@ async def test_step_1_5_credentials_without_adapter_support(
 
 # ─── 6. _step_2_n8n: lookup found / create / error ────────────────
 
+
 def _write_wf(tmp_path, nodes):
     import json
 
     plugindir = tmp_path / "hr-module"
     plugindir.mkdir(exist_ok=True)
-    (plugindir / "wf.json").write_text(
-        json.dumps({"nodes": nodes}), encoding="utf-8"
-    )
+    (plugindir / "wf.json").write_text(json.dumps({"nodes": nodes}), encoding="utf-8")
     return plugindir
 
 
@@ -637,6 +655,7 @@ def _n8n_lookup_route(found):
             if key in sql:
                 return _session_result(fetchone=(val,))
         return _session_result()
+
     return _route
 
 
@@ -684,9 +703,7 @@ async def test_step_2_n8n_found_credentials_and_injection(
     nodes = wf_json["nodes"]
     by_type = {n["type"]: n for n in nodes}
     assert by_type["n8n-nodes-base.webhook"]["parameters"]["httpMethod"] == "POST"
-    pg_query_node = next(
-        n for n in nodes if "query" in n.get("parameters", {})
-    )
+    pg_query_node = next(n for n in nodes if "query" in n.get("parameters", {}))
     assert "tenant_" in pg_query_node["parameters"]["query"]
     assert "{{TENANT_SCHEMA}}" not in pg_query_node["parameters"]["query"]
     assert pg_query_node["credentials"]["postgres"]["id"] == "db-1"
@@ -695,9 +712,9 @@ async def test_step_2_n8n_found_credentials_and_injection(
     assert mm_node["parameters"]["channelId"] == "alerts-ch"
     ol_node = [n for n in wf_json["nodes"] if "ollama" in n["type"].lower()][0]
     assert ol_node["credentials"]["ollamaApi"]["id"] == "ol-1"
-    ext_node = [n for n in wf_json["nodes"] if "gmailOAuth2" in n.get("credentials", {})][
-        0
-    ]
+    ext_node = [
+        n for n in wf_json["nodes"] if "gmailOAuth2" in n.get("credentials", {})
+    ][0]
     assert ext_node["credentials"]["gmailOAuth2"]["id"] == "ext-9"
 
 
@@ -744,9 +761,7 @@ async def test_step_2_n8n_credential_errors_best_effort(
 ):
     mock_manifest_parser.plugins_dir = tmp_path
     mock_session.execute.side_effect = lambda *a, **k: _session_result()
-    mock_n8n_adapter.create_credential = AsyncMock(
-        side_effect=Exception("n8n down")
-    )
+    mock_n8n_adapter.create_credential = AsyncMock(side_effect=Exception("n8n down"))
     plugin_install_use_case.tenant_repo = AsyncMock()
     manifest = _minimal_manifest()
     with (
@@ -769,6 +784,7 @@ async def test_step_2_n8n_credential_errors_best_effort(
 
 
 # ─── 7. _step_1_database: savepoint rollback + RLS ────────────────
+
 
 @pytest.mark.asyncio
 async def test_step_1_database_seed_savepoint_and_rls(
@@ -830,45 +846,44 @@ async def test_step_1_database_rejects_bad_paths(
 
     with pytest.raises(PluginInstallError, match="Invalid plugin_code_name"):
         await plugin_install_use_case._step_1_database(
-            tenant_context, "Bad_Code!", _minimal_manifest(
-                database={"tables": [], "seed_file": "seed.sql"}
-            )
+            tenant_context,
+            "Bad_Code!",
+            _minimal_manifest(database={"tables": [], "seed_file": "seed.sql"}),
         )
     with pytest.raises(PluginInstallError, match="Seed file path không hợp lệ"):
         await plugin_install_use_case._step_1_database(
-            tenant_context, "hr-module", _minimal_manifest(
-                database={"tables": [], "seed_file": "../evil.sql"}
-            )
+            tenant_context,
+            "hr-module",
+            _minimal_manifest(database={"tables": [], "seed_file": "../evil.sql"}),
         )
     with patch.object(Path, "is_relative_to", return_value=False):
         with pytest.raises(PluginInstallError, match="vượt ngoài plugins_dir"):
             await plugin_install_use_case._step_1_database(
-                tenant_context, "hr-module", _minimal_manifest(
-                    database={"tables": [], "seed_file": "seed.sql"}
-                )
+                tenant_context,
+                "hr-module",
+                _minimal_manifest(database={"tables": [], "seed_file": "seed.sql"}),
             )
     with pytest.raises(PluginInstallError, match="rỗng hoặc không hợp lệ"):
         await plugin_install_use_case._step_1_database(
-            tenant_context, "hr-module", _minimal_manifest(
-                database={"tables": [], "seed_file": "seed.sql"}
-            )
+            tenant_context,
+            "hr-module",
+            _minimal_manifest(database={"tables": [], "seed_file": "seed.sql"}),
         )
     with pytest.raises(PluginInstallError, match="Invalid table name"):
         await plugin_install_use_case._step_1_database(
-            tenant_context, "hr-module", _minimal_manifest(
-                database={"tables": ["bad-table!"]}
-            )
+            tenant_context,
+            "hr-module",
+            _minimal_manifest(database={"tables": ["bad-table!"]}),
         )
 
 
 # ─── 8. Version compatibility + steps log helpers ─────────────────
 
+
 def test_check_version_compatibility(sample_manifest):
     uc = PluginInstallUseCase.__new__(PluginInstallUseCase)
     bad = sample_manifest.model_copy(
-        update={
-            "compatibility": ManifestCompatibility(proteus_os_min_version="99.0.0")
-        }
+        update={"compatibility": ManifestCompatibility(proteus_os_min_version="99.0.0")}
     )
     with pytest.raises(PluginInstallError, match="yêu cầu Proteus OS"):
         uc._check_version_compatibility(bad)
@@ -882,7 +897,10 @@ def test_check_version_compatibility(sample_manifest):
 
 @pytest.mark.asyncio
 async def test_log_step_and_persist_steps_best_effort(
-    plugin_install_use_case, mock_plugin_repo, mock_session, tenant_context,
+    plugin_install_use_case,
+    mock_plugin_repo,
+    mock_session,
+    tenant_context,
     sample_plugin,
 ):
     uc = plugin_install_use_case
@@ -907,6 +925,7 @@ async def test_log_step_and_persist_steps_best_effort(
 
 
 # ─── 9. Success best-effort: tenant + notify/event fail ───────────
+
 
 @pytest.mark.asyncio
 async def test_execute_success_best_effort_notifications(
@@ -944,6 +963,7 @@ async def test_execute_success_best_effort_notifications(
 
 # ─── 10. Failure best-effort handlers ─────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_execute_failure_best_effort_handlers(
     plugin_install_use_case,
@@ -960,9 +980,7 @@ async def test_execute_failure_best_effort_handlers(
     plugindir.mkdir(exist_ok=True)
     (plugindir / "db.json").write_text('{"d": 1}', encoding="utf-8")
     mock_manifest_parser.plugins_dir = tmp_path
-    manifest = _minimal_manifest(
-        dashboards=[{"file": "db.json", "name": "db"}]
-    )
+    manifest = _minimal_manifest(dashboards=[{"file": "db.json", "name": "db"}])
     plugin = _setup_execute_basics(
         plugin_install_use_case, mock_plugin_repo, mock_manifest_parser, manifest
     )
@@ -989,6 +1007,7 @@ async def test_execute_failure_best_effort_handlers(
 
 
 # ─── 11. Compensating rollback mọi nhánh ──────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_rollback_all_branches(
@@ -1027,21 +1046,29 @@ async def test_rollback_all_branches(
         "credentials": ["c1"],
     }
     rid = uuid.uuid4()
-    with patch(
-        "app.core.use_cases.plugin_install.RoleRepository"
-    ) as rr_cls:
+    with patch("app.core.use_cases.plugin_install.RoleRepository") as rr_cls:
         rr_cls.return_value.list_by_tenant = AsyncMock(
             return_value=[types.SimpleNamespace(name="hr_manager", id=rid)]
         )
         rr_cls.return_value.delete_role = AsyncMock()
         await uc._rollback(
-            ["credentials", "database", "n8n", "metabase", "appsmith", "keycloak", "events"],
+            [
+                "credentials",
+                "database",
+                "n8n",
+                "metabase",
+                "appsmith",
+                "keycloak",
+                "events",
+            ],
             tenant_context,
             "mini-plugin",
             manifest,
             assets,
         )
-        rr_cls.return_value.delete_role.assert_awaited_once_with(rid, tenant_context.tenant_id)
+        rr_cls.return_value.delete_role.assert_awaited_once_with(
+            rid, tenant_context.tenant_id
+        )
 
     assert mock_n8n_adapter.delete_workflow.await_count == 2
     mock_keycloak_adapter.delete_role.assert_awaited_once_with(
@@ -1058,6 +1085,7 @@ async def test_rollback_all_branches(
 
 # ─── 12. _step_5_keycloak: skip trùng + lỗi best-effort ───────────
 
+
 @pytest.mark.asyncio
 async def test_step_5_keycloak_existing_and_error(
     plugin_install_use_case, mock_keycloak_adapter, tenant_context
@@ -1073,9 +1101,7 @@ async def test_step_5_keycloak_existing_and_error(
             {"name": "hr_new", "display_name": "New"},
         ]
     )
-    with patch(
-        "app.core.use_cases.plugin_install.RoleRepository"
-    ) as rr_cls:
+    with patch("app.core.use_cases.plugin_install.RoleRepository") as rr_cls:
         rr_cls.return_value.list_by_tenant = AsyncMock(
             return_value=[types.SimpleNamespace(name="hr_manager")]
         )
@@ -1101,6 +1127,7 @@ async def test_step_5_keycloak_existing_and_error(
 
 # ─── 13. _step_4_appsmith + _step_3_metabase file thiếu ───────────
 
+
 @pytest.mark.asyncio
 async def test_step_4_appsmith_with_integration(
     plugin_install_use_case,
@@ -1124,12 +1151,9 @@ async def test_step_4_appsmith_with_integration(
     )
     assert ids == ["app-1"]
     mock_appsmith_adapter.import_application.assert_awaited_once()
-    assert (
-        mock_appsmith_adapter.import_application.await_args.kwargs[
-            "integration_config"
-        ]
-        == {"url": "appsmith"}
-    )
+    assert mock_appsmith_adapter.import_application.await_args.kwargs[
+        "integration_config"
+    ] == {"url": "appsmith"}
 
 
 @pytest.mark.asyncio
