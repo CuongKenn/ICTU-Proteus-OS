@@ -341,6 +341,14 @@ export interface HrStore {
   reset(): Promise<void>;
 }
 
+function toPayroll(r: Record<string, unknown>): PayrollRecord {
+  return {
+    id: String(r.id ?? ''),
+    employee_id: String(r.employee_id ?? ''),
+    amount: Number(r.net_salary ?? r.gross_salary ?? r.amount ?? 0),
+  };
+}
+
 function toPosting(r: Record<string, unknown>): JobPosting {
   return {
     id: String(r.id ?? ''),
@@ -531,7 +539,7 @@ export function createLiveStore(client: BffClient): HrStore {
       return rows<AttendanceLog>('hr_attendance_logs');
     },
     async listPayroll() {
-      return rows<PayrollRecord>('hr_payroll_records');
+      return (await rows<Record<string, unknown>>('hr_payroll_records')).map(toPayroll);
     },
     async listOnboarding(employee_id) {
       const all = await rows<OnboardingTask>('hr_onboarding_tasks');
@@ -541,7 +549,11 @@ export function createLiveStore(client: BffClient): HrStore {
       return (await rows<Record<string, unknown>>('hr_job_postings')).map(toPosting);
     },
     async createPosting(i) {
-      return toPosting(await client.post(`${R}/hr_job_postings`, i));
+      const payload = {
+        ...i,
+        department_id: i.department_id ? i.department_id : null,
+      };
+      return toPosting(await client.post(`${R}/hr_job_postings`, payload));
     },
     async listApplications() {
       return (await rows<Record<string, unknown>>('hr_applications')).map(toApplication);
@@ -572,8 +584,18 @@ export function createLiveStore(client: BffClient): HrStore {
         `${A}/wf_application_screen`,
         { payload: { application_id: id } },
       );
-      const score = res && typeof res.score === 'number' ? res.score : null;
-      return { score };
+      if (res && typeof res.score === 'number') {
+        return { score: res.score };
+      }
+      try {
+        const app = await client.get<Record<string, unknown>>(`${R}/hr_applications/${id}`);
+        if (app && typeof app.score === 'number') {
+          return { score: app.score };
+        }
+      } catch {
+        // ignore
+      }
+      return { score: null };
     },
     async setApplicationScore(id, score, notes) {
       await client.patch(`${R}/hr_applications/${id}`, { score, screening_notes: notes });

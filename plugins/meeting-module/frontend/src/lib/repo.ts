@@ -279,14 +279,26 @@ export function createLiveStore(client: BffClient): MeetingStore {
     async listBookings() {
       return (await rows<Record<string, unknown>>('meeting_bookings')).map(toBooking);
     },
-    // Đặt phòng: check trùng giờ phía client rồi đi qua workflow wf_meeting_booking.
+    // Đặt phòng: check trùng giờ, ghi DB rồi đi qua workflow wf_meeting_booking.
     async createBooking(i) {
       const existing = await this.listBookings();
       assertNoOverlap(existing, i.room_id, i.start_time, i.end_time);
-      const row = await client.post<Record<string, unknown>>(
-        `${A}/wf_meeting_booking`,
+      const created = await client.post<Record<string, unknown>>(
+        `${R}/meeting_bookings`,
         {
+          room_id: i.room_id,
+          title: i.title,
+          organizer_id: i.organizer_id,
+          start_time: i.start_time,
+          end_time: i.end_time,
+          description: i.description || null,
+          status: 'SCHEDULED',
+        },
+      );
+      try {
+        await client.post(`${A}/wf_meeting_booking`, {
           payload: {
+            id: created.id,
             room_id: i.room_id,
             title: i.title,
             organizer_id: i.organizer_id,
@@ -294,9 +306,11 @@ export function createLiveStore(client: BffClient): MeetingStore {
             end_time: i.end_time,
             description: i.description || undefined,
           },
-        },
-      );
-      return toBooking(row);
+        });
+      } catch {
+        // best-effort workflow trigger
+      }
+      return toBooking(created);
     },
     async cancelBooking(id) {
       await client.patch(`${R}/meeting_bookings/${id}`, { status: 'CANCELLED' });

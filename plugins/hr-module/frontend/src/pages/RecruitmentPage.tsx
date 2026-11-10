@@ -284,7 +284,7 @@ function PostingForm(props: {
           primary
           onClick={() =>
             props.onSubmit({
-              title, department_id: '', employment_type: 'FULLTIME', location,
+              title, department_id: (null as unknown as string), employment_type: 'FULLTIME', location,
               salary_min: Number(min) || 0, salary_max: Number(max) || 0,
               description: '', requirements: '',
             })

@@ -218,6 +218,18 @@ export interface AssetStore {
 
 const R = '/v1/plugins/asset-module/records';
 
+function toAssignment(r: Record<string, unknown>): AssetAssignment {
+  return {
+    id: String(r.id ?? ''),
+    asset_id: String(r.asset_id ?? ''),
+    user_name: String(r.user_name ?? r.requester_name ?? r.user_id ?? 'Nhân viên'),
+    dept_name: String(r.dept_name ?? r.department_name ?? r.dept_id ?? 'Phòng ban'),
+    assigned_at: String(r.assigned_at ?? new Date().toISOString()),
+    returned_at: r.returned_at ? String(r.returned_at) : null,
+    notes: String(r.notes ?? ''),
+  };
+}
+
 function toItem(r: Record<string, unknown>): AssetItem {
   return {
     id: String(r.id ?? ''),
@@ -320,7 +332,7 @@ export function createLiveStore(client: BffClient): AssetStore {
       }
     },
     async listAssignments(asset_id) {
-      const all = await rows<AssetAssignment>('asset_assignments');
+      const all = (await rows<Record<string, unknown>>('asset_assignments')).map(toAssignment);
       return asset_id ? all.filter((a) => a.asset_id === asset_id) : all;
     },
     async listMaintenance(asset_id) {
