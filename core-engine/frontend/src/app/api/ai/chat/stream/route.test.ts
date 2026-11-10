@@ -16,6 +16,7 @@ vi.mock("@/lib/tokenRefresh", () => ({
 
 import { getToken } from "next-auth/jwt";
 import { refreshAccessToken } from "@/lib/tokenRefresh";
+import { sessionCookieName } from "@/lib/sessionCookie";
 
 describe("AI Chat Stream BFF Route Handler", () => {
   beforeEach(() => {
@@ -88,6 +89,6 @@ describe("AI Chat Stream BFF Route Handler", () => {
     // Verify Set-Cookie header is persisted with rotated token (#730)
     const setCookie = res.headers.get("Set-Cookie");
     expect(setCookie).toBeDefined();
-    expect(setCookie).toContain("next-auth.session-token=mocked-stream-rotated-session-token");
+    expect(setCookie).toContain(`${sessionCookieName()}=mocked-stream-rotated-session-token`);
   });
 });

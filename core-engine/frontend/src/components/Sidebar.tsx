@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import {
   LayoutDashboard,
+  Bot,
   Store,
   Settings,
   MessageSquare,
@@ -20,6 +21,7 @@ import {
 
 const NAV_ITEMS = [
   { id: "launchpad", label: "Dashboard", icon: LayoutDashboard, href: "/launchpad" },
+  { id: "ai", label: "Proteus AI", icon: Bot, href: "/ai" },
   { id: "marketplace", label: "Marketplace", icon: Store, href: "/marketplace" },
   { id: "chat", label: "Mattermost", icon: MessageSquare, href: "/chat" },
   { id: "wiki", label: "Outline Wiki", icon: FileText, href: "/wiki" },

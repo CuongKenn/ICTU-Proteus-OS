@@ -25,6 +25,7 @@ vi.mock("@/lib/logger", () => ({
 
 import { getToken, encode } from "next-auth/jwt";
 import { refreshAccessToken } from "@/lib/tokenRefresh";
+import { sessionCookieName } from "@/lib/sessionCookie";
 
 describe("BFF Proxy Route Handler", () => {
   beforeEach(() => {
@@ -107,7 +108,7 @@ describe("BFF Proxy Route Handler", () => {
     );
 
     // Verify Set-Cookie header contains rotated session token
-    const cookie = res.cookies.get("next-auth.session-token");
+    const cookie = res.cookies.get(sessionCookieName());
     expect(cookie).toBeDefined();
     expect(cookie?.value).toBe("mocked-encoded-session-token");
   });

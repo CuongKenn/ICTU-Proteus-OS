@@ -178,11 +178,35 @@ async def get_my_permissions(
 )
 async def list_users(
     context: TenantContext = Depends(require_permission("users.read")),
+    keycloak: KeycloakAdapter = Depends(get_keycloak_adapter),
     db: AsyncSession = Depends(get_db_transactional),
 ):
     """Chỉ trả về users thuộc Tenant của caller (RLS tự bảo vệ)."""
     user_repo = SQLAlchemyUserRepository(session=db)
     users = await user_repo.list_by_tenant(tenant_id=context.tenant_id)
+
+    # Đối chiếu Keycloak: nhân viên đã bấm link mail + đặt mật khẩu
+    # (emailVerified=true) nhưng chưa đăng nhập app lần đầu → bật is_active
+    # để UI không còn hiển thị "Chờ kích hoạt". Best-effort, Keycloak lỗi thì bỏ qua.
+    pending = [
+        u
+        for u in users
+        if not u.is_active and u.last_login_at is None and u.keycloak_id
+    ][:50]
+    reconciled = False
+    for u in pending:
+        try:
+            kc_user = await keycloak.get_user("proteus", str(u.keycloak_id))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Không đọc được trạng thái Keycloak của %s: %s", u.email, e)
+            continue
+        if kc_user.get("emailVerified") is True:
+            await user_repo.mark_active(u.id)
+            u.is_active = True
+            reconciled = True
+    if reconciled:
+        await user_repo.commit()
+
     return [
         UserResponse(
             id=u.id,
