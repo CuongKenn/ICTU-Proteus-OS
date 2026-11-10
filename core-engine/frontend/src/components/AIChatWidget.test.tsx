@@ -78,4 +78,26 @@ describe('AIChatWidget', () => {
     expect(input).toBeDisabled();
     expect(screen.getByText('Đang phân tích')).toBeInTheDocument();
   });
+
+  it('renders awaiting_approval with string preview without crashing (#731)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'awaiting_approval',
+      dslPreview: {
+        command_id: 'cmd-string-preview',
+        action: 'hr.leave.reject',
+        effect: 'write',
+        approval_message: 'Cần duyệt đơn',
+        dry_run_result: {
+          affected_count: 1,
+          preview: 'Không thể thực hiện dry run' as any,
+        },
+        approval_deadline: '2026-12-31T23:59:59Z',
+      },
+    });
+
+    render(<AIChatWidget />);
+    expect(screen.getByText('hr.leave.reject')).toBeInTheDocument();
+    expect(screen.getByText('Không thể thực hiện dry run')).toBeInTheDocument();
+  });
 });

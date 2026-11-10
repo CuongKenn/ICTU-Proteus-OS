@@ -133,26 +133,36 @@ const DslPreviewPanel: React.FC<{
         {/* Dry-run preview */}
         {preview.dry_run_result && (
           <div className="mb-2.5">
-            <div className="text-[11px] font-medium text-text-secondary mb-1.5 font-mono">
-              Ảnh hưởng đến{" "}
-              <span className="text-amber-400 font-bold">
-                {preview.dry_run_result.affected_count}
-              </span>{" "}
-              bản ghi:
-            </div>
+            {preview.dry_run_result.affected_count !== undefined && (
+              <div className="text-[11px] font-medium text-text-secondary mb-1.5 font-mono">
+                Ảnh hưởng đến{" "}
+                <span className="text-amber-400 font-bold">
+                  {preview.dry_run_result.affected_count}
+                </span>{" "}
+                bản ghi:
+              </div>
+            )}
             <div className="space-y-1 max-h-[80px] overflow-y-auto">
-              {preview.dry_run_result?.preview?.slice(0, 3).map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-1.5 text-[11px] text-text-secondary"
-                >
-                  <span className="w-1 h-1 rounded-full bg-amber-400/60 shrink-0" />
-                  <span>{String(item.employee_name || item.id || JSON.stringify(item))}</span>
-                </div>
-              ))}
-              {(preview.dry_run_result?.preview?.length || 0) > 3 && (
-                <div className="text-[10px] text-text-disabled pl-2.5 font-mono">
-                  +{(preview.dry_run_result?.preview?.length || 0) - 3} bản ghi khác…
+              {Array.isArray(preview.dry_run_result?.preview) ? (
+                <>
+                  {preview.dry_run_result.preview.slice(0, 3).map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-1.5 text-[11px] text-text-secondary"
+                    >
+                      <span className="w-1 h-1 rounded-full bg-amber-400/60 shrink-0" />
+                      <span>{String(item.employee_name || item.id || JSON.stringify(item))}</span>
+                    </div>
+                  ))}
+                  {preview.dry_run_result.preview.length > 3 && (
+                    <div className="text-[10px] text-text-disabled pl-2.5 font-mono">
+                      +{preview.dry_run_result.preview.length - 3} bản ghi khác…
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-[11px] text-text-disabled italic">
+                  {String(preview.dry_run_result?.preview || "Không có bản ghi xem trước")}
                 </div>
               )}
             </div>
