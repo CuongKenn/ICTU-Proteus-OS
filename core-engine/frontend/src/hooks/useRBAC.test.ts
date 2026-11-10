@@ -154,4 +154,28 @@ describe("useRBAC Hook", () => {
     expect(result.current.hasPermission("plugins.delete")).toBe(true);
     expect(result.current.hasPermission("users:read")).toBe(false);
   });
+
+  it("loads permissions directly from /v1/users/me/permissions", async () => {
+    vi.mocked(useAuthStore).mockReturnValue({
+      user: { id: "6", name: "Direct Perms User", roles: ["viewer"] },
+      hasRole: vi.fn(),
+    } as any);
+
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/v1/users/me/permissions") {
+        return { data: ["plugins:read", "analytics.view"] } as any;
+      }
+      return { data: [] } as any;
+    });
+
+    const { result } = renderHook(() => useRBAC());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.hasPermission("plugins.read")).toBe(true);
+    expect(result.current.hasPermission("plugins:read")).toBe(true);
+    expect(result.current.hasPermission("analytics:view")).toBe(true);
+    expect(result.current.hasPermission("analytics.view")).toBe(true);
+    expect(result.current.hasPermission("users:delete")).toBe(false);
+  });
 });

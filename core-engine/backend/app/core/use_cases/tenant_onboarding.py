@@ -204,16 +204,22 @@ class TenantOnboardingUseCase:
     async def update_tenant(
         self, context: TenantContext, tenant_id: uuid.UUID, data: dict[str, Any]
     ) -> TenantEntity:
-        self._require_superadmin(context)
+        from app.core.domain.permissions import has_admin_role
+
+        is_superadmin = "superadmin" in context.roles or "super_admin" in context.roles
+        is_own_tenant = str(context.tenant_id) == str(tenant_id)
+        if not (is_superadmin or (is_own_tenant and has_admin_role(context.roles))):
+            raise TenantPermissionError(
+                "Chỉ superadmin hoặc tenant_admin mới có quyền cập nhật Tenant này."
+            )
 
         tenant = await self.tenant_repo.get_by_id(tenant_id)
         if not tenant:
             raise TenantOnboardingError("Tenant không tồn tại.")
 
-        # Loại bỏ các trường không cho phép update
-        safe_data = {
-            k: v for k, v in data.items() if k in ["name", "plan", "is_active"]
-        }
+        # Loại bỏ các trường không cho phép update: tenant_admin chỉ được đổi name (#733)
+        allowed = ["name", "plan", "is_active"] if is_superadmin else ["name"]
+        safe_data = {k: v for k, v in data.items() if k in allowed}
 
         if not safe_data:
             return tenant

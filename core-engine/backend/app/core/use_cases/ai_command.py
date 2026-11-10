@@ -243,6 +243,7 @@ class AICommandUseCase:
             tenant_id=str(ctx.tenant_id),
             user_id=str(ctx.user_id),
             manifest_parser=self.manifest_parser,
+            roles=getattr(ctx, "roles", []),
         )
 
         try:

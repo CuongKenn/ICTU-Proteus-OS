@@ -18,16 +18,19 @@ from app.adapters.external.keycloak_adapter import (
     mattermost_numeric_id,
 )
 from app.adapters.external.mattermost_adapter import MattermostAdapter
+from app.adapters.repositories.role_repo import RoleRepository
 from app.adapters.repositories.tenant_repo import SQLAlchemyTenantRepository
 from app.adapters.repositories.user_repo import SQLAlchemyUserRepository
 from app.core.domain.entities import TenantContext
 from app.core.domain.exceptions import NotFoundError
+from app.core.domain.permissions import has_admin_role
 from app.core.use_cases.tenant_onboarding import ensure_tenant_mattermost_team
 from app.entrypoints.dependencies import (
     get_current_tenant_context,
     get_db_transactional,
     get_keycloak_adapter,
     get_mattermost_adapter,
+    get_role_repo,
     require_permission,
 )
 from app.infrastructure.config import settings
@@ -149,6 +152,23 @@ def _invite_redirect_uri(request: Request) -> str:
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/me/permissions",
+    response_model=list[str],
+    summary="Lấy danh sách quyền hạn của người dùng hiện tại",
+)
+async def get_my_permissions(
+    context: TenantContext = Depends(get_current_tenant_context),
+    role_repo: RoleRepository = Depends(get_role_repo),
+) -> list[str]:
+    """Trả về permissions của caller, không yêu cầu roles.read (#733)."""
+    if has_admin_role(context.roles):
+        return ["*"]
+    return await role_repo.get_user_permissions(
+        user_id=context.user_id, tenant_id=context.tenant_id
+    )
 
 
 @router.get(
