@@ -50,7 +50,7 @@
     },
     {
       "parameters": {
-        "channelId": "={{$json.channel_id}}",
+        "channelId": "",
         "message": "=📊 **Báo cáo tuần — {{$json.name}}**\n\n✅ Hoàn thành: {{$json.done_tasks}}/{{$json.total_tasks}} task\n🔄 Đang làm: {{$json.in_progress_tasks}} task\n⏰ Quá hạn: {{$json.overdue_tasks}} task\n\nTiến độ: {{Math.round($json.done_tasks/$json.total_tasks*100) || 0}}%"
       },
       "name": "Send Status Report",
@@ -87,9 +87,21 @@
     },
     "Split Projects": {
       "main": [
+        [],
         [
           {
             "node": "Send Status Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Status Report": {
+      "main": [
+        [
+          {
+            "node": "Split Projects",
             "type": "main",
             "index": 0
           }

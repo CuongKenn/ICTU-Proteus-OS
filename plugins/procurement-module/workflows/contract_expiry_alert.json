@@ -118,9 +118,21 @@
     },
     "Split Contracts": {
       "main": [
+        [],
         [
           {
             "node": "Alert Procurement Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Procurement Channel": {
+      "main": [
+        [
+          {
+            "node": "Split Contracts",
             "type": "main",
             "index": 0
           }

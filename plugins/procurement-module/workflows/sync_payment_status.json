@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, id as po_number;",
         "options": {
           "queryReplacement": "={{$json.body.payment_status}},={{$json.body.po_id}}"
         }

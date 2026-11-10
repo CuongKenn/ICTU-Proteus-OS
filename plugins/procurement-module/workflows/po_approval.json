@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT po.id, po.total_amount, po.status, v.name as vendor_name FROM {{TENANT_SCHEMA}}.procurement_purchase_orders po LEFT JOIN {{TENANT_SCHEMA}}.procurement_contracts c ON c.id = po.contract_id LEFT JOIN {{TENANT_SCHEMA}}.procurement_vendors v ON v.id = c.vendor_id WHERE po.id = $1 AND po.status = 'pending';",
+        "query": "SELECT po.id, po.id as po_number, po.total_amount, 'VND' as currency, po.contract_id as pr_id, po.status, COALESCE(v.name, 'N/A') as vendor_name FROM {{TENANT_SCHEMA}}.procurement_purchase_orders po LEFT JOIN {{TENANT_SCHEMA}}.procurement_contracts c ON c.id = po.contract_id LEFT JOIN {{TENANT_SCHEMA}}.procurement_vendors v ON v.id = c.vendor_id WHERE po.id = $1 AND po.status = 'pending';",
         "options": {
           "queryReplacement": "={{$json.body.po_id}}"
         }
@@ -53,7 +53,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE tenant_id = $1::uuid LIMIT 1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
           "queryReplacement": ""
         }

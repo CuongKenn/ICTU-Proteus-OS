@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.it_tickets SET feedback_rating = $1, feedback_comment = $2, status = 'CLOSED', updated_at = NOW() WHERE id = $3 RETURNING assignee_id;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.it_tickets SET feedback_rating = $1, feedback_comment = $2, status = 'CLOSED', updated_at = NOW() WHERE id = $3 RETURNING assignee_id, assignee_id as assigned_to;",
         "options": {
           "queryReplacement": "={{$json.body.score}},={{$json.body.comment}},={{$json.body.ticket_id}}"
         }
@@ -57,7 +57,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE tenant_id = $1::uuid LIMIT 1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
           "queryReplacement": ""
         }

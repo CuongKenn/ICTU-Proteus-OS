@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT e.id as employee_id, e.full_name, e.tenant_id, COUNT(a.id) as worked_days, SUM(a.worked_hours) as total_hours FROM {{TENANT_SCHEMA}}.hr_employees e LEFT JOIN {{TENANT_SCHEMA}}.hr_attendance_logs a ON a.employee_id = e.id AND date_trunc('month', a.check_in_time) = date_trunc('month', NOW()) WHERE e.status = 'active' GROUP BY e.id, e.full_name, e.tenant_id;",
+        "query": "SELECT e.id as employee_id, e.full_name, e.tenant_id, COALESCE(e.base_salary, 15000000) as base_salary, COUNT(a.id) as worked_days, SUM(a.worked_hours) as total_hours FROM {{TENANT_SCHEMA}}.hr_employees e LEFT JOIN {{TENANT_SCHEMA}}.hr_attendance_logs a ON a.employee_id = e.id AND date_trunc('month', a.check_in_time) = date_trunc('month', NOW()) WHERE e.status = 'active' GROUP BY e.id, e.full_name, e.tenant_id, e.base_salary;",
         "additionalFields": {}
       },
       "name": "Aggregate Attendance",
@@ -149,6 +149,13 @@
       "main": [
         [
           {
+            "node": "Get HR Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Calculate Payroll",
             "type": "main",
             "index": 0
@@ -171,7 +178,7 @@
       "main": [
         [
           {
-            "node": "Get HR Admin",
+            "node": "Split Employees",
             "type": "main",
             "index": 0
           }

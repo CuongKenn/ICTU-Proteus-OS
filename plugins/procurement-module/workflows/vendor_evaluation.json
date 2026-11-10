@@ -86,7 +86,7 @@
     },
     {
       "parameters": {
-        "channelId": "={{$('Split Vendors').item.json.channel_id}}",
+        "channelId": "",
         "message": "=⚠️ **Nhà cung cấp giao hàng trễ liên tục**\nNhà cung cấp: {{$('Split Vendors').item.json.name}}\nSố đơn Q3: {{$('Split Vendors').item.json.total_orders}}\nTrễ trung bình: {{Math.round($('Split Vendors').item.json.avg_delay_days)}} ngày\nTổng giá trị: {{$('Split Vendors').item.json.total_spend}} VND\n\nĐề xuất đánh giá lại quan hệ với nhà cung cấp này."
       },
       "name": "Alert Poor Vendor",
@@ -123,6 +123,7 @@
     },
     "Split Vendors": {
       "main": [
+        [],
         [
           {
             "node": "Save Evaluation",
@@ -148,6 +149,24 @@
         [
           {
             "node": "Alert Poor Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Split Vendors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Poor Vendor": {
+      "main": [
+        [
+          {
+            "node": "Split Vendors",
             "type": "main",
             "index": 0
           }

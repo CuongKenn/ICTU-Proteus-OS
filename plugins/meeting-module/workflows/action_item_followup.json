@@ -118,9 +118,21 @@
     },
     "Split Actions": {
       "main": [
+        [],
         [
           {
             "node": "Remind Assignee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remind Assignee": {
+      "main": [
+        [
+          {
+            "node": "Split Actions",
             "type": "main",
             "index": 0
           }

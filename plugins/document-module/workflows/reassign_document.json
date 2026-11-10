@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.document_incoming SET assignee_id = $1, updated_at = NOW() WHERE id = $2 RETURNING so_van_ban, trich_yeu as title;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.document_incoming SET assignee_id = $1, updated_at = NOW() WHERE id = $2 RETURNING so_van_ban as doc_code, trich_yeu as title;",
         "options": {
           "queryReplacement": "={{$json.body.new_assignee_id}},={{$json.body.document_id}}"
         }

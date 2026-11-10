@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "channelId": "hr-announcements-channel-id",
+        "channelId": "",
         "message": "🎉 **Thông báo:** Quỹ phép năm mới đã được cập nhật cho toàn bộ nhân viên. Chúc mọi người một năm làm việc hiệu quả!"
       },
       "name": "Notify General Channel",

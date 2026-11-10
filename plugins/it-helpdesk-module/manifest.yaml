@@ -45,8 +45,8 @@ workflows:
 
   - id: "wf_ticket_feedback"
     name: "Gửi khảo sát sau Resolve"
-    trigger: "cron"
-    cron_expression: "0 * * * *" # Backup thay cho node Wait
+    trigger: "webhook"
+    webhook_path: "helpdesk/ticket/feedback"
     file: "workflows/ticket_feedback.json"
 
   - id: "wf_weekly_it_report"

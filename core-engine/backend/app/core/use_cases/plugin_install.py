@@ -976,7 +976,14 @@ class PluginInstallUseCase:
                         params = node.get("parameters")
                         if (
                             isinstance(params, dict)
-                            and not params.get("channelId")
+                            and params.get("resource", "message") in ("message", "post", None)
+                            and (
+                                not params.get("channelId")
+                                or params.get("channelId") in ("hr-announcements-channel-id", "YOUR_CHANNEL_ID")
+                                or str(params.get("channelId", "")).startswith("={{$json.channel_id")
+                                or str(params.get("channelId", "")).startswith("={{$json.alert_channel_id")
+                                or str(params.get("channelId", "")).startswith("={{$('Split Vendors').item.json.channel_id")
+                            )
                             and alerts_channel_id
                         ):
                             params["channelId"] = alerts_channel_id
