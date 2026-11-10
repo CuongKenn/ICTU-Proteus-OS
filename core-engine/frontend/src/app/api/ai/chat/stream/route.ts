@@ -5,42 +5,19 @@
 // Pipe SSE từ FastAPI POST /api/v1/ai/chat/stream về browser.
 // Auth + refresh inline giống /api/ai/command (token không bao giờ xuống browser).
 
-import { getToken } from "next-auth/jwt";
-import type { JWT } from "next-auth/jwt";
 import { NextRequest } from "next/server";
-import { refreshAccessToken } from "@/lib/tokenRefresh";
+import { getBffAuth } from "@/lib/bffAuth";
+import { withRotatedCookie } from "@/lib/sessionCookie";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-
-  if (!token?.accessToken) {
-    return Response.json(
-      { error: "Unauthorized", message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." },
-      { status: 401 }
-    );
+  const auth = await getBffAuth(request);
+  if (!auth.success) {
+    return auth.response;
   }
 
-  let accessToken = token.accessToken as string;
-  const expires = token.accessTokenExpires as number | undefined;
-  if (expires && Date.now() > expires - 10_000) {
-    try {
-      const refreshed = await refreshAccessToken(token as Parameters<typeof refreshAccessToken>[0]);
-      if (refreshed.error) {
-        return Response.json(
-          { error: "Unauthorized", message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." },
-          { status: 401 }
-        );
-      }
-      accessToken = refreshed.accessToken as string;
-    } catch {
-      return Response.json(
-        { error: "Unauthorized", message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." },
-        { status: 401 }
-      );
-    }
-  }
+  const { accessToken, rotatedCookieValue } = auth;
 
   let body: unknown;
   try {
@@ -99,7 +76,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   // Pipe nguyên stream SSE về browser (không buffer).
-  return new Response(upstream.body, {
+  const streamRes = new Response(upstream.body, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",
@@ -108,6 +85,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       "X-Accel-Buffering": "no",
     },
   });
+
+  return withRotatedCookie(streamRes, rotatedCookieValue);
 }
 
 export async function GET(): Promise<Response> {

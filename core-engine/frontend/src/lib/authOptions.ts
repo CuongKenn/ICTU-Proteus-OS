@@ -8,6 +8,12 @@
 
 import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
+import {
+  isSecureCookies,
+  sessionCookieDomain,
+  sessionCookieName,
+  SESSION_MAX_AGE,
+} from "./sessionCookie";
 
 const publicIssuer = process.env.KEYCLOAK_ISSUER || "";
 const realm = publicIssuer.split("/realms/")[1] || "proteus";
@@ -183,9 +189,23 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
+  cookies: {
+    sessionToken: {
+      name: sessionCookieName(),
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isSecureCookies(),
+        domain: sessionCookieDomain(),
+        maxAge: SESSION_MAX_AGE,
+      },
+    },
+  },
+
   session: {
     strategy: "jwt",
-    maxAge: 8 * 60 * 60, // 8 giờ (session tối đa, kể cả refresh)
+    maxAge: SESSION_MAX_AGE, // 8 giờ (session tối đa, kể cả refresh)
   },
 
   pages: {

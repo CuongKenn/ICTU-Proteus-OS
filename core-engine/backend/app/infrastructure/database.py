@@ -118,19 +118,28 @@ async def set_session_tenant(
     session: AsyncSession, tenant_id: str | uuid.UUID | None
 ) -> None:
     """Thiết lập ngữ cảnh tenant cho cả ContextVar và transaction CSDL hiện tại (#728)."""
+    import inspect
+
+    async def _safe_execute(stmt, params=None):
+        if session is None or not hasattr(session, "execute"):
+            return
+        res = session.execute(stmt, params) if params else session.execute(stmt)
+        if inspect.isawaitable(res):
+            await res
+
     if not tenant_id:
         current_tenant_id.set("")
-        await session.execute(text("SET LOCAL app.current_tenant_id = ''"))
+        await _safe_execute(text("SET LOCAL app.current_tenant_id = ''"))
         return
     if str(tenant_id) in ("__system__", "system"):
         current_tenant_id.set("__system__")
-        await session.execute(
+        await _safe_execute(
             text("SELECT set_config('app.current_tenant_id', '__system__', true)")
         )
         return
     tid_str = str(uuid.UUID(str(tenant_id)))
     current_tenant_id.set(tid_str)
-    await session.execute(
+    await _safe_execute(
         text("SELECT set_config('app.current_tenant_id', :tid, true)"),
         {"tid": tid_str},
     )

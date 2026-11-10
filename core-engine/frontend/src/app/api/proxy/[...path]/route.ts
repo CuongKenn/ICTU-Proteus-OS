@@ -7,83 +7,23 @@
 // Dùng getToken() + manual refresh thay vì getServerSession() (gây 500 trong App Router).
 // Tham chiếu: docs/architecture.md (BFF Pattern)
 
-import { encode, getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
-import { refreshAccessToken } from "@/lib/tokenRefresh";
+import { getBffAuth } from "@/lib/bffAuth";
+import { withRotatedCookie } from "@/lib/sessionCookie";
 import { logger } from "@/lib/logger";
-import {
-  isSecureCookies,
-  sessionCookieDomain,
-  sessionCookieName,
-  SESSION_MAX_AGE,
-} from "@/lib/sessionCookie";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-
-function withRotatedCookie(res: NextResponse, rotatedCookieValue: string | null): NextResponse {
-  if (rotatedCookieValue) {
-    res.cookies.set({
-      name: sessionCookieName(),
-      value: rotatedCookieValue,
-      httpOnly: true,
-      secure: isSecureCookies(),
-      sameSite: "lax",
-      path: "/",
-      domain: sessionCookieDomain(),
-      maxAge: SESSION_MAX_AGE,
-    });
-  }
-  return res;
-}
 
 async function proxyHandler(
   request: NextRequest,
   { params }: { params: { path: string[] } }
 ): Promise<NextResponse> {
-  // getToken() đọc JWT từ session cookie — nhẹ hơn getServerSession() và không gây 500.
-  // Nếu access_token hết hạn, tự refresh bằng refreshAccessToken() trước khi forward.
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-
-  if (!token) {
-    logger.error("[BFF] Proxy 401: no session token found");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await getBffAuth(request);
+  if (!auth.success) {
+    return auth.response;
   }
 
-  // Kiểm tra token hết hạn — thử refresh inline thay vì trả 401 ngay
-  let accessToken = token.accessToken as string;
-  let newSessionCookieValue: string | null = null;
-  const expires = token.accessTokenExpires as number | undefined;
-  if (expires && Date.now() > expires - 10_000) {
-    logger.info("[BFF] access_token sắp/đã hết hạn — thử refresh inline");
-    try {
-      const refreshed = await refreshAccessToken(token as Parameters<typeof refreshAccessToken>[0]);
-      if (refreshed.error) {
-        logger.error("[BFF] Refresh token thất bại:", refreshed.error);
-        return NextResponse.json({ error: "AccessTokenExpired" }, { status: 401 });
-      }
-      accessToken = refreshed.accessToken as string;
-      logger.info("[BFF] Refresh token thành công — tiếp tục proxy với token mới");
-
-      // Persist refresh token và session mới vào cookie cho browser (Issue #695)
-      try {
-        newSessionCookieValue = await encode({
-          token: refreshed,
-          secret: process.env.NEXTAUTH_SECRET ?? "default-secret",
-          maxAge: SESSION_MAX_AGE,
-        });
-      } catch (encodeErr) {
-        logger.error("[BFF] Lỗi encode session cookie sau refresh:", encodeErr);
-      }
-    } catch (err) {
-      logger.error("[BFF] Lỗi khi refresh token:", err);
-      return NextResponse.json({ error: "AccessTokenExpired" }, { status: 401 });
-    }
-  }
-
-  if (!accessToken) {
-    logger.error("[BFF] Proxy 401: accessToken null");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { accessToken, rotatedCookieValue } = auth;
 
   const targetPath = params.path.join("/");
   // Frontend calls api.get("/v1/roles") → params.path = ["v1","roles"] → targetPath = "v1/roles"
@@ -110,7 +50,7 @@ async function proxyHandler(
           { error: "Invalid request body format or stream interrupted" },
           { status: 400 }
         ),
-        newSessionCookieValue
+        rotatedCookieValue
       );
     }
   }
@@ -126,7 +66,7 @@ async function proxyHandler(
     logger.error(`[BFF] Fetch to backend failed: ${err.message}`);
     return withRotatedCookie(
       NextResponse.json({ error: "Backend unavailable" }, { status: 502 }),
-      newSessionCookieValue
+      rotatedCookieValue
     );
   }
 
@@ -137,7 +77,7 @@ async function proxyHandler(
     logger.error(`[BFF] Backend returned 401 for ${targetUrl}: ${txt}`);
     return withRotatedCookie(
       NextResponse.json({ error: "Unauthorized from backend", detail: txt }, { status: 401 }),
-      newSessionCookieValue
+      rotatedCookieValue
     );
   }
 
@@ -147,7 +87,7 @@ async function proxyHandler(
     const data = await response.json().catch(() => null);
     return withRotatedCookie(
       NextResponse.json(data, { status: response.status }),
-      newSessionCookieValue
+      rotatedCookieValue
     );
   }
 
@@ -158,7 +98,7 @@ async function proxyHandler(
       status: response.status,
       headers: { "Content-Type": contentType },
     }),
-    newSessionCookieValue
+    rotatedCookieValue
   );
 }
 
