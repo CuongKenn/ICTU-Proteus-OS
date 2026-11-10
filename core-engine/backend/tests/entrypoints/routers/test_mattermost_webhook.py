@@ -163,3 +163,30 @@ async def test_mattermost_webhook_invalid_action(
 
     assert response.status_code == 400
     assert "Action không hợp lệ" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_mattermost_webhook_plugin_cleanup(
+    override_mattermost_secret, mock_mattermost_payload
+):
+    import json
+
+    mock_mattermost_payload["context"]["action_type"] = "plugin_cleanup"
+    mock_mattermost_payload["context"][
+        "tenant_id"
+    ] = "11111111-1111-1111-1111-111111111111"
+    mock_mattermost_payload["context"]["action"] = "approve"
+    body = json.dumps(mock_mattermost_payload).encode("utf-8")
+    signature = generate_signature("test-secret", body)
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/webhooks/mattermost/callback",
+            content=body,
+            headers={"Mattermost-Signature": signature},
+        )
+
+    assert response.status_code == 200
+    res_data = response.json()
+    assert "update" in res_data
+    assert "dọn dẹp" in res_data["update"]["message"]

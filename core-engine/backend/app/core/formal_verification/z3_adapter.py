@@ -26,14 +26,19 @@ class Z3FormalVerifier:
         self.user_id = user_id
 
     def _to_float(self, field: str, value: Any) -> float:
-        """Ép số an toàn — sai định dạng → 400 (DSLInvalidParametersError), không 500."""
+        """Ép số an toàn — sai định dạng hoặc NaN/Inf → 400 (DSLInvalidParametersError), không 500 (#735)."""
+        import math
+
         try:
             if isinstance(value, bool):
                 raise ValueError("bool is not a valid number")
-            return float(value)
+            val = float(value)
+            if not math.isfinite(val):
+                raise ValueError("Value must be finite (not NaN or Inf)")
+            return val
         except (TypeError, ValueError) as exc:
             raise DSLInvalidParametersError(
-                f"Tham số '{field}' phải là số hợp lệ."
+                f"Tham số '{field}' phải là số hợp lệ (hữu hạn, không NaN/Inf)."
             ) from exc
 
     def verify_dsl(self, dsl_payload: dict[str, Any]) -> bool:
@@ -47,35 +52,36 @@ class Z3FormalVerifier:
         # Ensure that if the DSL attempts to specify a tenant_id, it MUST match the context tenant_id.
         # Fix M13: không str(dict) — tenant_id phải là str/UUID, ngược lại 400 rõ ràng.
         ctx_tenant = StringVal(str(self.tenant_id))
-        provided_tenant = dsl_payload.get("tenant_id")
-
-        # We model this by asserting equality
-        if provided_tenant is not None:
-            if isinstance(provided_tenant, (dict, list)):
-                raise DSLInvalidParametersError(
-                    "Tham số 'tenant_id' phải là chuỗi UUID hợp lệ."
-                )
-            if not isinstance(provided_tenant, str):
-                raise DSLInvalidParametersError(
-                    "Tham số 'tenant_id' phải là chuỗi UUID hợp lệ."
-                )
-            provided_tenant_val = StringVal(provided_tenant)
-            solver.add(provided_tenant_val == ctx_tenant)
-
-        # 2. Action specific mathematical invariants
-        action = dsl_payload.get("action", "")
         params = dsl_payload.get("parameters", {})
         if not isinstance(params, dict):
             raise DSLInvalidParametersError("Parameters phải là một JSON object.")
 
+        # Kiểm tra tenant_id ở cả root và parameters (#735)
+        provided_tenant = dsl_payload.get("tenant_id") or params.get("tenant_id")
+        if provided_tenant is not None:
+            if isinstance(provided_tenant, (dict, list)) or not isinstance(
+                provided_tenant, str
+            ):
+                raise DSLInvalidParametersError(
+                    "Tham số 'tenant_id' phải là chuỗi UUID hợp lệ."
+                )
+            provided_tenant_val = StringVal(str(provided_tenant))
+            solver.add(provided_tenant_val == ctx_tenant)
+
+        # 2. Action specific mathematical invariants
+        action = dsl_payload.get("action", "")
+
         if action == "finance.invoices.create":
             # Invariant: Invoice amount must be strictly greater than 0
-            # Invariant: Tax rate must be between 0 and 1
+            # Tham số amount là bắt buộc (#735)
             amount_val = params.get("amount")
-            if amount_val is not None:
-                amount_var = Real("amount")
-                solver.add(amount_var == self._to_float("amount", amount_val))
-                solver.add(amount_var > 0)
+            if amount_val is None:
+                raise DSLInvalidParametersError(
+                    "Tham số 'amount' là bắt buộc cho hóa đơn."
+                )
+            amount_var = Real("amount")
+            solver.add(amount_var == self._to_float("amount", amount_val))
+            solver.add(amount_var > 0)
 
             tax_val = params.get("tax_rate")
             if tax_val is not None:
@@ -85,20 +91,23 @@ class Z3FormalVerifier:
                 solver.add(tax_var <= 1.0)
 
         elif action == "asset.transfer":
-            # Invariant: From Location and To Location must be different
+            # Invariant: From Location and To Location must be different and required (#735)
             from_loc_val = params.get("from_location")
             to_loc_val = params.get("to_location")
 
-            if from_loc_val is not None and to_loc_val is not None:
-                if isinstance(from_loc_val, (dict, list)) or isinstance(
-                    to_loc_val, (dict, list)
-                ):
-                    raise DSLInvalidParametersError(
-                        "Tham số 'from_location'/'to_location' phải là chuỗi."
-                    )
-                from_var = StringVal(str(from_loc_val))
-                to_var = StringVal(str(to_loc_val))
-                solver.add(from_var != to_var)
+            if from_loc_val is None or to_loc_val is None:
+                raise DSLInvalidParametersError(
+                    "Cả hai tham số 'from_location' và 'to_location' đều bắt buộc khi điều chuyển tài sản."
+                )
+            if isinstance(from_loc_val, (dict, list)) or isinstance(
+                to_loc_val, (dict, list)
+            ):
+                raise DSLInvalidParametersError(
+                    "Tham số 'from_location'/'to_location' phải là chuỗi."
+                )
+            from_var = StringVal(str(from_loc_val))
+            to_var = StringVal(str(to_loc_val))
+            solver.add(from_var != to_var)
 
         # Check for Satisfiability
         result = solver.check()
