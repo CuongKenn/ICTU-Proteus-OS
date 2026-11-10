@@ -18,10 +18,31 @@ export interface Role {
 }
 
 const AVAILABLE_MODULES = [
-  { id: "plugins", name: "Plugins", actions: ["read", "write", "install", "delete"] },
-  { id: "users", name: "Users", actions: ["read", "write", "delete", "assign_role"] },
-  { id: "roles", name: "Roles", actions: ["read", "write", "delete"] },
-  { id: "settings", name: "Settings", actions: ["read", "write"] },
+  {
+    id: "plugins",
+    name: "Plugins",
+    actions: ["read", "write", "install", "uninstall", "disable", "enable", "upgrade", "delete"],
+  },
+  {
+    id: "users",
+    name: "Users",
+    actions: ["read", "write", "delete", "invite", "deactivate", "assign_role"],
+  },
+  {
+    id: "roles",
+    name: "Roles",
+    actions: ["read", "write", "delete", "manage"],
+  },
+  {
+    id: "analytics",
+    name: "Analytics / Báo cáo",
+    actions: ["view"],
+  },
+  {
+    id: "settings",
+    name: "Settings",
+    actions: ["read", "write"],
+  },
 ];
 
 function getRolePermissionBadges(permissions: any): string[] {
@@ -108,7 +129,13 @@ export const RolesTab = () => {
   const handleSave = async () => {
     try {
       const payload = {
-        name: selectedRole ? selectedRole.name : formData.display_name.toLowerCase().replace(/[\s\W-]+/g, '_').replace(/^_+|_+$/g, ''),
+        name: selectedRole ? selectedRole.name : formData.display_name
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/đ/g, 'd')
+            .replace(/[^a-z0-9_-]+/g, '_')
+            .replace(/^_+|_+$/g, ''),
         display_name: formData.display_name,
         description: formData.description,
         permissions: formPermissions,

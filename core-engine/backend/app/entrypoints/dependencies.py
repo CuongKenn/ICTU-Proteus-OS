@@ -513,7 +513,17 @@ def require_permission(permission: str):
         )
         if has_wildcard_permission(user_permissions):
             return context
-        if permission not in user_permissions:
+        perm_dot = permission.replace(":", ".")
+        perm_colon = permission.replace(".", ":")
+        user_perms_set = set(user_permissions or [])
+        for p in list(user_perms_set):
+            user_perms_set.add(p.replace(":", "."))
+            user_perms_set.add(p.replace(".", ":"))
+        if (
+            permission not in user_perms_set
+            and perm_dot not in user_perms_set
+            and perm_colon not in user_perms_set
+        ):
             raise InsufficientPermissionsError(
                 f"Cần quyền '{permission}' để thực hiện hành động này."
             )

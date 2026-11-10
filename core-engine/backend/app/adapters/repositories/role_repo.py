@@ -92,20 +92,34 @@ class RoleRepository:
             if not permissions_data:
                 continue
             if isinstance(permissions_data, list):
-                all_permissions.update(str(p) for p in permissions_data)
+                for p in permissions_data:
+                    p_str = str(p)
+                    all_permissions.add(p_str)
+                    if ":" in p_str:
+                        all_permissions.add(p_str.replace(":", "."))
+                    if "." in p_str:
+                        all_permissions.add(p_str.replace(".", ":"))
             elif isinstance(permissions_data, dict):
                 if "allowed" in permissions_data and isinstance(
                     permissions_data["allowed"], list
                 ):
-                    all_permissions.update(str(p) for p in permissions_data["allowed"])
+                    for p in permissions_data["allowed"]:
+                        p_str = str(p)
+                        all_permissions.add(p_str)
+                        if ":" in p_str:
+                            all_permissions.add(p_str.replace(":", "."))
+                        if "." in p_str:
+                            all_permissions.add(p_str.replace(".", ":"))
                 else:
                     for module, actions in permissions_data.items():
                         if isinstance(actions, list):
-                            all_permissions.update(
-                                f"{module}:{action}" for action in actions
-                            )
+                            for action in actions:
+                                all_permissions.add(f"{module}:{action}")
+                                all_permissions.add(f"{module}.{action}")
                         elif actions is True:
                             all_permissions.add(str(module))
+                            all_permissions.add(f"{module}:*")
+                            all_permissions.add(f"{module}.*")
 
         return list(all_permissions)
 

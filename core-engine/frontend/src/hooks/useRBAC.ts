@@ -43,6 +43,26 @@ export const useRBAC = () => {
     }
 
     try {
+      // Ưu tiên fetch từ /v1/users/me/permissions để không cần quyền roles.read (#733)
+      try {
+        const myPermsRes = await api.get('/v1/users/me/permissions');
+        if (Array.isArray(myPermsRes.data) && myPermsRes.data.length > 0 && typeof myPermsRes.data[0] === 'string') {
+          const perms = new Set<string>();
+          myPermsRes.data.forEach((p: any) => {
+            if (typeof p === 'string') {
+              perms.add(p);
+              perms.add(p.replace(/:/g, '.'));
+              perms.add(p.replace(/\./g, ':'));
+            }
+          });
+          setPermissions(Array.from(perms));
+          setIsLoading(false);
+          return;
+        }
+      } catch (meErr) {
+        logger.debug('Fallback sang /v1/roles:', meErr);
+      }
+
       // Cố gắng fetch từ API Roles
       const res = await api.get('/v1/roles');
       const allRoles = res.data;

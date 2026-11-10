@@ -97,7 +97,7 @@ async def apply_role_template(
 @router.get("/{role_id}", response_model=RoleResponse)
 async def get_role(
     role_id: uuid.UUID,
-    tenant_context: TenantContext = Depends(get_current_tenant_context),
+    tenant_context: TenantContext = Depends(require_permission("roles.read")),
     use_case: RoleManagementUseCase = Depends(get_role_use_case),
 ):
     """
