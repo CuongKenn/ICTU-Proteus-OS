@@ -80,13 +80,16 @@ class RoleRepository:
                 or_(UserModel.id == user_id, UserModel.keycloak_id == user_id),
                 UserModel.deleted_at.is_(None),
                 UserModel.is_active.is_(True),
+                RoleModel.deleted_at.is_(None),
             )
         )
         if tenant_id is not None:
             stmt = stmt.where(
-                RoleModel.tenant_id == tenant_id,
                 UserModel.tenant_id == tenant_id,
+                or_(RoleModel.tenant_id == tenant_id, RoleModel.tenant_id.is_(None)),
             )
+        else:
+            stmt = stmt.where(RoleModel.tenant_id.is_(None))
         result = await self.session.execute(stmt)
 
         all_permissions = set()

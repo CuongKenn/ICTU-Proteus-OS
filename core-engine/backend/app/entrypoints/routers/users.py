@@ -468,7 +468,7 @@ async def deactivate_user(
             detail="Không thể vô hiệu hóa tài khoản của chính mình.",
         )
 
-    # Disable trên Keycloak trước
+    # Disable trên Keycloak trước và logout session
     if target.keycloak_id:
         try:
             await keycloak.disable_user(
@@ -476,6 +476,10 @@ async def deactivate_user(
             )
         except Exception as e:
             logger.error(f"Không thể disable user trên Keycloak: {e}")
+        try:
+            await keycloak.logout_user(realm="proteus", user_id=str(target.keycloak_id))
+        except Exception as e:
+            logger.error(f"Không thể logout user trên Keycloak: {e}")
 
     # Soft delete trong DB
     try:
