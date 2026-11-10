@@ -22,6 +22,11 @@ from app.infrastructure.config import settings
 logger = logging.getLogger(__name__)
 
 
+class KeycloakAdapterError(Exception):
+    """Lỗi khi tương tác với Keycloak."""
+    pass
+
+
 def mattermost_numeric_id(keycloak_user_id: str) -> int:
     """ID số ổn định cho Mattermost SSO (đòi int64 khác 0).
 
@@ -59,10 +64,12 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
 
     # JWKS TTL: 1 giờ — Keycloak thường rotate keys định kỳ
     _JWKS_TTL_SECONDS: float = 3600.0
+    _FORCE_REFRESH_COOLDOWN_SECONDS: float = 30.0
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._jwks_cache: dict[str, Any] | None = None
         self._jwks_cached_at: float = 0.0
+        self._last_force_refresh_at: float = 0.0
         self._jwks_lock = asyncio.Lock()
         # Nếu không truyền client (VD: fallback hoặc test),
         # tạo mới nhưng không tối ưu pooling
@@ -94,22 +101,48 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             logger.debug(
                 "Fetching JWKS from Keycloak", extra={"url": settings.keycloak_jwks_url}
             )
-            response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
-            response.raise_for_status()
-            self._jwks_cache = response.json()
-            self._jwks_cached_at = time.monotonic()
-            logger.info("JWKS cache refreshed")
-            return self._jwks_cache
+            try:
+                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response.raise_for_status()
+                self._jwks_cache = response.json()
+                self._jwks_cached_at = time.monotonic()
+                logger.info("JWKS cache refreshed")
+                return self._jwks_cache
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to fetch JWKS from Keycloak: {e}")
+                if self._jwks_cache is not None:
+                    return self._jwks_cache
+                raise KeycloakAdapterError(f"Cannot reach Keycloak to fetch JWKS: {e}") from e
 
     async def _force_refresh_jwks(self) -> dict[str, Any]:
-        """M22: ép refresh JWKS (khi kid miss sau rotate)."""
-        async with self._jwks_lock:
-            response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
-            response.raise_for_status()
-            self._jwks_cache = response.json()
-            self._jwks_cached_at = time.monotonic()
-            logger.info("JWKS cache force-refreshed (kid miss)")
+        """M22: ép refresh JWKS (khi kid miss sau rotate) với cooldown (Issue #740)."""
+        now = time.monotonic()
+        if (
+            self._jwks_cache is not None
+            and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+        ):
             return self._jwks_cache
+
+        async with self._jwks_lock:
+            now = time.monotonic()
+            if (
+                self._jwks_cache is not None
+                and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+            ):
+                return self._jwks_cache
+            try:
+                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response.raise_for_status()
+                self._jwks_cache = response.json()
+                self._jwks_cached_at = time.monotonic()
+                self._last_force_refresh_at = self._jwks_cached_at
+                logger.info("JWKS cache force-refreshed (kid miss)")
+                return self._jwks_cache
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to force refresh JWKS from Keycloak: {e}")
+                if self._jwks_cache is not None:
+                    return self._jwks_cache
+                raise KeycloakAdapterError(f"Cannot reach Keycloak to refresh JWKS: {e}") from e
 
     async def verify_and_decode_token(self, token: str) -> dict[str, Any]:
         """

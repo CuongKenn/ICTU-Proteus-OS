@@ -50,11 +50,13 @@ class DSLDryRunEngine:
             candidate_table = f"{plugin_code}_{resource}"
 
             try:
-                manifest = self.manifest_parser.parse(plugin_code)
+                try:
+                    manifest = self.manifest_parser.parse(plugin_code)
+                except Exception:
+                    manifest = self.manifest_parser.parse(f"{plugin_code}-module")
                 if manifest.database and candidate_table in manifest.database.tables:
                     target_table = candidate_table
                 else:
-                    # Nếu manifest không có config database, hoặc table không khớp, fallback:
                     target_table = candidate_table
             except Exception as e:
                 logger.warning("[Dry Run] Lỗi đọc manifest cho %s: %s", plugin_code, e)

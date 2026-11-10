@@ -6,7 +6,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.domain.entities import PluginEntity, PluginStatus, TenantContext
@@ -115,7 +115,8 @@ async def test_endpoint_returns_409_and_does_not_queue(override_deps, current):
         "app.entrypoints.routers.plugins._run_install_plugin_background",
         new=MagicMock(),
     ) as bg:
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/install",
                 json={},
@@ -137,7 +138,8 @@ async def test_endpoint_queues_install_with_task_id_when_not_installed(override_
         "app.entrypoints.routers.plugins._run_install_plugin_background",
         new=MagicMock(side_effect=lambda **kw: _noop(**kw)),
     ) as bg:
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 f"/api/v1/plugins/{PLUGIN_ID}/install",
                 json={},

@@ -217,13 +217,13 @@ async def invite_user(
     Tạo tài khoản mới trên Keycloak (không có mật khẩu), gắn tenant_id attribute,
     sau đó gửi email để nhân viên tự đặt mật khẩu.
     """
-    realm = "proteus"
     user_repo = SQLAlchemyUserRepository(session=db)
     tenant_repo = SQLAlchemyTenantRepository(session=db)
 
     tenant = await tenant_repo.get_by_id(context.tenant_id)
     if not tenant:
         raise HTTPException(status_code=500, detail="Tenant không tồn tại")
+    realm = getattr(tenant, "keycloak_realm", None) or settings.KEYCLOAK_REALM
 
     # 1. Tạo user trên Keycloak (enabled nhưng chưa có password — yêu cầu actions)
     name_parts = payload.full_name.strip().split(" ", 1)
@@ -407,7 +407,7 @@ async def resend_invite(
     try:
         redirect_uri = _invite_redirect_uri(request)
         await keycloak.send_invite_email(
-            realm="proteus",
+            realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM,
             user_id=str(target.keycloak_id),
             redirect_uri=redirect_uri,
             client_id=settings.KEYCLOAK_CLIENT_ID,
@@ -472,12 +472,12 @@ async def deactivate_user(
     if target.keycloak_id:
         try:
             await keycloak.disable_user(
-                realm="proteus", user_id=str(target.keycloak_id)
+                realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(target.keycloak_id)
             )
         except Exception as e:
             logger.error(f"Không thể disable user trên Keycloak: {e}")
         try:
-            await keycloak.logout_user(realm="proteus", user_id=str(target.keycloak_id))
+            await keycloak.logout_user(realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(target.keycloak_id))
         except Exception as e:
             logger.error(f"Không thể logout user trên Keycloak: {e}")
 

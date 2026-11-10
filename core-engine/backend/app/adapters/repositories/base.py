@@ -36,7 +36,7 @@ class AbstractPluginRepository(ABC):
 
     @abstractmethod
     async def list_marketplace(
-        self, limit: int = 20, offset: int = 0
+        self, limit: int = 20, offset: int = 0, category: str | None = None
     ) -> tuple[list[PluginEntity], int]:
         """Liệt kê tất cả Plugin trên Marketplace (không lọc theo Tenant)."""
         ...

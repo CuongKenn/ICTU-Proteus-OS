@@ -6,7 +6,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.adapters.external.n8n_adapter import N8nAdapterError
 from app.core.domain.entities import TenantContext
@@ -54,7 +54,8 @@ async def test_dispatch_success_202(override_auth):
     }
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/actions/wf_asset_request",
             json={"payload": {"asset_id": "x"}},
@@ -72,7 +73,8 @@ async def test_dispatch_unknown_plugin_404(override_auth):
     mock_uc.execute.side_effect = PluginNotFoundError("nope")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/nope/actions/wf_x",
             json={"payload": {}},
@@ -89,7 +91,8 @@ async def test_dispatch_bad_action_400(override_auth):
     mock_uc.execute.side_effect = DSLInvalidActionError("bad")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/actions/nope",
             json={"payload": {}},
@@ -106,7 +109,8 @@ async def test_dispatch_forbidden_403(override_auth):
     mock_uc.execute.side_effect = InsufficientPermissionsError("deny")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/actions/wf_asset_request",
             json={"payload": {}},
@@ -123,7 +127,8 @@ async def test_dispatch_n8n_down_502(override_auth):
     mock_uc.execute.side_effect = N8nAdapterError("n8n down")
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/plugins/asset-module/actions/wf_asset_request",
             json={"payload": {}},
@@ -147,7 +152,8 @@ async def test_list_actions_200(override_auth):
     ]
     _override_uc(mock_uc)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             "/api/v1/plugins/asset-module/actions",
             headers={"Authorization": "Bearer fake"},

@@ -80,10 +80,13 @@ def test_entity_to_response_helpers():
 @pytest.mark.asyncio
 async def test_list_marketplace_and_category_filter(auth):
     uc = AsyncMock()
-    uc.list_marketplace.return_value = (
-        [_entity(), _entity(code_name="crm-module", category="CRM")],
-        2,
-    )
+    async def _mock_list_mp(limit=20, offset=0, category=None):
+        items = [_entity(), _entity(code_name="crm-module", category="CRM")]
+        if category:
+            items = [p for p in items if getattr(p, "category", None) == category]
+        return items, len(items)
+
+    uc.list_marketplace.side_effect = _mock_list_mp
     app.dependency_overrides[get_plugin_list_use_case] = lambda: uc
     try:
         async with _client() as c:

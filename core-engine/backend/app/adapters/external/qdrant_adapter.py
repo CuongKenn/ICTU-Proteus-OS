@@ -42,6 +42,7 @@ class QdrantAdapter(AbstractVectorDBPort):
         self.sparse_model = "Qdrant/bm25"
         self.collection_name = "knowledge_base"
         self._collection_ensured = False
+        self._collection_lock = asyncio.Lock()
         self._models_ensured = False
         self._hybrid = False
         self._embedder = None
@@ -112,26 +113,28 @@ class QdrantAdapter(AbstractVectorDBPort):
         return vec.tolist() if hasattr(vec, "tolist") else list(vec)
 
     async def _ensure_collection_exists(self):
-        """Khởi tạo collection nếu chưa tồn tại"""
+        """Khởi tạo collection nếu chưa tồn tại (thread-safe, không gọi recreate khi đã tồn tại)."""
         self._ensure_models()
         if getattr(self, "_collection_ensured", False):
             return
-        if not await self.client.collection_exists(self.collection_name):
-            logger.info("Creating Qdrant collection: %s", self.collection_name)
-            # recreate_collection sẽ tạo collection với cấu hình embedding hiện tại
-            # từ fastembed model đã set (hybrid hoặc dense-only tùy môi trường).
-            if self._hybrid:
-                await self.client.recreate_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=self.client.get_fastembed_vector_params(),
-                    sparse_vectors_config=self.client.get_fastembed_sparse_vector_params(),
-                )
-            else:
-                await self.client.recreate_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=self.client.get_fastembed_vector_params(),
-                )
-        self._collection_ensured = True
+        async with self._collection_lock:
+            if getattr(self, "_collection_ensured", False):
+                return
+            exists = await self.client.collection_exists(self.collection_name)
+            if not exists:
+                logger.info("Creating Qdrant collection: %s", self.collection_name)
+                if self._hybrid:
+                    await self.client.recreate_collection(
+                        collection_name=self.collection_name,
+                        vectors_config=self.client.get_fastembed_vector_params(),
+                        sparse_vectors_config=self.client.get_fastembed_sparse_vector_params(),
+                    )
+                else:
+                    await self.client.recreate_collection(
+                        collection_name=self.collection_name,
+                        vectors_config=self.client.get_fastembed_vector_params(),
+                    )
+            self._collection_ensured = True
 
     async def upsert_vectors(
         self, tenant_id: str, chunks: list[str], metadatas: list[dict[str, Any]]

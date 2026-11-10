@@ -31,11 +31,13 @@ class LocalManifestParser(AbstractManifestParserPort):
         # và plugins nằm ở root.
         # Ở môi trường docker, PLUGINS_DIR có thể được map tới `/plugins`.
         self._plugins_dir = Path(settings.PLUGINS_DIR)
-        if not self._plugins_dir.is_absolute():
-            # Quy đổi tương đối so với thư mục project (root)
-            backend_dir = Path(__file__).parent.parent.parent.parent
+        if not self._plugins_dir.exists():
+            clean_plugins_dir = str(settings.PLUGINS_DIR).lstrip("/\\")
+            backend_dir = Path(__file__).resolve().parent.parent.parent.parent
             root_dir = backend_dir.parent.parent
-            self._plugins_dir = (root_dir / settings.PLUGINS_DIR).resolve()
+            candidate = (root_dir / clean_plugins_dir).resolve()
+            if candidate.exists():
+                self._plugins_dir = candidate
 
     @property
     def plugins_dir(self) -> Path:
@@ -47,6 +49,10 @@ class LocalManifestParser(AbstractManifestParserPort):
         Đọc file manifest.yaml của plugin và parse thành PluginManifest entity.
         """
         manifest_path = self._plugins_dir / plugin_code_name / "manifest.yaml"
+        if not manifest_path.exists() and not plugin_code_name.endswith("-module"):
+            candidate = self._plugins_dir / f"{plugin_code_name}-module" / "manifest.yaml"
+            if candidate.exists():
+                manifest_path = candidate
         if not manifest_path.exists():
             raise ManifestParserError(
                 f"Không tìm thấy file manifest.yaml cho plugin '{plugin_code_name}' "

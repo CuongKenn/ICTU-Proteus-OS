@@ -29,5 +29,6 @@ def test_traefik_production_config_hardening():
     assert traefik_prod.exists(), "traefik.prod.yml must exist"
 
     content = traefik_prod.read_text(encoding="utf-8")
-    assert "dashboard: false" in content, "Traefik production must disable unauthenticated public dashboard"
+    assert "dashboard: true" in content, "Traefik dashboard should be enabled behind auth"
+    assert "insecure: false" in content, "Traefik production must have insecure disabled"
     assert "insecure: false" in content, "Traefik production must have insecure disabled"

@@ -146,11 +146,9 @@ async def list_marketplace_plugins(
     use_case: PluginListUseCase = Depends(get_plugin_list_use_case),
 ) -> PluginListResponse:
     """Lấy danh sách Plugin trên Marketplace (chưa cài hoặc đã cài)."""
-    plugins, total = await use_case.list_marketplace(limit=limit, offset=offset)
-    # Filter by category nếu có
-    if category:
-        plugins = [p for p in plugins if p.category == category]
-        total = len(plugins)
+    plugins, total = await use_case.list_marketplace(
+        limit=limit, offset=offset, category=category
+    )
     return PluginListResponse(
         items=[_entity_to_response(p) for p in plugins],
         total=total,
