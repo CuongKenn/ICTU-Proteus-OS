@@ -4,6 +4,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone", // Tối ưu cho Docker deployment
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+      {
+        protocol: "http",
+        hostname: "**",
+      },
+    ],
+  },
   // Proxy qua BFF — không expose BACKEND_URL ra client
   async rewrites() {
     return [];

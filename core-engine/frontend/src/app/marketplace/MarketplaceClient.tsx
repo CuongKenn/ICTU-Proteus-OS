@@ -11,6 +11,7 @@ import { CategoryFilter } from "@/components/marketplace/CategoryFilter";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { Modal } from "@/components/ui/Modal";
 import { InstallPreviewDialog } from "./InstallPreviewDialog";
+import { InstallProgressModal } from "@/components/marketplace/InstallProgressModal";
 import { useMarketplace } from "@/hooks/useMarketplace";
 import { usePlugins } from "@/hooks/usePlugins";
 import { PackageOpen, Sparkles } from "lucide-react";
@@ -23,7 +24,7 @@ export const MarketplaceClient: React.FC = () => {
   const { hasPermission, isLoading: isRBACLoading } = useRBAC();
   const canInstall = hasPermission("plugins:install");
 
-  const { plugins: availablePlugins, isLoading: isLoadingAvailable, installingId, installProgress, installStatus, installPlugin, uninstallPlugin } = useMarketplace();
+  const { plugins: availablePlugins, isLoading: isLoadingAvailable, installingId, installProgress, installStatus, installSteps, installPlugin, uninstallPlugin } = useMarketplace();
   const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled, enable, upgrade } = usePlugins();
 
   const [previewPlugin, setPreviewPlugin] = useState<PluginData | null>(null);
@@ -62,6 +63,7 @@ export const MarketplaceClient: React.FC = () => {
           category: p.category || "Utilities",
           author: p.author ?? undefined,
           tags: p.tags ?? [],
+          iconUrl: p.icon_url ?? undefined,
         },
         credSchema: p.credentials_schema ?? [],
         status: uiStatus,
@@ -86,6 +88,7 @@ export const MarketplaceClient: React.FC = () => {
             category: p.category || "Utilities",
             author: p.author ?? undefined,
             tags: p.tags ?? [],
+            iconUrl: p.icon_url ?? undefined,
           },
           credSchema: p.credentials_schema ?? [],
           status: "available",
@@ -282,6 +285,16 @@ export const MarketplaceClient: React.FC = () => {
         credentialsSchema={previewCredSchema}
         onClose={() => setIsInstallPreviewOpen(false)}
         onConfirm={handleConfirmInstall}
+      />
+
+      {/* Install Progress Modal */}
+      <InstallProgressModal
+        isOpen={Boolean(installingId)}
+        pluginName={allPlugins.find(p => p.data.id === installingId)?.data.name}
+        steps={installSteps || []}
+        overallProgress={installProgress}
+        status={installStatus}
+        onClose={() => {}}
       />
 
       {/* Uninstall Confirm Modal */}

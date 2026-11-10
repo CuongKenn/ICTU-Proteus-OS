@@ -46,7 +46,8 @@ export const UsersTab = () => {
   // Assign role modal state
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [initialRoleIds, setInitialRoleIds] = useState<string[]>([]);
   const [assigning, setAssigning] = useState(false);
 
   // Global action messages
@@ -144,23 +145,39 @@ export const UsersTab = () => {
 
   const openRoleModal = (user: User) => {
     setSelectedUser(user);
-    setSelectedRoleId(roles[0]?.id || "");
+    const userRoleIds = roles
+      .filter((r) => user.roles?.includes(r.name) || user.roles?.includes(r.display_name))
+      .map((r) => r.id);
+    setSelectedRoleIds(userRoleIds);
+    setInitialRoleIds(userRoleIds);
     setIsRoleModalOpen(true);
   };
 
-  const handleAssignRole = async () => {
-    if (!selectedUser || !selectedRoleId) return;
+  const handleSaveRoles = async () => {
+    if (!selectedUser) return;
     setAssigning(true);
     clearMessages();
     try {
-      await api.post(`/v1/roles/${selectedRoleId}/assign`, {
-        user_id: selectedUser.id,
-      });
+      // Find roles to assign and roles to revoke
+      const toAssign = selectedRoleIds.filter((id) => !initialRoleIds.includes(id));
+      const toRevoke = initialRoleIds.filter((id) => !selectedRoleIds.includes(id));
+
+      for (const roleId of toAssign) {
+        await api.post(`/v1/roles/${roleId}/assign`, {
+          user_id: selectedUser.id,
+        });
+      }
+      for (const roleId of toRevoke) {
+        await api.post(`/v1/roles/${roleId}/revoke`, {
+          user_id: selectedUser.id,
+        });
+      }
+
       setIsRoleModalOpen(false);
-      setActionSuccess(`Gán Role thành công cho ${selectedUser.full_name || selectedUser.email}!`);
+      setActionSuccess(`Cập nhật Roles thành công cho ${selectedUser.full_name || selectedUser.email}!`);
       fetchData();
     } catch (err: any) {
-      setActionError(extractErrorMessage(err, "Không thể gán role."));
+      setActionError(extractErrorMessage(err, "Không thể cập nhật role."));
     } finally {
       setAssigning(false);
     }
@@ -376,41 +393,54 @@ export const UsersTab = () => {
         )}
       </Modal>
 
-      {/* Assign Role Modal */}
+      {/* Assign / Revoke Role Modal */}
       <Modal 
         isOpen={isRoleModalOpen} 
         onClose={() => setIsRoleModalOpen(false)} 
-        title="Gán Role cho Người Dùng"
-        onConfirm={handleAssignRole}
+        title="Quản lý Roles của Người Dùng"
+        onConfirm={handleSaveRoles}
         confirmLabel="Lưu thay đổi"
         isConfirmLoading={assigning}
       >
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Đang cấu hình cho: <strong className="text-text-primary">{selectedUser?.full_name || selectedUser?.email}</strong>
+            Đang cấu hình phân quyền cho: <strong className="text-text-primary">{selectedUser?.full_name || selectedUser?.email}</strong>
           </p>
           {roles.length === 0 ? (
             <p className="text-text-secondary text-sm">Chưa có Role nào. Hãy tạo Role tại tab Roles trước.</p>
           ) : (
-            <div className="space-y-2">
-              {roles.map((role) => (
-                <label key={role.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-surface/30 cursor-pointer hover:bg-bg-hover transition-colors">
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role.id}
-                    checked={selectedRoleId === role.id}
-                    onChange={() => setSelectedRoleId(role.id)}
-                    className="w-4 h-4 text-primary focus:ring-primary/20"
-                  />
-                  <div>
-                    <span className="text-text-primary font-medium">{role.display_name || role.name}</span>
-                    {role.description && (
-                      <p className="text-xs text-text-secondary">{role.description}</p>
-                    )}
-                  </div>
-                </label>
-              ))}
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {roles.map((role) => {
+                const isChecked = selectedRoleIds.includes(role.id);
+                return (
+                  <label key={role.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-surface/30 cursor-pointer hover:bg-bg-hover transition-colors">
+                    <input
+                      type="checkbox"
+                      value={role.id}
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedRoleIds((prev) => [...prev, role.id]);
+                        } else {
+                          setSelectedRoleIds((prev) => prev.filter((id) => id !== role.id));
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary/20"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-primary font-medium">{role.display_name || role.name}</span>
+                        {isChecked && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-mono">Đã gán</span>
+                        )}
+                      </div>
+                      {role.description && (
+                        <p className="text-xs text-text-secondary mt-0.5">{role.description}</p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>

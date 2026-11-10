@@ -1,8 +1,10 @@
 // Copyright (c) 2026 CuongKenn & ICTU Team
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+"use client";
+
 import { AppShell } from "@/components/AppShell";
-import { IframeEmbed } from "@/components/ui/IframeEmbed";
+import { SsoEmbed } from "@/components/ui/SsoEmbed";
 import { BookOpen } from "lucide-react";
 
 export default function WikiPage() {
@@ -11,9 +13,11 @@ export default function WikiPage() {
   return (
     <AppShell>
       {wikiUrl ? (
-        <IframeEmbed
-          src={wikiUrl}
+        <SsoEmbed
+          baseUrl={wikiUrl}
+          ssoUrl={`${wikiUrl}/auth/oidc`}
           title="Outline Wiki"
+          storageKey="sso_outline"
         />
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-4 text-text-secondary">
