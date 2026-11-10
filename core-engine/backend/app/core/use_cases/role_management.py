@@ -20,6 +20,8 @@ class RoleManagementUseCase:
     async def create_role(self, tenant_id: uuid.UUID, role_data: dict) -> RoleModel:
         role_data["tenant_id"] = tenant_id
         role = await self.role_repo.create_role(role_data)
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()
         return role
 
     async def get_role(
@@ -33,10 +35,15 @@ class RoleManagementUseCase:
         # Prevent updating tenant_id or id
         update_data.pop("id", None)
         update_data.pop("tenant_id", None)
-        return await self.role_repo.update_role(role_id, tenant_id, update_data)
+        role = await self.role_repo.update_role(role_id, tenant_id, update_data)
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()
+        return role
 
     async def delete_role(self, role_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         await self.role_repo.delete_role(role_id, tenant_id)
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()
 
     async def list_roles(self, tenant_id: uuid.UUID) -> list[RoleModel]:
         return await self.role_repo.list_by_tenant(tenant_id)
@@ -71,6 +78,8 @@ class RoleManagementUseCase:
                 }
             )
             created.append(role["name"])
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()
         return {"created": created, "skipped": skipped}
 
     async def assign_role_to_user(
@@ -100,7 +109,12 @@ class RoleManagementUseCase:
             if admin_user:
                 admin_internal_id = admin_user.id
 
-        return await self.role_repo.assign_role(user_id, role_id, admin_internal_id)
+        user_role = await self.role_repo.assign_role(
+            user_id, role_id, admin_internal_id
+        )
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()
+        return user_role
 
     async def revoke_role_from_user(
         self, user_id: uuid.UUID, role_id: uuid.UUID, tenant_id: uuid.UUID
@@ -120,3 +134,5 @@ class RoleManagementUseCase:
                 )
 
         await self.role_repo.revoke_role(user_id, role_id)
+        if hasattr(self.role_repo, "commit"):
+            await self.role_repo.commit()

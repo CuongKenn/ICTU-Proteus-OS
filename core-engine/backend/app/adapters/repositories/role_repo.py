@@ -61,6 +61,9 @@ class RoleRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def commit(self) -> None:
+        await self.session.commit()
+
     async def get_user_permissions(
         self, user_id: uuid.UUID, tenant_id: uuid.UUID | None = None
     ) -> list[str]:

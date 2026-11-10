@@ -272,6 +272,11 @@ class OnboardingUseCase:
                         "Bỏ qua tạo Mattermost team cho tenant %s: %s", slug, e
                     )
 
+            if hasattr(self.tenant_repo, "commit"):
+                await self.tenant_repo.commit()
+            elif hasattr(self.user_repo, "commit"):
+                await self.user_repo.commit()
+
             logger.info(
                 "Đăng ký Tenant thành công",
                 extra={"tenant_id": str(tenant_id), "keycloak_id": keycloak_user_id},

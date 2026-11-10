@@ -195,3 +195,6 @@ class SQLAlchemyTenantRepository(AbstractTenantRepository):
                 is_active=True,
             )
         )
+
+    async def commit(self) -> None:
+        await self._session.commit()

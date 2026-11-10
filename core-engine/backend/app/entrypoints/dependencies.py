@@ -469,17 +469,26 @@ async def get_audit_log_repo(
 
 async def get_ai_command_use_case(
     plugin_repo: AbstractPluginRepository = Depends(get_plugin_repo),
-    ai_command_repo: AbstractAICommandRepository = Depends(get_ai_command_repo),
     dsl_dry_run_repo: AbstractDSLDryRunRepository = Depends(get_dsl_dry_run_repo),
-    role_repo: RoleRepository = Depends(get_role_repo),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     qdrant_adapter: QdrantAdapter = Depends(get_qdrant_adapter),
-    audit_log_repo: AbstractAuditLogRepository = Depends(get_audit_log_repo),
-    user_repo: AbstractUserRepository = Depends(get_user_repo),
+    db: AsyncSession = Depends(get_db_transactional),
 ) -> AICommandUseCase:
-    """Inject AICommandUseCase (dynamic DSL + local core actions + audit)."""
+    """Inject AICommandUseCase (dynamic DSL + local core actions + audit).
+    Chia sẻ cùng transactional DB session cho ai_command_repo, audit_log_repo,
+    role_repo và user_repo để tránh silent rollback (#741).
+    """
     from app.adapters.external.local_manifest_parser import LocalManifestParser
+    from app.adapters.repositories.ai_command_repo import SQLAlchemyAICommandRepository
+    from app.adapters.repositories.audit_log_repo import SQLAlchemyAuditLogRepository
+    from app.adapters.repositories.role_repo import RoleRepository
+    from app.adapters.repositories.user_repo import SQLAlchemyUserRepository
+
+    ai_command_repo = SQLAlchemyAICommandRepository(session=db)
+    audit_log_repo = SQLAlchemyAuditLogRepository(session=db)
+    role_repo = RoleRepository(session=db)
+    user_repo = SQLAlchemyUserRepository(session=db)
 
     return AICommandUseCase(
         plugin_repo=plugin_repo,
