@@ -149,9 +149,14 @@ async def get_rag_ingestion_use_case(
 
 async def get_plugin_credentials_use_case(
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
+    db: AsyncSession = Depends(get_db_transactional),
 ) -> ConfigurePluginCredentialsUseCase:
     """Inject Plugin Credentials Use Case."""
-    return ConfigurePluginCredentialsUseCase(n8n_adapter=n8n_adapter)
+    return ConfigurePluginCredentialsUseCase(
+        n8n_adapter=n8n_adapter,
+        plugin_repo=SQLAlchemyPluginRepository(session=db),
+        session=db,
+    )
 
 
 async def get_plugin_install_use_case(
@@ -207,14 +212,23 @@ async def get_plugin_uninstall_use_case(
 
 
 async def get_plugin_toggle_use_case(
+    request: Request = None,
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginToggleUseCase:
     """Inject Plugin Toggle Use Case (cùng transactional session chống mất commit #726)."""
+    event_bus = None
+    if (
+        request is not None
+        and hasattr(request, "app")
+        and hasattr(request.app, "state")
+    ):
+        event_bus = getattr(request.app.state, "redis_event_bus", None)
     return PluginToggleUseCase(
         plugin_repo=SQLAlchemyPluginRepository(session=db),
         n8n_adapter=n8n_adapter,
         session=db,
+        event_bus=event_bus,
     )
 
 

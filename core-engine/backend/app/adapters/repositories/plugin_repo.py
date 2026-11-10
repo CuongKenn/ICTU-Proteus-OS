@@ -455,13 +455,27 @@ class SQLAlchemyPluginRepository(AbstractPluginRepository):
         icon_url: str,
         manifest_url: str,
         is_official: bool,
+        category: str = "Utilities",
+        tags: list[str] | None = None,
+        screenshots: list[str] | None = None,
+        long_description: str | None = None,
+        credentials_schema: list[dict] | None = None,
+        homepage_url: str | None = None,
     ) -> None:
         """Thêm mới hoặc cập nhật thông tin Plugin từ local manifest."""
         logger.info("Upserting plugin from manifest", extra={"code_name": code_name})
         await self._session.execute(
             text(
-                "INSERT INTO plugins (code_name, display_name, description, version, author, license, icon_url, manifest_url, is_official, updated_at) "
-                "VALUES (:code_name, :display_name, :description, :version, :author, :license, :icon_url, :manifest_url, :is_official, NOW()) "
+                "INSERT INTO plugins ("
+                "code_name, display_name, description, version, author, license, "
+                "icon_url, manifest_url, is_official, category, tags, screenshots, "
+                "long_description, credentials_schema, homepage_url, updated_at"
+                ") "
+                "VALUES ("
+                ":code_name, :display_name, :description, :version, :author, :license, "
+                ":icon_url, :manifest_url, :is_official, :category, :tags, :screenshots, "
+                ":long_description, :credentials_schema, :homepage_url, NOW()"
+                ") "
                 "ON CONFLICT (code_name) DO UPDATE SET "
                 "display_name = EXCLUDED.display_name, "
                 "description = EXCLUDED.description, "
@@ -471,6 +485,12 @@ class SQLAlchemyPluginRepository(AbstractPluginRepository):
                 "icon_url = EXCLUDED.icon_url, "
                 "manifest_url = EXCLUDED.manifest_url, "
                 "is_official = EXCLUDED.is_official, "
+                "category = EXCLUDED.category, "
+                "tags = EXCLUDED.tags, "
+                "screenshots = EXCLUDED.screenshots, "
+                "long_description = EXCLUDED.long_description, "
+                "credentials_schema = EXCLUDED.credentials_schema, "
+                "homepage_url = EXCLUDED.homepage_url, "
                 "updated_at = NOW()"
             ),
             {
@@ -483,6 +503,12 @@ class SQLAlchemyPluginRepository(AbstractPluginRepository):
                 "icon_url": icon_url,
                 "manifest_url": manifest_url,
                 "is_official": is_official,
+                "category": category or "Utilities",
+                "tags": tags or [],
+                "screenshots": json.dumps(screenshots or []),
+                "long_description": long_description,
+                "credentials_schema": json.dumps(credentials_schema or []),
+                "homepage_url": homepage_url,
             },
         )
 
