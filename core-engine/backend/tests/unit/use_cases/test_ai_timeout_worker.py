@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.core.domain.entities import AICommandStatus
 from app.core.use_cases.ai_timeout_worker import AITimeoutWorker
 
@@ -39,7 +40,7 @@ def mock_audit_log_repo():
 
 @pytest.fixture
 def mock_mattermost_adapter():
-    adapter = AsyncMock()
+    adapter = AsyncMock(spec=MattermostAdapter)
     return adapter
 
 

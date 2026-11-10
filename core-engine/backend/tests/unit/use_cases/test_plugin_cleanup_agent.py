@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.adapters.external.mattermost_adapter import MattermostAdapter
 from app.core.use_cases.plugin_cleanup_agent import PluginCleanupAgent
 
 
@@ -16,7 +17,7 @@ def mock_plugin_repo():
 
 @pytest.fixture
 def mock_mattermost_adapter():
-    return AsyncMock()
+    return AsyncMock(spec=MattermostAdapter)
 
 
 @pytest.fixture
