@@ -26,6 +26,7 @@ export const IntegrationsTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newProvider, setNewProvider] = useState("");
+  const [customProviderName, setCustomProviderName] = useState("");
   const [newConfig, setNewConfig] = useState("");
   const [newApiKey, setNewApiKey] = useState("");
 
@@ -52,6 +53,11 @@ export const IntegrationsTab: React.FC = () => {
     try {
       setError(null);
       let parsedConfig = {};
+      const finalProvider = newProvider === "other" ? customProviderName.trim() : newProvider;
+      if (!finalProvider) {
+        setError("Vui lòng nhập tên Provider.");
+        return;
+      }
       
       if (newProvider === "other") {
         try {
@@ -66,13 +72,14 @@ export const IntegrationsTab: React.FC = () => {
       }
 
       const res = await api.post("/v1/tenants/me/integrations", {
-        provider: newProvider,
+        provider: finalProvider,
         config: parsedConfig,
       });
 
       setIntegrations([...integrations, res.data]);
       setIsAdding(false);
       setNewProvider("");
+      setCustomProviderName("");
       setNewConfig("");
       setNewApiKey("");
     } catch (err) {
@@ -139,7 +146,8 @@ export const IntegrationsTab: React.FC = () => {
               <label className="text-sm font-medium text-text-primary">Tên Provider Tùy Chỉnh</label>
               <input
                 type="text"
-                onChange={(e) => setNewProvider(e.target.value)}
+                value={customProviderName}
+                onChange={(e) => setCustomProviderName(e.target.value)}
                 placeholder="VD: slack, aws, github"
                 className="w-full bg-bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors"
               />
@@ -177,7 +185,15 @@ export const IntegrationsTab: React.FC = () => {
           )}
 
           <div className="flex justify-end pt-2">
-            <Button onClick={handleAddIntegration} disabled={!newProvider || (newProvider === "other" ? !newConfig : !newApiKey)}>
+            <Button
+              onClick={handleAddIntegration}
+              disabled={
+                !newProvider ||
+                (newProvider === "other"
+                  ? !customProviderName.trim() || !newConfig
+                  : !newApiKey)
+              }
+            >
               <Save className="w-4 h-4 mr-2" /> Lưu Kết Nối
             </Button>
           </div>

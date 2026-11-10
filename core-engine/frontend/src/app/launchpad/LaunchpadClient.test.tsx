@@ -61,6 +61,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -82,6 +83,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -100,6 +102,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -133,6 +136,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -150,6 +154,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -171,6 +176,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });
@@ -194,6 +200,7 @@ describe("LaunchpadClient", () => {
       install: vi.fn(),
       uninstall: vi.fn(),
       disable: vi.fn(),
+      enable: vi.fn(),
       upgrade: vi.fn(),
       configureCredentials: vi.fn(),
     });

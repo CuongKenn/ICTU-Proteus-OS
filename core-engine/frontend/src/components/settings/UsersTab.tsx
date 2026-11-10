@@ -18,6 +18,7 @@ interface User {
   full_name: string | null;
   roles: string[];
   is_active: boolean;
+  last_login_at: string | null;
 }
 
 
@@ -51,6 +52,7 @@ export const UsersTab = () => {
   // Global action messages
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const clearMessages = () => {
     setActionSuccess(null);
@@ -82,11 +84,17 @@ export const UsersTab = () => {
     if (!inviteEmail || !inviteFullName) return;
     setInviting(true);
     setInviteError(null);
+    clearMessages();
     try {
-      await api.post("/v1/users/invite", {
+      const res = await api.post("/v1/users/invite", {
         email: inviteEmail,
         full_name: inviteFullName,
       });
+      if (res.data?.email_sent === false) {
+        setActionError("Người dùng đã được tạo, nhưng không thể gửi email kích hoạt (SMTP chưa cấu hình hoặc lỗi gửi mail). Hãy cấu hình SMTP hoặc gửi lại lời mời.");
+      } else {
+        setActionSuccess("Đã gửi email mời nhân viên thành công!");
+      }
       setInviteSuccess(true);
       await fetchData(); // Refresh list
       setTimeout(() => {
@@ -100,6 +108,24 @@ export const UsersTab = () => {
       setInviteError(detail);
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleResendInvite = async (userId: string) => {
+    setResendingId(userId);
+    clearMessages();
+    try {
+      const res = await api.post(`/v1/users/${userId}/resend-invite`);
+      if (res.data?.email_sent === false) {
+        setActionError("Gửi lại lời mời thất bại do lỗi SMTP.");
+      } else {
+        setActionSuccess("Đã gửi lại email kích hoạt thành công!");
+      }
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || "Không thể gửi lại email kích hoạt.";
+      setActionError(detail);
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -229,33 +255,52 @@ export const UsersTab = () => {
                       )}
                     </td>
                     <td className="py-3 px-4">
-
-                      <span className={`px-2 py-1 text-xs rounded-md font-medium ${
-                        user.is_active
-                          ? "bg-green-500/10 text-green-400"
-                          : "bg-red-500/10 text-red-400"
-                      }`}>
-                        {user.is_active ? "Đang hoạt động" : "Vô hiệu hóa"}
-                      </span>
+                      {user.is_active ? (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-green-500/10 text-green-400">
+                          Đang hoạt động
+                        </span>
+                      ) : !user.last_login_at ? (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-amber-500/10 text-amber-400">
+                          Chờ kích hoạt
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-red-500/10 text-red-400">
+                          Vô hiệu hóa
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right space-x-2">
+                      {(user.is_active || !user.last_login_at) && (
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-sm"
+                          onClick={() => openRoleModal(user)}
+                        >
+                          Gán Role
+                        </Button>
+                      )}
+                      {!user.is_active && !user.last_login_at && (
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-sm"
+                          disabled={resendingId === user.id}
+                          onClick={() => handleResendInvite(user.id)}
+                        >
+                          {resendingId === user.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            "Gửi lại lời mời"
+                          )}
+                        </Button>
+                      )}
                       {user.is_active && (
-                        <>
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-sm"
-                            onClick={() => openRoleModal(user)}
-                          >
-                            Gán Role
-                          </Button>
-                          <Button
-                            variant="danger"
-                            className="px-3 py-1.5 text-sm"
-                            onClick={() => handleDeactivate(user.id)}
-                          >
-                            <UserMinus className="w-4 h-4" />
-                          </Button>
-                        </>
+                        <Button
+                          variant="danger"
+                          className="px-3 py-1.5 text-sm"
+                          onClick={() => handleDeactivate(user.id)}
+                        >
+                          <UserMinus className="w-4 h-4" />
+                        </Button>
                       )}
                     </td>
                   </tr>

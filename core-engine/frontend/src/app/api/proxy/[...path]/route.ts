@@ -127,7 +127,10 @@ async function proxyHandler(
   const targetPath = rawPath;
   // Frontend calls api.get("/v1/roles") → params.path = ["v1","roles"] → targetPath = "v1/roles"
   // Dùng /api/ (không thêm v1) để tránh double prefix: /api/v1/v1/roles (404)
-  const targetUrl = `${BACKEND_URL}/api/${targetPath}${request.nextUrl.search}`;
+  // Backend /health route mount ở root thay vì /api/health
+  const targetUrl = targetPath === "health"
+    ? `${BACKEND_URL}/health${request.nextUrl.search}`
+    : `${BACKEND_URL}/api/${targetPath}${request.nextUrl.search}`;
 
   // Forward headers có chọn lọc — không forward cookie, host, x-forwarded-* từ client
   const headers = new Headers({

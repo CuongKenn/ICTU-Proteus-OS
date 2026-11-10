@@ -19,6 +19,7 @@ interface UsePluginsReturn {
   install: (pluginId: string, credentials?: CredentialInput[]) => Promise<{ task_id: string }>;
   uninstall: (pluginId: string, confirmName?: string) => Promise<void>;
   disable: (pluginId: string) => Promise<void>;
+  enable: (pluginId: string) => Promise<void>;
   upgrade: (pluginId: string) => Promise<void>;
   configureCredentials: (pluginId: string, payload: { credential_type: string, credential_name: string, data: Record<string, string> }) => Promise<unknown>;
 }
@@ -91,6 +92,23 @@ export function usePlugins(): UsePluginsReturn {
     }
   }, [refetch]);
 
+  const enable = useCallback(async (pluginId: string) => {
+    try {
+      await api.post(`/v1/plugins/${pluginId}/enable`, {});
+
+      useNotificationStore.getState().addToast("success", "Đã kích hoạt lại Plugin.");
+      refetch();
+    } catch (err) {
+      if (process.env.NEXT_PUBLIC_ENABLE_MOCKS === "true") {
+        useNotificationStore.getState().addToast("success", "Đã kích hoạt lại Plugin.");
+        refetch();
+      } else {
+        useNotificationStore.getState().addToast("error", "Không thể kích hoạt Plugin.");
+        throw err;
+      }
+    }
+  }, [refetch]);
+
   const disable = useCallback(async (pluginId: string) => {
     try {
       await api.post(`/v1/plugins/${pluginId}/disable`, {});
@@ -149,6 +167,7 @@ export function usePlugins(): UsePluginsReturn {
     install,
     uninstall,
     disable,
+    enable,
     upgrade,
     configureCredentials,
   };
