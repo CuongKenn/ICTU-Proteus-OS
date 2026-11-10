@@ -31,7 +31,7 @@ services:
       - "${TRAEFIK_HTTPS_PORT:-443}:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ${TRAEFIK_CONFIG_FILE:-./traefik/traefik.dev.yml}:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
       - traefik-certs:/letsencrypt
     networks:
@@ -484,7 +484,7 @@ services:
   # OBSERVABILITY — Grafana, Loki, Promtail
   # ────────────────────────────────────────────────────────────
   loki:
-    image: grafana/loki:2.9.8
+    image: grafana/loki:3.0.0
     container_name: proteus-loki
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yaml
@@ -518,6 +518,8 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required and must not be empty}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "${PUBLIC_SCHEME:-http}://${DOMAIN}${PUBLIC_URL_SUFFIX}/monitoring/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
@@ -528,6 +530,7 @@ services:
     depends_on:
       - loki
     labels:
+      - "proteus.log=true"
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=Host(`${DOMAIN}`) && PathPrefix(`/monitoring/`)"
       - "traefik.http.routers.grafana.entrypoints=web"
@@ -674,6 +677,7 @@ services:
     networks:
       - proteus-net
     labels:
+      - "proteus.log=true"
       - "traefik.enable=true"
       # Path-based routing: plugins.proteus.local/{plugin-code-name}
       # BẮT BUỘC thêm plugins.${DOMAIN} vào /etc/hosts (xem setup.sh)
