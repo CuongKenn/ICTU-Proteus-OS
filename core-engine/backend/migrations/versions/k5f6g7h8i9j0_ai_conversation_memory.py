@@ -80,9 +80,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["session_id"], ["ai_sessions.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["session_id"], ["ai_sessions.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -96,6 +94,22 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_ai_messages_tenant_id"), "ai_messages", ["tenant_id"], unique=False
     )
+    op.execute("ALTER TABLE ai_sessions ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE ai_sessions FORCE ROW LEVEL SECURITY")
+    op.execute("""
+        CREATE POLICY tenant_isolation_policy ON ai_sessions
+        FOR ALL TO public
+        USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+        WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+        """)
+    op.execute("ALTER TABLE ai_messages ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE ai_messages FORCE ROW LEVEL SECURITY")
+    op.execute("""
+        CREATE POLICY tenant_isolation_policy ON ai_messages
+        FOR ALL TO public
+        USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+        WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+        """)
 
 
 def downgrade() -> None:

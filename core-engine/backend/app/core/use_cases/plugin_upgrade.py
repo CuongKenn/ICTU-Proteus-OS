@@ -904,9 +904,26 @@ class PluginUpgradeUseCase:
                 await self.metabase_adapter.delete_dashboard(str(did))
             except Exception as e:
                 logger.warning("Không dọn được dashboard mới %s: %s", did, e)
+        integration_config = None
+        if self.tenant_repo and hasattr(
+            self.tenant_repo, "get_integration_by_provider"
+        ):
+            try:
+                integration = await self.tenant_repo.get_integration_by_provider(
+                    context.tenant_id, "appsmith"
+                )
+                if integration:
+                    integration_config = integration.config
+            except Exception as e:
+                logger.warning("Không lấy được Appsmith integration config: %s", e)
+
+        kwargs = {}
+        if integration_config is not None:
+            kwargs["integration_config"] = integration_config
+
         for aid in created_assets.get("appsmith", []) or []:
             try:
-                await self.appsmith_adapter.delete_application(str(aid))
+                await self.appsmith_adapter.delete_application(str(aid), **kwargs)
             except Exception as e:
                 logger.warning("Không dọn được app mới %s: %s", aid, e)
         # n8n workflows MỚI import thêm (không update) → xóa.

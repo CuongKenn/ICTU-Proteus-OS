@@ -529,7 +529,7 @@ def _run_legacy_upgrade_part2() -> None:
     )
     op.drop_index("idx_user_roles_role_id", table_name="user_roles")
     op.drop_index("idx_user_roles_user_id", table_name="user_roles")
-    op.drop_constraint("user_roles_user_role_key", "user_roles", type_="unique")
+    # op.drop_constraint("user_roles_user_role_key", "user_roles", type_="unique")  # Preserved for ON CONFLICT
     op.create_index(
         op.f("ix_user_roles_deleted_at"), "user_roles", ["deleted_at"], unique=False
     )
@@ -559,7 +559,7 @@ def _run_legacy_upgrade_part2() -> None:
     op.drop_index("idx_users_email", table_name="users")
     op.drop_index("idx_users_tenant_id", table_name="users")
     op.drop_constraint("users_keycloak_id_key", "users", type_="unique")
-    op.drop_constraint("users_tenant_id_email_key", "users", type_="unique")
+    # op.drop_constraint("users_tenant_id_email_key", "users", type_="unique")  # Preserved for ON CONFLICT
     op.create_index(op.f("ix_users_deleted_at"), "users", ["deleted_at"], unique=False)
     op.create_index(op.f("ix_users_email"), "users", ["email"], unique=False)
     op.create_index(op.f("ix_users_id"), "users", ["id"], unique=False)

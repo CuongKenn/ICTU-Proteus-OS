@@ -1169,6 +1169,7 @@ class PluginInstallUseCase:
                 if new_id:
                     credential_mapping[cred_type] = new_id
                     created_asset_ids.append(new_id)
+                    self._credential_ids.append({"id": new_id, "name": safe_name})
                 logger.info(
                     "Tạo n8n credential '%s' cho plugin %s tenant %s",
                     safe_name,
@@ -1317,7 +1318,7 @@ class PluginInstallUseCase:
                             e,
                         )
                 elif step == "appsmith":
-                    if hasattr(self.appsmith_adapter, "delete_app"):
+                    if hasattr(self.appsmith_adapter, "delete_application"):
                         integration_config = None
                         if self.tenant_repo and hasattr(
                             self.tenant_repo, "get_integration_by_provider"
@@ -1366,15 +1367,24 @@ class PluginInstallUseCase:
                             )
                 elif step == "credentials":
                     if hasattr(self.n8n_adapter, "delete_credential"):
-                        for cred in getattr(self, "_credential_ids", []):
+                        creds_to_delete = getattr(
+                            self, "_credential_ids", []
+                        ) or created_assets.get("credentials", [])
+                        for cred in creds_to_delete:
+                            cid = cred["id"] if isinstance(cred, dict) else str(cred)
+                            cname = (
+                                cred.get("name", cid)
+                                if isinstance(cred, dict)
+                                else str(cred)
+                            )
                             try:
-                                await self.n8n_adapter.delete_credential(cred["id"])
+                                await self.n8n_adapter.delete_credential(cid)
                                 logger.info(
-                                    "Rollback: Deleted n8n credential %s", cred["name"]
+                                    "Rollback: Deleted n8n credential %s", cname
                                 )
                             except Exception as e:
                                 logger.error(
-                                    "Rollback credential %s failed: %s", cred["id"], e
+                                    "Rollback credential %s failed: %s", cid, e
                                 )
             except Exception as e:
                 logger.error(

@@ -14,6 +14,7 @@ from app.entrypoints.dependencies import (
     get_current_tenant_context,
     get_plugin_credentials_use_case,
     get_plugin_repo,
+    get_plugin_repo_write,
     get_role_repo,
 )
 from main import app
@@ -154,3 +155,59 @@ async def test_get_install_status_invalid_uuid(override_auth):
 
     assert response.status_code == 400
     assert "Invalid task_id" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_uninstall_plugin_not_installed_fails(override_auth):
+    import types
+
+    mock_repo = AsyncMock(spec=AbstractPluginRepository)
+    plugin_id = uuid.uuid4()
+    mock_repo.get_by_id.return_value = types.SimpleNamespace(
+        id=plugin_id, code_name="test-plugin"
+    )
+    mock_repo.get_installation_status.return_value = None
+
+    app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.request(
+            "DELETE",
+            f"/api/v1/plugins/{plugin_id}/uninstall",
+            json={"confirm_name": "test-plugin"},
+            headers={"Authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 400
+    assert "chưa được cài đặt" in response.json()["detail"]
+    app.dependency_overrides.pop(get_plugin_repo_write, None)
+
+
+@pytest.mark.asyncio
+async def test_uninstall_plugin_active_success(override_auth):
+    import types
+
+    mock_repo = AsyncMock(spec=AbstractPluginRepository)
+    plugin_id = uuid.uuid4()
+    mock_repo.get_by_id.return_value = types.SimpleNamespace(
+        id=plugin_id, code_name="test-plugin"
+    )
+    mock_repo.get_installation_status.return_value = PluginStatus.ACTIVE
+    mock_repo.upsert_installation = AsyncMock()
+    mock_repo.update_install_steps_log = AsyncMock()
+    mock_repo._session = AsyncMock()
+
+    app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.request(
+            "DELETE",
+            f"/api/v1/plugins/{plugin_id}/uninstall",
+            json={"confirm_name": "test-plugin"},
+            headers={"Authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "UNINSTALLING"
+    mock_repo.upsert_installation.assert_called_once()
+    app.dependency_overrides.pop(get_plugin_repo_write, None)

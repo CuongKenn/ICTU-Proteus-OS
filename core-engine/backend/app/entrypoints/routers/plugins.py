@@ -526,6 +526,17 @@ async def uninstall_plugin(
             detail="Tên xác nhận không khớp với mã plugin (code_name).",
         )
 
+    curr_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    if curr_status is None or curr_status not in [
+        PluginStatus.ACTIVE,
+        PluginStatus.DISABLED,
+        PluginStatus.FAILED_DIRTY,
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plugin chưa được cài đặt hoặc đang ở trạng thái không thể gỡ cài đặt.",
+        )
+
     task_id = uuid.uuid4()
 
     await repo.upsert_installation(

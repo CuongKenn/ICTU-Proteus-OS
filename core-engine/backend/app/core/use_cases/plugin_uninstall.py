@@ -122,7 +122,6 @@ class PluginUninstallUseCase:
             # BƯỚC 1: Xóa Event Subscriptions
             self._log_step("events", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_1_events(
                 context, plugin_code_name, manifest, config_override.get("events", [])
             )
@@ -133,7 +132,6 @@ class PluginUninstallUseCase:
             await self._persist_steps(context, plugin_id)
             self._log_step("keycloak", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_2_keycloak(
                 context, plugin_code_name, manifest, config_override.get("keycloak", [])
             )
@@ -144,7 +142,6 @@ class PluginUninstallUseCase:
             await self._persist_steps(context, plugin_id)
             self._log_step("appsmith", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_3_appsmith(
                 context, plugin_code_name, manifest, config_override.get("appsmith", [])
             )
@@ -155,7 +152,6 @@ class PluginUninstallUseCase:
             await self._persist_steps(context, plugin_id)
             self._log_step("metabase", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_4_metabase(
                 context, plugin_code_name, manifest, config_override.get("metabase", [])
             )
@@ -166,7 +162,6 @@ class PluginUninstallUseCase:
             await self._persist_steps(context, plugin_id)
             self._log_step("n8n", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_5_n8n(
                 context, plugin_code_name, manifest, config_override.get("n8n", [])
             )
@@ -177,7 +172,6 @@ class PluginUninstallUseCase:
             await self._persist_steps(context, plugin_id)
             self._log_step("database", "RUNNING")
             await self._persist_steps(context, plugin_id)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
             await self._step_6_database(context, plugin_code_name, manifest)
             self._log_step("database", "DONE")
             await self._persist_steps(context, plugin_id)
