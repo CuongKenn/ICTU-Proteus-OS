@@ -280,9 +280,12 @@ async def ensure_ai_session(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    session_id = await use_case.ensure_session(
-        ctx.tenant_id, ctx.user_id, body.session_id
-    )
+    try:
+        session_id = await use_case.ensure_session(
+            ctx.tenant_id, ctx.user_id, body.session_id
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return SessionResponse(session_id=session_id)
 
@@ -313,7 +316,10 @@ async def list_ai_messages(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    return await use_case.history(ctx.tenant_id, ctx.user_id, session_id)
+    try:
+        return await use_case.history(ctx.tenant_id, ctx.user_id, session_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
 
 @router.post(
@@ -330,16 +336,21 @@ async def append_ai_message(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: ConversationUseCase = Depends(get_conversation_use_case),
 ):
-    real_session = await use_case.ensure_session(ctx.tenant_id, ctx.user_id, session_id)
-    msg_id = await use_case.save_turn(
-        ctx.tenant_id,
-        ctx.user_id,
-        real_session,
-        body.role,
-        body.content,
-        body.command_id,
-        body.citations,
-    )
+    try:
+        real_session = await use_case.ensure_session(
+            ctx.tenant_id, ctx.user_id, session_id
+        )
+        msg_id = await use_case.save_turn(
+            ctx.tenant_id,
+            ctx.user_id,
+            real_session,
+            body.role,
+            body.content,
+            body.command_id,
+            body.citations,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     await use_case.conversation_repo.commit()
     return ChatMessageResponse(
         id=msg_id,
@@ -444,12 +455,15 @@ async def stream_ai_chat(
         session_id=body.session_id, natural_language_input=body.natural_language_input
     )
     # M1: chặn IDOR session trước khi stream (đồng bộ, để trả 403 ngay).
-    try:
-        await use_case.ai_command_use_case._assert_session_owned(
-            ctx.tenant_id, ctx.user_id, body.session_id
-        )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if use_case.conversation_repo is not None:
+        try:
+            await use_case.conversation_repo.assert_session_owned(
+                ctx.tenant_id, ctx.user_id, body.session_id
+            )
+        except PermissionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
 
     async def event_gen():
         async for payload in use_case.execute_stream(dto, ctx):
