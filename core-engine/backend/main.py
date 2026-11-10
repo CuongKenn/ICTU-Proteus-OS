@@ -134,9 +134,12 @@ async def lifespan(app: FastAPI):
                 pass
 
     async def sync_marketplace_plugins() -> None:
-        """Scan local plugins directory and upsert into plugins table."""
+        """Scan local plugins directory, validate manifest and upsert into plugins table."""
         try:
+            from app.core.use_cases.manifest_validator import ManifestValidator
+
             parser = LocalManifestParser()
+            validator = ManifestValidator()
             plugins_dir = parser.plugins_dir
             if not plugins_dir.exists():
                 logger.warning("Plugins directory %s not found.", plugins_dir)
@@ -147,8 +150,22 @@ async def lifespan(app: FastAPI):
                 for plugin_path in plugins_dir.iterdir():
                     if not plugin_path.is_dir():
                         continue
+                    manifest_file = plugin_path / "manifest.yaml"
+                    if not manifest_file.exists():
+                        continue
                     try:
+                        with open(manifest_file, encoding="utf-8") as mf:
+                            validator.validate_yaml_string(mf.read())
                         manifest = parser.parse(plugin_path.name)
+                        raw_creds = []
+                        for c in manifest.credentials_schema:
+                            if hasattr(c, "model_dump"):
+                                raw_creds.append(c.model_dump())
+                            elif hasattr(c, "dict"):
+                                raw_creds.append(c.dict())
+                            elif isinstance(c, dict):
+                                raw_creds.append(c)
+
                         await plugin_repo.upsert_from_manifest(
                             code_name=plugin_path.name,
                             display_name=manifest.display_name,
@@ -159,6 +176,12 @@ async def lifespan(app: FastAPI):
                             icon_url=manifest.icon_url,
                             manifest_url=f"file:///{plugin_path.name}/manifest.yaml",
                             is_official=manifest.is_official,
+                            category=manifest.category,
+                            tags=manifest.tags,
+                            screenshots=manifest.screenshots,
+                            long_description=manifest.long_description,
+                            credentials_schema=raw_creds,
+                            homepage_url=manifest.homepage_url,
                         )
                     except Exception as e:
                         logger.warning(

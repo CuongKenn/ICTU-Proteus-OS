@@ -210,6 +210,12 @@ class AbstractPluginRepository(ABC):
         icon_url: str,
         manifest_url: str,
         is_official: bool,
+        category: str = "Utilities",
+        tags: list[str] | None = None,
+        screenshots: list[str] | None = None,
+        long_description: str | None = None,
+        credentials_schema: list[dict] | None = None,
+        homepage_url: str | None = None,
     ) -> None:
         """
         Thêm mới hoặc cập nhật thông tin Plugin từ local manifest.

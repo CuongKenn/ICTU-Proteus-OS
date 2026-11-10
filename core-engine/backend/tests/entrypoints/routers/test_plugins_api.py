@@ -4,7 +4,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.adapters.external.n8n_adapter import N8nAdapterError
 from app.adapters.repositories.base import AbstractPluginRepository
@@ -53,7 +53,9 @@ async def test_configure_plugin_credentials_success(override_auth):
 
     app.dependency_overrides[get_plugin_credentials_use_case] = lambda: mock_use_case
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
             "/api/v1/plugins/123e4567-e89b-12d3-a456-426614174000/credentials",
             json={
@@ -79,7 +81,9 @@ async def test_configure_plugin_credentials_failure(override_auth):
 
     app.dependency_overrides[get_plugin_credentials_use_case] = lambda: mock_use_case
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
             "/api/v1/plugins/123e4567-e89b-12d3-a456-426614174000/credentials",
             json={
@@ -109,7 +113,9 @@ async def test_get_install_status_success(override_auth):
     app.dependency_overrides[get_plugin_repo] = lambda: mock_repo
 
     task_id = "123e4567-e89b-12d3-a456-426614174000"
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             f"/api/v1/plugins/install/{task_id}/status",
             headers={"Authorization": "Bearer fake"},
@@ -133,7 +139,9 @@ async def test_get_install_status_not_found(override_auth):
     app.dependency_overrides[get_plugin_repo] = lambda: mock_repo
 
     task_id = "123e4567-e89b-12d3-a456-426614174000"
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             f"/api/v1/plugins/install/{task_id}/status",
             headers={"Authorization": "Bearer fake"},
@@ -147,7 +155,9 @@ async def test_get_install_status_not_found(override_auth):
 
 @pytest.mark.asyncio
 async def test_get_install_status_invalid_uuid(override_auth):
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             "/api/v1/plugins/install/not-a-valid-uuid/status",
             headers={"Authorization": "Bearer fake"},
@@ -170,7 +180,9 @@ async def test_uninstall_plugin_not_installed_fails(override_auth):
 
     app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.request(
             "DELETE",
             f"/api/v1/plugins/{plugin_id}/uninstall",
@@ -199,7 +211,9 @@ async def test_uninstall_plugin_active_success(override_auth):
 
     app.dependency_overrides[get_plugin_repo_write] = lambda: mock_repo
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.request(
             "DELETE",
             f"/api/v1/plugins/{plugin_id}/uninstall",

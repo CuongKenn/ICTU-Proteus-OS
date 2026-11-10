@@ -51,6 +51,9 @@ class PluginUpgradeError(Exception):
 _DANGEROUS_SQL = re.compile(
     r"\bDROP\s+(TABLE|COLUMN|SCHEMA|DATABASE|FUNCTION|PROCEDURE|INDEX|VIEW|TRIGGER|POLICY|EXTENSION|ROLE|USER)\b"
     r"|\bTRUNCATE\b"
+    r"|\bDELETE\s+FROM\b"
+    r"|\bCOPY\b"
+    r"|\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b"
     r"|\bALTER\s+TABLE\b[^;]{0,200}?\bDROP\s+(?:COLUMN|CONSTRAINT|PRIMARY|FOREIGN)\b"
     r"|\bGRANT\b|\bREVOKE\b"
     r"|\bSECURITY\s+DEFINER\b"
@@ -588,6 +591,38 @@ class PluginUpgradeUseCase:
 
         import json as _json
 
+        # Khôi phục custom credentials đã lưu từ trước cho plugin
+        custom_cred_mapping: dict[str, str] = {}
+        target_pid = snapshot.get("plugin_id")
+        if not target_pid and hasattr(self.plugin_repo, "get_by_code_name"):
+            try:
+                _p = await self.plugin_repo.get_by_code_name(plugin_code_name)
+                if _p:
+                    target_pid = _p.id
+            except Exception:
+                pass
+        if target_pid and hasattr(self.plugin_repo, "get_credential_ids"):
+            try:
+                _existing_creds = await self.plugin_repo.get_credential_ids(
+                    context.tenant_id, target_pid
+                )
+                for _c in _existing_creds:
+                    if isinstance(_c, dict):
+                        _cid = _c.get("id") or _c.get("credential_id")
+                        _ctype = _c.get("type") or _c.get("credential_type")
+                        _cname = _c.get("name", "")
+                        if _cid:
+                            if _ctype:
+                                custom_cred_mapping[_ctype] = str(_cid)
+                            if _cname and f"_{plugin_code_name}_" in _cname:
+                                _inferred = _cname.split(f"_{plugin_code_name}_")[-1]
+                                custom_cred_mapping[_inferred] = str(_cid)
+                    elif isinstance(_c, str):
+                        # fallback
+                        pass
+            except Exception as _ce:
+                logger.warning("Không đọc được custom credentials khi upgrade: %s", _ce)
+
         tenant_short = str(context.tenant_id).replace("-", "")[:8]
         tenant_allowed_ids = set(
             str(w) for w in snapshot.get("config_override", {}).get("n8n", []) or []
@@ -609,6 +644,9 @@ class PluginUpgradeUseCase:
                 proteus_ollama_cred_name,
                 alerts_channel_id,
                 tenant_short=tenant_short,
+                custom_cred_mapping=custom_cred_mapping,
+                plugin_code_name=plugin_code_name,
+                context=context,
             )
             wf_orig_name = wf_json.get("name") or wf.file or "workflow"
             wf_name = f"t_{tenant_short}_{wf_orig_name}"
@@ -850,6 +888,9 @@ class PluginUpgradeUseCase:
         proteus_ollama_cred_name: str | None,
         alerts_channel_id: str | None = None,
         tenant_short: str | None = None,
+        custom_cred_mapping: dict[str, str] | None = None,
+        plugin_code_name: str | None = None,
+        context: TenantContext | None = None,
     ) -> None:
         """Gắn credentials dùng chung vào nodes (giống luồng install)."""
         for node in wf_json.get("nodes", []):
@@ -904,6 +945,14 @@ class PluginUpgradeUseCase:
                     ):
                         node["credentials"][cred_key]["id"] = proteus_db_cred_id
                         node["credentials"][cred_key]["name"] = "ProteusDB_Real"
+                    elif custom_cred_mapping and cred_key in custom_cred_mapping:
+                        node["credentials"][cred_key]["id"] = custom_cred_mapping[
+                            cred_key
+                        ]
+                        if context and plugin_code_name:
+                            node["credentials"][cred_key][
+                                "name"
+                            ] = f"tenant_{context.tenant_id}_{plugin_code_name}_{cred_key}"
 
     async def _compensate(
         self,

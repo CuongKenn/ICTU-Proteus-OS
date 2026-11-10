@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from app.adapters.repositories.base import AbstractPluginRepository
 from app.core.domain.entities import PluginStatus, TenantContext
-from app.core.domain.ports import AbstractWorkflowEnginePort
+from app.core.domain.ports import AbstractEventBusPort, AbstractWorkflowEnginePort
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,10 +27,12 @@ class PluginToggleUseCase:
         plugin_repo: AbstractPluginRepository,
         n8n_adapter: AbstractWorkflowEnginePort | None = None,
         session: AsyncSession | None = None,
+        event_bus: AbstractEventBusPort | None = None,
     ) -> None:
         self.plugin_repo = plugin_repo
         self.n8n_adapter = n8n_adapter
         self.session = session
+        self.event_bus = event_bus
 
     async def disable_plugin(
         self, context: TenantContext, plugin_id: uuid.UUID
@@ -90,6 +92,17 @@ class PluginToggleUseCase:
                         pass
             logger.error("Failed to update plugin status in DB: %s", e)
             raise PluginToggleError(f"Lỗi cập nhật trạng thái Plugin: {e}") from e
+
+        if self.event_bus:
+            try:
+                await self.event_bus.publish_plugin_lifecycle(
+                    action="disabled",
+                    tenant_id=str(context.tenant_id),
+                    plugin_name=plugin.code_name,
+                    plugin_version=plugin.version or "latest",
+                )
+            except Exception as ex:
+                logger.warning("Failed to publish plugin.disabled event: %s", ex)
 
         logger.info(
             "Plugin disabled successfully",
@@ -154,6 +167,17 @@ class PluginToggleUseCase:
                         pass
             logger.error("Failed to update plugin status in DB: %s", e)
             raise PluginToggleError(f"Lỗi cập nhật trạng thái Plugin: {e}") from e
+
+        if self.event_bus:
+            try:
+                await self.event_bus.publish_plugin_lifecycle(
+                    action="enabled",
+                    tenant_id=str(context.tenant_id),
+                    plugin_name=plugin.code_name,
+                    plugin_version=plugin.version or "latest",
+                )
+            except Exception as ex:
+                logger.warning("Failed to publish plugin.enabled event: %s", ex)
 
         logger.info(
             "Plugin enabled successfully",

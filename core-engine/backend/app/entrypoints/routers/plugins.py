@@ -235,6 +235,7 @@ async def _run_install_plugin_background(
                 keycloak_adapter=KeycloakAdapter(client=app_state.http_client),
                 mattermost_adapter=MattermostAdapter(client=app_state.http_client),
                 session=session,
+                event_bus=getattr(app_state, "redis_event_bus", None),
                 tenant_repo=tenant_repo,
             )
             await use_case.execute(
@@ -494,8 +495,40 @@ async def _run_uninstall_plugin_background(
 
             logger.info("[BG_TASK] SUCCESS: %s", plugin_id)
 
-    except Exception:
+    except BaseException as e:
         logger.exception("[BG_TASK] FAILED: %s", plugin_id)
+        await _mark_uninstall_failed_if_stuck(ctx, plugin_id, e)
+
+
+async def _mark_uninstall_failed_if_stuck(
+    ctx: TenantContext,
+    plugin_id: uuid.UUID | None,
+    error: BaseException,
+) -> None:
+    """Đảm bảo lỗi nền không để plugin kẹt UNINSTALLING."""
+    if plugin_id is None:
+        return
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.infrastructure.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            curr = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+            if curr == PluginStatus.UNINSTALLING:
+                await repo.update_status(
+                    ctx.tenant_id,
+                    plugin_id,
+                    PluginStatus.FAILED_DIRTY,
+                    error_log=f"Uninstall failed: {type(error).__name__}: {error}"[
+                        :2000
+                    ],
+                )
+                await session.commit()
+    except Exception:
+        logger.exception(
+            "[BG_TASK] Không thể đặt FAILED_DIRTY cho uninstall %s", plugin_id
+        )
 
 
 @router.delete(
@@ -620,6 +653,7 @@ async def _run_upgrade_plugin_background(
     task_id,
     app_state,
     was_disabled: bool = False,
+    plugin_id: uuid.UUID | None = None,
 ):
     """Chạy pipeline upgrade trong background (mirror install)."""
     from app.infrastructure.database import current_tenant_id as tenant_id_ctx
@@ -663,8 +697,39 @@ async def _run_upgrade_plugin_background(
                 was_disabled=was_disabled,
             )
         logger.info("[BG_TASK] UPGRADE COMPLETED: %s", plugin_code_name)
-    except BaseException:
+    except BaseException as e:
         logger.exception("[BG_TASK] UPGRADE FAILED: %s", plugin_code_name)
+        await _mark_upgrade_failed_if_stuck(ctx, plugin_id, task_id, e)
+
+
+async def _mark_upgrade_failed_if_stuck(
+    ctx: TenantContext,
+    plugin_id: uuid.UUID | None,
+    task_id: uuid.UUID | None,
+    error: BaseException,
+) -> None:
+    """Đảm bảo lỗi nền không để plugin kẹt UPGRADING."""
+    if plugin_id is None:
+        return
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.infrastructure.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            curr = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+            if curr == PluginStatus.UPGRADING:
+                await repo.update_status(
+                    ctx.tenant_id,
+                    plugin_id,
+                    PluginStatus.FAILED_DIRTY,
+                    error_log=f"Upgrade failed: {type(error).__name__}: {error}"[:2000],
+                )
+                await session.commit()
+    except Exception:
+        logger.exception(
+            "[BG_TASK] Không thể đặt FAILED_DIRTY cho upgrade %s", plugin_id
+        )
 
 
 @router.post(
@@ -728,6 +793,7 @@ async def upgrade_plugin(
             task_id=task_id,
             app_state=request.app.state,
             was_disabled=was_disabled,
+            plugin_id=plugin_id,
         )
     )
 
@@ -985,17 +1051,78 @@ async def reload_plugins(
     ctx: TenantContext = Depends(require_permission("plugins.install")),
 ) -> dict[str, str]:
     """
-    Quét lại thư mục plugins và nạp động (hot-reload) các Python extensions
-    mà không cần khởi động lại server.
+    Quét lại thư mục plugins, validate manifest, đồng bộ vào database và nạp động
+    (hot-reload) các Python extensions mà không cần khởi động lại server.
     """
+    from app.adapters.external.local_manifest_parser import LocalManifestParser
+    from app.adapters.repositories.plugin_repo import SQLAlchemyPluginRepository
+    from app.core.use_cases.manifest_validator import ManifestValidator
+    from app.infrastructure.database import AsyncSessionLocal
+
     loader = getattr(request.app.state, "plugin_loader", None)
-    if loader:
+    if not loader:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Plugin loader không được cấu hình.",
+        )
+
+    try:
         loader.load_all_plugins()
-        return {"message": "Đã hot-reload tất cả plugin extensions."}
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Plugin loader không được cấu hình.",
-    )
+    except Exception as e:
+        logger.warning("Plugin loader hot reload failed: %s", e)
+
+    parser = LocalManifestParser()
+    validator = ManifestValidator()
+    plugins_dir = parser.plugins_dir
+    synced_count = 0
+
+    if plugins_dir.exists():
+        async with AsyncSessionLocal() as session:
+            repo = SQLAlchemyPluginRepository(session=session)
+            for plugin_path in plugins_dir.iterdir():
+                if not plugin_path.is_dir():
+                    continue
+                manifest_file = plugin_path / "manifest.yaml"
+                if not manifest_file.exists():
+                    continue
+                try:
+                    with open(manifest_file, encoding="utf-8") as mf:
+                        validator.validate_yaml_string(mf.read())
+                    manifest = parser.parse(plugin_path.name)
+                    raw_creds = []
+                    for c in manifest.credentials_schema:
+                        if hasattr(c, "model_dump"):
+                            raw_creds.append(c.model_dump())
+                        elif hasattr(c, "dict"):
+                            raw_creds.append(c.dict())
+                        elif isinstance(c, dict):
+                            raw_creds.append(c)
+
+                    await repo.upsert_from_manifest(
+                        code_name=plugin_path.name,
+                        display_name=manifest.display_name,
+                        description=manifest.description,
+                        version=manifest.version,
+                        author=manifest.author,
+                        license=manifest.license,
+                        icon_url=manifest.icon_url,
+                        manifest_url=f"file:///{plugin_path.name}/manifest.yaml",
+                        is_official=manifest.is_official,
+                        category=manifest.category,
+                        tags=manifest.tags,
+                        screenshots=manifest.screenshots,
+                        long_description=manifest.long_description,
+                        credentials_schema=raw_creds,
+                        homepage_url=manifest.homepage_url,
+                    )
+                    synced_count += 1
+                except Exception as e:
+                    logger.warning(
+                        "Không thể reload plugin %s: %s", plugin_path.name, e
+                    )
+            await session.commit()
+
+    return {"message": f"Đã hot-reload và đồng bộ {synced_count} plugin extensions."}
 
 
 @router.post(

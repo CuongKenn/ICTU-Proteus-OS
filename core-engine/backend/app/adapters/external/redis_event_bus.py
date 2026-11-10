@@ -296,7 +296,8 @@ class RedisEventBusPublisher(AbstractEventBusPort):
             plugin_version: Version hiện tại.
             extra_data: Dữ liệu bổ sung (VD: error_log khi failed).
         """
-        event_type = f"plugin.{action}"
+        clean_action = action[7:] if action.startswith("plugin.") else action
+        event_type = f"plugin.{clean_action}"
         payload: dict[str, Any] = {
             "plugin_name": plugin_name,
             "plugin_version": plugin_version,

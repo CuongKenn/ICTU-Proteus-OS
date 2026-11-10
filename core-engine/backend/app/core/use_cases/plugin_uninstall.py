@@ -163,7 +163,11 @@ class PluginUninstallUseCase:
             self._log_step("n8n", "RUNNING")
             await self._persist_steps(context, plugin_id)
             await self._step_5_n8n(
-                context, plugin_code_name, manifest, config_override.get("n8n", [])
+                context,
+                plugin_code_name,
+                manifest,
+                config_override.get("n8n", []),
+                plugin_id=plugin.id,
             )
             completed_steps.append("n8n")
 
@@ -201,7 +205,7 @@ class PluginUninstallUseCase:
             if self.event_bus:
                 try:
                     await self.event_bus.publish_plugin_lifecycle(
-                        action="plugin.uninstalled",
+                        action="uninstalled",
                         tenant_id=str(context.tenant_id),
                         plugin_name=plugin.code_name,
                         plugin_version=manifest.version,
@@ -242,7 +246,7 @@ class PluginUninstallUseCase:
             if self.event_bus:
                 try:
                     await self.event_bus.publish_plugin_lifecycle(
-                        action="plugin.failed",
+                        action="failed",
                         tenant_id=str(context.tenant_id),
                         plugin_name=plugin.code_name,
                         plugin_version=manifest.version,
@@ -300,12 +304,8 @@ class PluginUninstallUseCase:
         try:
             role_repo = RoleRepository(self.session)
             existing = await role_repo.list_by_tenant(context.tenant_id)
-            manifest_names = {r.name for r in manifest.roles}
             for r in existing:
-                if (
-                    getattr(r, "plugin_code_name", None) == plugin_code_name
-                    or r.name in manifest_names
-                ):
+                if getattr(r, "plugin_code_name", None) == plugin_code_name:
                     await role_repo.delete_role(r.id, context.tenant_id)
         except Exception as e:
             logger.warning("Không thể xóa DB roles của %s: %s", plugin_code_name, e)
@@ -329,17 +329,16 @@ class PluginUninstallUseCase:
                 integration_config = integration.config
 
         for app_id in asset_ids:
-            if hasattr(self.appsmith_adapter, "delete_app"):
+            delete_fn = getattr(
+                self.appsmith_adapter, "delete_application", None
+            ) or getattr(self.appsmith_adapter, "delete_app", None)
+            if delete_fn:
                 try:
-                    if (
-                        "integration_config"
-                        in self.appsmith_adapter.delete_app.__code__.co_varnames
-                    ):
-                        await self.appsmith_adapter.delete_app(
-                            app_id, integration_config=integration_config
-                        )
+                    code_obj = getattr(delete_fn, "__code__", None)
+                    if code_obj and "integration_config" in code_obj.co_varnames:
+                        await delete_fn(app_id, integration_config=integration_config)
                     else:
-                        await self.appsmith_adapter.delete_app(app_id)
+                        await delete_fn(app_id)
                 except Exception as e:
                     logger.warning("Không thể xóa Appsmith app %s: %s", app_id, e)
 
@@ -364,14 +363,41 @@ class PluginUninstallUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
         asset_ids: list[str],
+        plugin_id: uuid.UUID | None = None,
     ) -> None:
-        """Xóa workflows khỏi n8n."""
+        """Xóa workflows và credentials khỏi n8n."""
         for wf_id in asset_ids:
             if hasattr(self.n8n_adapter, "delete_workflow"):
                 try:
                     await self.n8n_adapter.delete_workflow(wf_id)
                 except Exception as e:
                     logger.warning("Không thể xóa n8n workflow %s: %s", wf_id, e)
+
+        # Xóa n8n credentials liên quan đến plugin
+        if (
+            plugin_id
+            and hasattr(self.plugin_repo, "get_credential_ids")
+            and hasattr(self.n8n_adapter, "delete_credential")
+        ):
+            try:
+                creds = await self.plugin_repo.get_credential_ids(
+                    context.tenant_id, plugin_id
+                )
+                for cred in creds:
+                    cred_id = None
+                    if isinstance(cred, dict):
+                        cred_id = cred.get("id") or cred.get("credential_id")
+                    elif isinstance(cred, str):
+                        cred_id = cred
+                    if cred_id:
+                        try:
+                            await self.n8n_adapter.delete_credential(str(cred_id))
+                        except Exception as e:
+                            logger.warning(
+                                "Không thể xóa n8n credential %s: %s", cred_id, e
+                            )
+            except Exception as e:
+                logger.warning("Lỗi khi dọn dẹp n8n credentials: %s", e)
 
     async def _step_6_database(
         self, context: TenantContext, plugin_code_name: str, manifest: PluginManifest

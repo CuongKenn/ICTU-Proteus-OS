@@ -163,8 +163,6 @@ async def test_upgrade_plugin_drop_table_forbidden(
 async def test_upgrade_plugin_delete_without_tenant_id_forbidden(
     use_case, mock_plugin_repo, mock_session, tenant_context, plugin_id
 ):
-    # Implementation mới cho phép DELETE (chỉ chặn DROP/TRUNCATE).
-    # Test khóa behavior: DELETE migration chạy thành công và được record.
     manifest_mock = MagicMock()
     manifest_mock.version = "1.2.0"
     mock_plugin_repo.list_applied_migrations.return_value = {}
@@ -179,16 +177,14 @@ async def test_upgrade_plugin_delete_without_tenant_id_forbidden(
         ),
         patch("builtins.open", mock_open(read_data="DELETE FROM test;")),
     ):
-        applied = await use_case._step_db_migrations(
-            context=tenant_context,
-            plugin_id=plugin_id,
-            plugin_code_name="hr-module",
-            manifest=manifest_mock,
-            from_version="1.0.0",
-        )
-
-    assert applied == 1
-    mock_plugin_repo.record_applied_migration.assert_called_once()
+        with pytest.raises(PluginUpgradeError, match="nguy hiểm"):
+            await use_case._step_db_migrations(
+                context=tenant_context,
+                plugin_id=plugin_id,
+                plugin_code_name="hr-module",
+                manifest=manifest_mock,
+                from_version="1.0.0",
+            )
 
 
 @pytest.mark.asyncio

@@ -255,6 +255,9 @@ class AppsmithAdapter(AbstractUIBuilderPort):
 
         logger.info("App deleted successfully", extra={"app_id": app_id})
 
+    # Alias for delete_application
+    delete_app = delete_application
+
     async def check_path_conflict(
         self,
         path: str,
