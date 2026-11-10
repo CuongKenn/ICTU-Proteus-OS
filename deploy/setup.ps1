@@ -483,7 +483,8 @@ if ($envContent -match "MATTERMOST_BOT_TOKEN=CHANGE_ME") {
 Write-Host "[INFO] Configuring n8n (Owner Account + API Key via DB)..." -ForegroundColor Cyan
 $envContent = Get-Content .env -Raw -Encoding UTF8
 if ($envContent -match "N8N_API_KEY=CHANGE_ME") {
-    $n8nRes = Invoke-RestWithRetry -Uri "${scheme}://workflow.$domain$urlSuffix/rest/owner/setup" -Method Post -Body "{`"email`":`"admin@proteus.local`",`"firstName`":`"Admin`",`"lastName`":`"Proteus`",`"password`":`"$mmAdminPass`"}"
+    $n8nPassCompliant = "Admin_${mmAdminPass}!"
+    $n8nRes = Invoke-RestWithRetry -Uri "${scheme}://workflow.$domain$urlSuffix/rest/owner/setup" -Method Post -Body "{`"email`":`"admin@proteus.local`",`"firstName`":`"Admin`",`"lastName`":`"Proteus`",`"password`":`"$n8nPassCompliant`"}"
     if ($n8nRes) {
         Write-Host "[OK] n8n Owner account initialized." -ForegroundColor Green
     } else {
@@ -545,9 +546,42 @@ if ($envContent -match "CHANGE_ME_GET_FROM_KEYCLOAK_UI") {
     Write-Host "[INFO] Filled default OIDC secrets; Admin API step will sync real values." -ForegroundColor Yellow
 }
 
-# 9. Appsmith (Manual configuration required)
-Write-Host "[INFO] Appsmith is starting..." -ForegroundColor Cyan
-Write-Host "[!] Note: APPSMITH_API_KEY must be generated manually in Appsmith UI (Developer Settings)." -ForegroundColor Yellow
+# 9. Appsmith Automated Configuration (Issue #739)
+Write-Host "[INFO] Configuring Appsmith (Admin & API Key)..." -ForegroundColor Cyan
+$appsmithPassLine = Get-Content .env -Encoding UTF8 | Where-Object { $_ -match "^APPSMITH_ADMIN_PASSWORD=" }
+$appsmithPass = if ($appsmithPassLine) { ($appsmithPassLine[0] -split '=', 2)[1].Trim() } else { "Admin_Secret123!" }
+
+$appElapsed = 0
+$appTimeout = 180
+while ($appElapsed -lt $appTimeout) {
+    $check = docker compose exec -T appsmith curl -sf http://localhost:80/api/v1/users 2>$null
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Seconds 5
+    $appElapsed += 5
+}
+
+$envContent = Get-Content .env -Raw -Encoding UTF8
+if ($appElapsed -lt $appTimeout -and $envContent -match "APPSMITH_API_KEY=CHANGE_ME") {
+    $superJson = "{`"email`":`"admin@proteus.local`",`"password`":`"$appsmithPass`",`"name`":`"Proteus Admin`",`"allowCollectingAnonymousData`":false,`"signupForNewsletter`":false}"
+    docker compose exec -T appsmith curl -sf -X POST "http://localhost:80/api/v1/users/super" -H "Content-Type: application/json" -d $superJson 2>$null | Out-Null
+
+    $loginJson = "{`"username`":`"admin@proteus.local`",`"password`":`"$appsmithPass`"}"
+    docker compose exec -T appsmith curl -sf -c /tmp/appsmith_cookie.txt -X POST "http://localhost:80/api/v1/users/login" -H "Content-Type: application/json" -d $loginJson 2>$null | Out-Null
+
+    $keyRes = docker compose exec -T appsmith curl -sf -b /tmp/appsmith_cookie.txt -X POST "http://localhost:80/api/v1/users/api-key" -H "Content-Type: application/json" -d "{`"label`":`"proteus-os-bot`"}" 2>$null
+    if ($keyRes) {
+        try {
+            $parsedKey = ($keyRes | ConvertFrom-Json).data.apiKey
+            if ($parsedKey) {
+                $envContent = $envContent -replace "APPSMITH_API_KEY=CHANGE_ME.*", "APPSMITH_API_KEY=$parsedKey"
+                Set-Content .env -Value $envContent -Encoding UTF8
+                docker compose restart backend
+                Write-Host "[OK] APPSMITH_API_KEY injected into .env" -ForegroundColor Green
+            }
+        } catch {}
+    }
+    docker compose exec -T appsmith rm -f /tmp/appsmith_cookie.txt 2>$null | Out-Null
+}
 
 # 9.5 Configure Keycloak SMTP from .env (fix "invite khong gui duoc mail").
 # Idempotent. Bo qua neu SMTP_PASSWORD con placeholder.

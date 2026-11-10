@@ -25,7 +25,12 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-GRANT CONNECT ON DATABASE proteus TO app_user;
+DO $$
+DECLARE
+  current_db text := current_database();
+BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_user', current_db);
+END $$;
 GRANT USAGE ON SCHEMA public TO app_user;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_user;

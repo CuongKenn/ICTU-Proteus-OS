@@ -143,9 +143,18 @@ jobs:
                       expected_prefix = plugin_name.replace("-", "_").split("_")[0] + "_"
 
                       for table in db["tables"]:
-                          if not isinstance(table, dict):
+                          if isinstance(table, dict):
+                              table_name = table.get("name", "")
+                              for field in REQUIRED_TABLE_FIELDS:
+                                  if field not in table:
+                                      errors.append(
+                                          f"[{manifest_path}] Table '{table_name}' thiếu field: '{field}'"
+                                      )
+                          elif isinstance(table, str):
+                              table_name = table
+                          else:
                               continue
-                          table_name = table.get("name", "")
+
                           if not table_name.startswith(expected_prefix):
                               errors.append(
                                   f"[{manifest_path}] Table '{table_name}' phải có prefix '{expected_prefix}' "
@@ -154,14 +163,12 @@ jobs:
                           else:
                               print(f"  ✅ table prefix OK: {table_name}")
 
-                          for field in REQUIRED_TABLE_FIELDS:
-                              if field not in table:
-                                  errors.append(
-                                      f"[{manifest_path}] Table '{table_name}' thiếu field: '{field}'"
-                                  )
-
-              # 5. Validate ui_apps path format
-              if "ui_apps" in data and isinstance(data["ui_apps"], list):
+              # 5. Validate ui / mfe / ui_apps format
+              if "ui" in data and isinstance(data["ui"], dict):
+                  ext_url = data["ui"].get("external_url", "")
+                  if ext_url:
+                      print(f"  ✅ ui external_url: {ext_url}")
+              elif "ui_apps" in data and isinstance(data["ui_apps"], list):
                   for app in data["ui_apps"]:
                       if not isinstance(app, dict):
                           continue

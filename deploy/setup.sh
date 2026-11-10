@@ -609,16 +609,15 @@ if grep -q "CHANGE_ME_GET_FROM_KEYCLOAK_UI" .env; then
   echo "ℹ️  Đã điền secret mặc định từ realm-import.json; mục 10 sẽ đồng bộ giá trị thực qua Admin API."
 fi
 
-# 9. Tự động hóa cấu hình Appsmith
+# 9. Tự động hóa cấu hình Appsmith (qua container network - Issue #739)
 echo "⚙️  Đang cấu hình Appsmith (Tạo Admin & API Key)..."
-APPSMITH_URL="http://localhost:8080"
 APPSMITH_ADMIN_PASS=$(grep -E "^APPSMITH_ADMIN_PASSWORD=" .env | cut -d '=' -f2)
 
-# Chờ Appsmith sẵn sàng
+# Chờ Appsmith sẵn sàng qua docker compose exec
 APP_TIMEOUT=180
 APP_ELAPSED=0
 while [ $APP_ELAPSED -lt $APP_TIMEOUT ]; do
-  if curl $CURL_K -sf $APPSMITH_URL/api/v1/users > /dev/null; then
+  if docker compose exec -T appsmith curl -sf http://localhost:80/api/v1/users > /dev/null 2>&1; then
     break
   fi
   sleep 5
@@ -627,39 +626,36 @@ done
 
 if [ $APP_ELAPSED -lt $APP_TIMEOUT ] && grep -q "APPSMITH_API_KEY=CHANGE_ME_GET_FROM_APPSMITH" .env; then
   # 9.1 Tạo Super Admin (Bỏ qua nếu đã tạo)
-  curl $CURL_K -sf -X POST "$APPSMITH_URL/api/v1/users/super"     -H "Content-Type: application/json"     -d '{
+  docker compose exec -T appsmith curl -sf -X POST "http://localhost:80/api/v1/users/super" \
+    -H "Content-Type: application/json" \
+    -d '{
       "email": "admin@proteus.local",
       "password": "'"$APPSMITH_ADMIN_PASS"'",
       "name": "Proteus Admin",
       "allowCollectingAnonymousData": false,
       "signupForNewsletter": false
-    }' > /dev/null || true
+    }' > /dev/null 2>&1 || true
 
   # 9.2 Đăng nhập lấy Session Token
-  curl $CURL_K -sf -c /tmp/appsmith_cookie.txt -X POST "$APPSMITH_URL/api/v1/users/login"     -H "Content-Type: application/json"     -d '{"username":"admin@proteus.local","password":"'"$APPSMITH_ADMIN_PASS"'"}' > /dev/null || true
+  docker compose exec -T appsmith curl -sf -c /tmp/appsmith_cookie.txt -X POST "http://localhost:80/api/v1/users/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin@proteus.local","password":"'"$APPSMITH_ADMIN_PASS"'"}' > /dev/null 2>&1 || true
 
-  if [ -s /tmp/appsmith_cookie.txt ]; then
-    # 9.3 Tạo API Key
-    APPSMITH_API_KEY=$(curl $CURL_K -sf -b /tmp/appsmith_cookie.txt -X POST "$APPSMITH_URL/api/v1/users/api-key"       -H "Content-Type: application/json"       -d '{"label":"proteus-os-bot"}'       | jq -r '.data.apiKey // empty')
+  # 9.3 Tạo API Key
+  APPSMITH_API_KEY=$(docker compose exec -T appsmith curl -sf -b /tmp/appsmith_cookie.txt -X POST "http://localhost:80/api/v1/users/api-key" \
+    -H "Content-Type: application/json" \
+    -d '{"label":"proteus-os-bot"}' | jq -r '.data.apiKey // empty' 2>/dev/null || true)
 
-    if [ -n "$APPSMITH_API_KEY" ] && [ "$APPSMITH_API_KEY" != "null" ]; then
-      sed -i.bak "s|APPSMITH_API_KEY=CHANGE_ME_GET_FROM_APPSMITH|APPSMITH_API_KEY=$APPSMITH_API_KEY|g" .env
-      rm -f .env.bak
-      echo "✅ Đã tạo APPSMITH_API_KEY và ghi vào .env"
-      
-      # Restart backend để nạp biến mới
-      docker compose restart backend
-    else
-      echo "⚠️ Không thể tự động lấy APPSMITH_API_KEY. Vui lòng lấy thủ công tại: $SCHEME://apps.$DOMAIN"
-    fi
+  if [ -n "$APPSMITH_API_KEY" ] && [ "$APPSMITH_API_KEY" != "null" ]; then
+    sed -i.bak "s|APPSMITH_API_KEY=CHANGE_ME_GET_FROM_APPSMITH|APPSMITH_API_KEY=$APPSMITH_API_KEY|g" .env
+    rm -f .env.bak
+    echo "✅ Đã tạo APPSMITH_API_KEY và ghi vào .env"
+    docker compose restart backend
   else
-    echo "⚠️ Không thể đăng nhập Appsmith để lấy cookie. Vui lòng lấy thủ công tại: $SCHEME://apps.$DOMAIN"
+    echo "⚠️ Không thể tự động lấy APPSMITH_API_KEY. Vui lòng lấy thủ công tại: $SCHEME://apps.$DOMAIN"
   fi
-  rm -f /tmp/appsmith_cookie.txt
+  docker compose exec -T appsmith rm -f /tmp/appsmith_cookie.txt 2>/dev/null || true
 fi
-
-
-
 
 # 10. Tự động hóa lấy Keycloak Secrets và Outline Secrets
 echo "⚙️  Đang lấy Keycloak Secrets và cấu hình Outline..."
