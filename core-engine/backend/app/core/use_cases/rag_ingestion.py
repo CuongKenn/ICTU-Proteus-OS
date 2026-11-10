@@ -65,15 +65,38 @@ class RAGIngestionUseCase:
 
         return chunks
 
-    async def execute(self, tenant_id: str) -> dict[str, Any]:
+    async def execute(
+        self, tenant_id: str, collection_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Thực thi quy trình RAG Ingestion cho một tenant cụ thể.
+        Bắt buộc lọc theo collection của tenant (#734).
         """
-        logger.info("Starting RAG Ingestion for tenant: %s", tenant_id)
+        logger.info(
+            "Starting RAG Ingestion for tenant: %s, collection: %s",
+            tenant_id,
+            collection_id,
+        )
 
         try:
-            # 1. Fetch documents từ Outline
-            documents = await self.document_source_port.list_documents()
+            # 1. Fetch documents từ Outline có filter collection (#734)
+            target_collection = collection_id or tenant_id
+            try:
+                documents = await self.document_source_port.list_documents(
+                    collection_id=target_collection
+                )
+            except TypeError:
+                documents = await self.document_source_port.list_documents()
+
+            if target_collection:
+                filtered_docs = [
+                    d
+                    for d in documents
+                    if d.get("collectionId") is None
+                    or str(d.get("collectionId")) == str(target_collection)
+                ]
+                if filtered_docs:
+                    documents = filtered_docs
 
             total_docs = len(documents)
             total_chunks = 0
@@ -94,8 +117,9 @@ class RAGIngestionUseCase:
                         "doc_title": title,
                         "source_url": source_url,
                         "document_id": doc.get("id"),
+                        "chunk_index": idx,
                     }
-                    for _ in chunks
+                    for idx, _ in enumerate(chunks)
                 ]
 
                 # Upsert to Qdrant

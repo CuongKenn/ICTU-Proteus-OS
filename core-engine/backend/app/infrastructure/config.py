@@ -55,8 +55,12 @@ class Settings(BaseSettings):
     # ─── Metabase (Analytics) ───────────────────────────────
     METABASE_INTERNAL_URL: str | None = None
     METABASE_SITE_URL: str = "http://localhost:3000"
+    METABASE_PUBLIC_URL: str | None = None
     METABASE_SECRET_KEY: str = ""
     METABASE_EMBEDDING_KEY: str | None = None
+    METABASE_API_KEY: str | None = None
+    METABASE_ADMIN_USERNAME: str | None = None
+    METABASE_ADMIN_PASSWORD: str | None = None
 
     # ─── Appsmith (Low-code UI) ───────────────────────────────
     APPSMITH_URL: str = "http://localhost:8085"

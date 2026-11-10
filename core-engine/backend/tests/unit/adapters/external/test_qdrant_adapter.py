@@ -43,11 +43,13 @@ async def test_upsert_vectors_success(adapter, mock_client):
 
     await adapter.upsert_vectors("tenant-1", ["doc1"], [{"meta": "data"}])
 
-    mock_client.add.assert_called_once_with(
-        collection_name="knowledge_base",
-        documents=["doc1"],
-        metadata=[{"meta": "data", "tenant_id": "tenant-1"}],
-    )
+    mock_client.add.assert_called_once()
+    kwargs = mock_client.add.call_args.kwargs
+    assert kwargs["collection_name"] == "knowledge_base"
+    assert kwargs["documents"] == ["doc1"]
+    assert kwargs["metadata"] == [{"meta": "data", "tenant_id": "tenant-1"}]
+    assert "ids" in kwargs
+    assert len(kwargs["ids"]) == 1
 
 
 @pytest.mark.asyncio

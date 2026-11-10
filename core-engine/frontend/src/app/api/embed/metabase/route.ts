@@ -37,12 +37,23 @@ export async function GET(request: NextRequest) {
 
   const { accessToken, rotatedCookieValue } = auth;
 
-  // 2. Trích xuất dashboard_id từ Query Parameters
-  const dashboardId = request.nextUrl.searchParams.get("dashboard_id");
+  // 2. Trích xuất dashboard_id từ Query Parameters & chặn SSRF / Path Traversal (#734)
+  const dashboardId =
+    request.nextUrl.searchParams.get("dashboard_id") ||
+    request.nextUrl.searchParams.get("dashboardId");
   if (!dashboardId) {
     return withRotatedCookie(
       NextResponse.json(
         { error: "Thiếu tham số dashboard_id" },
+        { status: 400 }
+      ),
+      rotatedCookieValue
+    );
+  }
+  if (!/^\d+$/.test(dashboardId)) {
+    return withRotatedCookie(
+      NextResponse.json(
+        { error: "dashboard_id không hợp lệ (phải là số nguyên dương)" },
         { status: 400 }
       ),
       rotatedCookieValue

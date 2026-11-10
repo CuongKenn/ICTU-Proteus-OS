@@ -77,7 +77,54 @@ async function proxyHandler(
 
   const { accessToken, rotatedCookieValue } = auth;
 
-  const targetPath = params.path.join("/");
+  const rawPath = params.path.join("/");
+  let decodedPath = rawPath;
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch (e) {
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json({ error: "Invalid path encoding" }, { status: 400 }),
+        rotatedCookieValue
+      ),
+      request
+    );
+  }
+
+  // Chặn Path traversal (#734)
+  if (
+    decodedPath.includes("..") ||
+    params.path.some((seg) => seg.includes("..") || seg.includes("%2e") || seg.includes("%2E"))
+  ) {
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json({ error: "Path traversal forbidden" }, { status: 400 }),
+        rotatedCookieValue
+      ),
+      request
+    );
+  }
+
+  // Chặn route nội bộ (#734)
+  const normalizedPath = decodedPath.replace(/^\/+/, "");
+  if (
+    normalizedPath.startsWith("v1/webhooks") ||
+    normalizedPath.startsWith("webhooks") ||
+    normalizedPath.startsWith("internal")
+  ) {
+    return withCorsHeaders(
+      withRotatedCookie(
+        NextResponse.json(
+          { error: "Access to internal routes is forbidden" },
+          { status: 403 }
+        ),
+        rotatedCookieValue
+      ),
+      request
+    );
+  }
+
+  const targetPath = rawPath;
   // Frontend calls api.get("/v1/roles") → params.path = ["v1","roles"] → targetPath = "v1/roles"
   // Dùng /api/ (không thêm v1) để tránh double prefix: /api/v1/v1/roles (404)
   const targetUrl = `${BACKEND_URL}/api/${targetPath}${request.nextUrl.search}`;
