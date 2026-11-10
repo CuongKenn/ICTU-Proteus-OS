@@ -22,7 +22,8 @@ class OutlineAdapter(AbstractDocumentSourcePort):
     Sử dụng để lấy danh sách tài liệu cho RAG Ingestion Pipeline.
     """
 
-    def __init__(self):
+    def __init__(self, client: httpx.AsyncClient | None = None):
+        self._client = client
         self.base_url = settings.OUTLINE_URL.rstrip("/")
         self.api_key = settings.OUTLINE_API_KEY
         self.headers = {
@@ -32,7 +33,8 @@ class OutlineAdapter(AbstractDocumentSourcePort):
         }
 
     async def aclose(self) -> None:
-        pass
+        if self._client:
+            await self._client.aclose()
 
     async def list_documents(
         self, collection_id: str | None = None, offset: int = 0, limit: int = 100
@@ -48,6 +50,23 @@ class OutlineAdapter(AbstractDocumentSourcePort):
         payload = {"offset": offset, "limit": limit}
         if collection_id:
             payload["collectionId"] = collection_id
+
+        if self._client is not None:
+            try:
+                response = await self._client.post(
+                    url, headers=self.headers, json=payload, timeout=10.0
+                )
+                response.raise_for_status()
+                data = response.json().get("data", [])
+                for doc in data:
+                    url_id = doc.get("urlId", "")
+                    doc["source_url"] = (
+                        f"{self.base_url}/doc/{url_id}" if url_id else ""
+                    )
+                return data
+            except httpx.HTTPError as e:
+                logger.error("Outline API error: %s", e)
+                raise OutlineAdapterError(f"Failed to fetch documents: {str(e)}")
 
         async with httpx.AsyncClient() as client:
             try:
