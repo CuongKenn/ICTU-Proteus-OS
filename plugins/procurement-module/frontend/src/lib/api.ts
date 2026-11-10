@@ -16,14 +16,15 @@ export class ApiError extends Error {
 }
 
 export function bffBase(): string {
-  const { protocol, hostname } = window.location;
+  const { protocol, hostname, port } = window.location;
+  const portSuffix = port ? `:${port}` : '';
   if (hostname.startsWith('plugins.')) {
-    return `${protocol}//${hostname.slice('plugins.'.length)}/api/proxy`;
+    return `${protocol}//${hostname.slice('plugins.'.length)}${portSuffix}/api/proxy`;
   }
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:3000/api/proxy';
+    return `http://localhost:${port || '3000'}/api/proxy`;
   }
-  return `${protocol}//${hostname}/api/proxy`;
+  return `${protocol}//${hostname}${portSuffix}/api/proxy`;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -33,7 +34,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const res = await fetch(`${bffBase()}${path}`, {
       method,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: ctrl.signal,
     });
