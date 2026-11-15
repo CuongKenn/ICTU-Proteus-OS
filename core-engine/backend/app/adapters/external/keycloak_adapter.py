@@ -165,9 +165,10 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
         allowed_issuers: set[str] = (
             set(raw_allowed)
             if isinstance(raw_allowed, (list, tuple, set))
-            else set()
+            else {
+                f"{settings.KEYCLOAK_URL.rstrip('/')}/realms/{settings.KEYCLOAK_REALM}"
+            }
         )
-        allowed_issuers.add(f"{self.base_url.rstrip('/')}/realms/{self.realm}")
         try:
             payload = jwt.decode(
                 token,
