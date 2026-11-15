@@ -78,6 +78,7 @@ def _split_sql_statements(sql: str) -> list[str]:
     buf: list[str] = []
     i, n = 0, len(sql)
     in_single = False
+    in_double = False
     in_line_comment = False
     in_block_comment = False
     dollar_tag: str | None = None
@@ -114,6 +115,16 @@ def _split_sql_statements(sql: str) -> list[str]:
                 in_single = False
             i += 1
             continue
+        if in_double:
+            buf.append(sql[i])
+            if sql[i] == '"':
+                if sql.startswith('""', i):
+                    buf.append('"')
+                    i += 2
+                    continue
+                in_double = False
+            i += 1
+            continue
         if sql.startswith("--", i):
             in_line_comment = True
             i += 2
@@ -124,6 +135,11 @@ def _split_sql_statements(sql: str) -> list[str]:
             continue
         if sql[i] == "'":
             in_single = True
+            buf.append(sql[i])
+            i += 1
+            continue
+        if sql[i] == '"':
+            in_double = True
             buf.append(sql[i])
             i += 1
             continue
@@ -278,7 +294,7 @@ class PluginUpgradeUseCase:
             # 2. n8n update-in-place
             self._log_step("n8n", "RUNNING")
             new_n8n_ids = await self._step_n8n_update(
-                context, plugin_code_name, manifest, snapshot
+                context, plugin_code_name, manifest, snapshot, collected=created_assets["n8n"]
             )
             created_assets["n8n"] = new_n8n_ids
             self._log_step("n8n", "DONE")
@@ -287,7 +303,7 @@ class PluginUpgradeUseCase:
             # 3. Metabase blue-green (import mới → xóa cũ)
             self._log_step("metabase", "RUNNING")
             new_mb_ids = await self._step_metabase_replace(
-                context, plugin_code_name, manifest, snapshot
+                context, plugin_code_name, manifest, snapshot, collected=created_assets["metabase"]
             )
             created_assets["metabase"] = new_mb_ids
             self._log_step("metabase", "DONE")
@@ -296,7 +312,7 @@ class PluginUpgradeUseCase:
             # 4. Appsmith blue-green
             self._log_step("appsmith", "RUNNING")
             new_app_ids = await self._step_appsmith_replace(
-                context, plugin_code_name, manifest, snapshot
+                context, plugin_code_name, manifest, snapshot, collected=created_assets["appsmith"]
             )
             created_assets["appsmith"] = new_app_ids
             self._log_step("appsmith", "DONE")
@@ -545,6 +561,7 @@ class PluginUpgradeUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
         snapshot: dict[str, Any],
+        collected: list[str] | None = None,
     ) -> list[str]:
         """Update workflow tại chỗ theo tên; file mới thì import thêm.
 
@@ -674,6 +691,8 @@ class PluginUpgradeUseCase:
             else:
                 wid = await self.n8n_adapter.import_workflow(wf_json)
                 new_ids.append(wid)
+                if collected is not None:
+                    collected.append(str(wid))
             try:
                 await self.n8n_adapter.activate_workflow(new_ids[-1])
             except Exception as act_err:
@@ -688,6 +707,7 @@ class PluginUpgradeUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
         snapshot: dict[str, Any],
+        collected: list[str] | None = None,
     ) -> list[str]:
         """Blue-green dashboards: import mới trước, xóa cũ sau."""
         parser = self.manifest_parser
@@ -720,6 +740,8 @@ class PluginUpgradeUseCase:
             db_json = _json.loads(raw_mb)
             did = await self.metabase_adapter.import_dashboard(db_json)
             new_ids.append(str(did))
+            if collected is not None:
+                collected.append(str(did))
         # Xóa bản cũ sau khi bản mới đã lên (an toàn hơn xóa trước).
         for old_id in (snapshot.get("config_override", {}) or {}).get(
             "metabase", []
@@ -736,6 +758,7 @@ class PluginUpgradeUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
         snapshot: dict[str, Any],
+        collected: list[str] | None = None,
     ) -> list[str]:
         """Blue-green apps: import mới trước, xóa cũ sau."""
         integration_config = None
@@ -780,6 +803,8 @@ class PluginUpgradeUseCase:
                     app_json, integration_config
                 )
                 new_ids.append(str(aid))
+                if collected is not None:
+                    collected.append(str(aid))
         for old_id in (snapshot.get("config_override", {}) or {}).get(
             "appsmith", []
         ) or []:

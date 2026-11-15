@@ -39,8 +39,8 @@ class AIChatDTO:
 MAX_PLAN_STEPS = 4
 
 # P1 ReAct: số vòng nghĩ-lại tối đa SAU step mồi (mỗi vòng = 1 LLM call).
-# Tổng ≤ 1 (plan) + MAX_REACT_ITERS calls để vừa timeout BFF (120-180s).
-MAX_REACT_ITERS = 2
+# Tổng ≤ 1 (plan) + MAX_REACT_ITERS calls để vừa 4 steps tối đa (#792).
+MAX_REACT_ITERS = 3
 REACT_TIME_BUDGET_S = 75
 
 # Chitchat và hỏi khả năng do LLM xử lý trực tiếp qua tool core.chat.reply
@@ -725,7 +725,8 @@ CHỈ trả về JSON, không text thừa:
                 for t in [_format_step_data(o.get("result"))]
                 if t
             ]
-            summary = "\n\n".join(data_parts) if data_parts else f"✅ Đã xong.{note}"
+            base_summary = "\n\n".join(data_parts) if data_parts else "✅ Đã xong."
+            summary = f"{base_summary}{note}" if note else base_summary
             overall = AICommandStatus.COMPLETED
         elif last["status"] == AICommandStatus.PENDING_APPROVAL.value:
             summary = (

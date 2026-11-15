@@ -3,7 +3,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   BookOpen,
@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 
-import api from "@/lib/api";
+import api, { extractErrorMessage } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 type SubTab = "search" | "sync" | "ingest" | "create";
@@ -130,6 +130,7 @@ export const KnowledgeTab: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   // File upload (PDF/DOCX/TXT/MD)
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<SyncedDoc[]>([]);
@@ -174,7 +175,7 @@ export const KnowledgeTab: React.FC = () => {
       logger.error("Knowledge search failed", err);
       setSearchNotice({
         kind: "error",
-        text: err?.response?.data?.detail ?? "Tìm kiếm thất bại, thử lại sau.",
+        text: extractErrorMessage(err, "Tìm kiếm thất bại, thử lại sau."),
       });
     } finally {
       setSearching(false);
@@ -216,8 +217,10 @@ export const KnowledgeTab: React.FC = () => {
         text:
           err?.response?.status === 403
             ? "Tài khoản của bạn chưa có quyền đồng bộ. Nhờ admin cấp quyền nhé."
-            : (err?.response?.data?.detail ??
-              "Không lấy được dữ liệu từ link này. Kiểm tra link có trả đúng định dạng JSON không."),
+            : extractErrorMessage(
+                err,
+                "Không lấy được dữ liệu từ link này. Kiểm tra link có trả đúng định dạng JSON không."
+              ),
       });
     } finally {
       setSyncing(false);
@@ -244,10 +247,13 @@ export const KnowledgeTab: React.FC = () => {
         });
         const data = await res.json().catch(() => null);
         if (!res.ok) {
+          const detailMsg = data?.detail
+            ? extractErrorMessage({ response: { data } }, "Tải lên thất bại.")
+            : null;
           results.push({
             filename: f.name,
             error:
-              data?.detail ??
+              detailMsg ??
               (res.status === 403
                 ? "Tài khoản chưa có quyền. Nhờ admin cấp quyền nhé."
                 : "Tải lên thất bại."),
@@ -274,10 +280,14 @@ export const KnowledgeTab: React.FC = () => {
             text: `Đăng xong ${ok} tài liệu! Qua tab "Nạp cho AI" để AI đọc được.`,
           }
         : {
-            kind: "info",
+            kind: ok === 0 ? "error" : "info",
             text: `Đăng được ${ok}/${results.length} file — xem lỗi từng file bên dưới.`,
           }
     );
+    if (ok > 0) {
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
     setUploading(false);
   };
 
@@ -314,7 +324,7 @@ export const KnowledgeTab: React.FC = () => {
       } else {
         setIngestNotice({
           kind: "error",
-          text: err?.response?.data?.detail ?? "Nạp thất bại, thử lại sau.",
+          text: extractErrorMessage(err, "Nạp thất bại, thử lại sau."),
         });
       }
     } finally {
@@ -357,7 +367,7 @@ export const KnowledgeTab: React.FC = () => {
       logger.error("Save doc failed", err);
       setSaveNotice({
         kind: "error",
-        text: err?.response?.data?.detail ?? "Gửi thất bại, thử lại sau.",
+        text: extractErrorMessage(err, "Gửi thất bại, thử lại sau."),
       });
     } finally {
       setSaving(false);
@@ -500,6 +510,7 @@ export const KnowledgeTab: React.FC = () => {
                 ? `Đã chọn ${files.length} file`
                 : "Bấm để chọn file..."}
               <input
+                ref={fileInputRef}
                 type="file"
                 multiple
                 accept=".pdf,.docx,.txt,.md"

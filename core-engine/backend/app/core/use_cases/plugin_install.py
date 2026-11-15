@@ -356,24 +356,22 @@ class PluginInstallUseCase:
                 f"Plugin '{plugin_code_name}' đang trong quá trình gỡ cài đặt, vui lòng thử lại sau."
             )
 
-        # 3. Load manifest
-        manifest = self.manifest_parser.parse(plugin_code_name)
-
-        # 4. Compatibility check: proteus_os_min_version
-        self._check_version_compatibility(manifest)
-
-        # 5. Mark as INSTALLING
-        await self.plugin_repo.upsert_installation(
-            tenant_id=context.tenant_id,
-            plugin_id=plugin.id,
-            status=PluginStatus.INSTALLING,
-            installed_version=manifest.version,
-        )
-        await self.session.commit()
-
+        # 3-5. Load manifest, check compatibility, mark INSTALLING inside try (#792)
+        manifest: PluginManifest | None = None
         completed_steps: list[str] = []
         created_assets: dict[str, list[str]] = created_assets_init
         try:
+            manifest = self.manifest_parser.parse(plugin_code_name)
+            self._check_version_compatibility(manifest)
+
+            await self.plugin_repo.upsert_installation(
+                tenant_id=context.tenant_id,
+                plugin_id=plugin.id,
+                status=PluginStatus.INSTALLING,
+                installed_version=manifest.version,
+            )
+            await self.session.commit()
+
             # BƯỚC 1: Database Setup
             logger.info(
                 "Chạy bước cài đặt",
@@ -531,9 +529,10 @@ class PluginInstallUseCase:
                 self._log_step(last_step, "FAILED", str(e))
 
             # ROLLBACK
-            await self._rollback(
-                completed_steps, context, plugin_code_name, manifest, created_assets
-            )
+            if manifest is not None:
+                await self._rollback(
+                    completed_steps, context, plugin_code_name, manifest, created_assets
+                )
 
             # Reset session state trước khi update status:
             # 1. Rollback nếu session đang ở trạng thái lỗi (aborted transaction)
@@ -565,7 +564,8 @@ class PluginInstallUseCase:
 
             # Notify Mattermost (Best effort)
             try:
-                msg = f"❌ Lỗi cài đặt Plugin **{manifest.display_name}**: {e}"
+                p_label = manifest.display_name if manifest is not None else plugin_code_name
+                msg = f"❌ Lỗi cài đặt Plugin **{p_label}**: {e}"
                 channel_id = (
                     tenant.notify_channel_id or settings.MATTERMOST_SYSTEM_CHANNEL_ID
                     if tenant
@@ -583,7 +583,7 @@ class PluginInstallUseCase:
                         tenant_id=str(context.tenant_id),
                         plugin_name=plugin_code_name,
                         plugin_version=(
-                            manifest.version if "manifest" in locals() else "unknown"
+                            manifest.version if manifest is not None else "unknown"
                         ),
                         extra_data={"error": str(e)},
                     )

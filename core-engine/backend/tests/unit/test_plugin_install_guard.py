@@ -22,7 +22,7 @@ TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 PLUGIN_ID = uuid.UUID("123e4567-e89b-12d3-a456-426614174000")
 
 
-class _GuardPassed(Exception):
+class _GuardPassed(BaseException):
     """Sentinel: guard đã qua, use case tiến tới bước parse manifest."""
 
 
