@@ -79,6 +79,8 @@ jobs:
 
   security:
     name: Security Scan (Bandit)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -99,7 +101,7 @@ jobs:
       - name: Run security scan
         run: |
           bandit -r app/ -ll -ii --skip B101 -f json -o bandit-report.json || true
-          bandit -r app/ -ll -ii --skip B101 || echo "::warning::Security issues found (see bandit output)"
+          bandit -r app/ -lll -ii --skip B101
 
       - name: Upload security report
         if: always()
@@ -282,6 +284,7 @@ jobs:
               --cov=app/core \
               --cov=app/adapters \
               --cov=app/entrypoints \
+              --cov=app/ai \
               --cov-report=xml:coverage.xml \
               --cov-report=term-missing \
               --cov-fail-under=70 \

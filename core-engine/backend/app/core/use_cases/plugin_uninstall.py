@@ -414,22 +414,20 @@ class PluginUninstallUseCase:
                     schema_name,
                 )
                 return
-            try:
-                await self.session.execute(text(f'SET search_path TO "{schema_name}"'))
-                for table_name in manifest.database.tables:
-                    if not re.match(r"^[a-zA-Z0-9_]+$", table_name):
-                        logger.warning(
-                            "Bỏ qua DROP TABLE vì tên bảng không hợp lệ: %s", table_name
-                        )
-                        continue
-                    drop_sql = f'DROP TABLE IF EXISTS "{table_name}" CASCADE;'
-                    try:
-                        await self.session.execute(text(drop_sql))
-                    except Exception as e:
-                        logger.error("Lỗi khi drop table %s: %s", table_name, e)
-                        raise
-            finally:
-                await self.session.execute(text("SET search_path TO public"))
+            await self.session.execute(text(f'SET LOCAL search_path TO "{schema_name}"'))
+            for table_name in manifest.database.tables:
+                if not re.match(r"^[a-zA-Z0-9_]+$", table_name):
+                    logger.warning(
+                        "Bỏ qua DROP TABLE vì tên bảng không hợp lệ: %s", table_name
+                    )
+                    continue
+                drop_sql = f'DROP TABLE IF EXISTS "{table_name}" CASCADE;'
+                try:
+                    await self.session.execute(text(drop_sql))
+                except Exception as e:
+                    logger.error("Lỗi khi drop table %s: %s", table_name, e)
+                    raise
+            await self.session.execute(text("SET LOCAL search_path TO public"))
 
     async def _persist_steps(
         self, context: TenantContext, plugin_id: uuid.UUID

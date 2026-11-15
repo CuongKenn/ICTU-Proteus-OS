@@ -103,13 +103,18 @@ def verify_all_plugins(plugins_root: Path) -> list[str]:
             except Exception:
                 continue
             expected_hook = (wf.get("webhook_path") or "").strip("/")
-            if expected_hook:
+            is_webhook_trigger = wf.get("trigger") == "webhook"
+            if expected_hook or is_webhook_trigger:
                 webhook_paths = [
                     str((n.get("parameters") or {}).get("path", "")).strip("/")
                     for n in wf_json.get("nodes") or []
                     if n.get("type") == "n8n-nodes-base.webhook"
                 ]
-                if expected_hook not in webhook_paths:
+                if is_webhook_trigger and not webhook_paths:
+                    errors.append(
+                        f"[{plugin_dir.name}] Workflow '{wf_file}' trigger='webhook' nhưng thiếu node 'n8n-nodes-base.webhook'"
+                    )
+                if expected_hook and expected_hook not in webhook_paths:
                     errors.append(
                         f"[{plugin_dir.name}] Workflow '{wf_file}' webhook_path='{expected_hook}' không khớp node webhook ({webhook_paths})"
                     )

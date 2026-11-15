@@ -5,7 +5,7 @@
 // Dùng chung giữa authOptions (lúc sign-in) và BFF proxy (lúc persist token
 // sau inline refresh). Lệch nhau là browser gửi cookie mà server không đọc.
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const SESSION_MAX_AGE = 8 * 60 * 60; // 8 giờ, khớp session.maxAge
 
@@ -50,7 +50,8 @@ const CHUNK_SIZE = 4096 - 163;
 /** Gắn cookie session mới sau khi xoay vòng token cho cả NextResponse và Response thường (có chia chunk >4KB) */
 export function withRotatedCookie<T extends Response | NextResponse>(
   res: T,
-  rotatedCookieValue: string | null
+  rotatedCookieValue: string | null,
+  req?: NextRequest
 ): T {
   if (rotatedCookieValue) {
     const baseName = sessionCookieName();
@@ -62,6 +63,42 @@ export function withRotatedCookie<T extends Response | NextResponse>(
     } else {
       for (let i = 0; i < chunkCount; i++) {
         entries.push([`${baseName}.${i}`, rotatedCookieValue.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)]);
+      }
+    }
+
+    const activeNames = new Set(entries.map(([name]) => name));
+    const expireCookie = (cookieName: string) => {
+      if ("cookies" in res && typeof (res as any).cookies?.set === "function") {
+        const opts: any = {
+          name: cookieName,
+          value: "",
+          httpOnly: true,
+          secure: isSecureCookies(),
+          sameSite: "lax",
+          path: "/",
+          maxAge: 0,
+        };
+        if (domain) opts.domain = domain;
+        (res as NextResponse).cookies.set(opts);
+      } else {
+        const parts = [
+          `${cookieName}=`,
+          `Path=/`,
+          `Max-Age=0`,
+          `SameSite=Lax`,
+          `HttpOnly`,
+        ];
+        if (isSecureCookies()) parts.push("Secure");
+        if (domain) parts.push(`Domain=${domain}`);
+        res.headers.append("Set-Cookie", parts.join("; "));
+      }
+    };
+
+    if (req) {
+      for (const c of req.cookies.getAll()) {
+        if ((c.name === baseName || c.name.startsWith(`${baseName}.`)) && !activeNames.has(c.name)) {
+          expireCookie(c.name);
+        }
       }
     }
 

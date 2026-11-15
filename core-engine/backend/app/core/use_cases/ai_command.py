@@ -629,7 +629,7 @@ class AICommandUseCase:
             parts = action.split(".")
             perms = await self.role_repo.get_user_permissions(
                 approver.id,
-                tenant_id=getattr(approver, "tenant_id", None) or ctx.tenant_id,
+                tenant_id=getattr(approver, "tenant_id", None) or cmd.get("tenant_id"),
             )
             perms = [str(p) for p in perms or []]
             if has_wildcard_permission(perms):

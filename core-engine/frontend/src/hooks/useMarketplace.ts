@@ -39,18 +39,39 @@ export function useMarketplace(): UseMarketplaceReturn {
   const [installStatus, setInstallStatus] = useState<PluginStatus | null>(null);
   const [installSteps, setInstallSteps] = useState<InstallTaskStep[]>([]);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollInFlightRef = useRef(false);
 
   const { install, uninstall } = usePlugins();
 
+  const clearResetTimer = useCallback(() => {
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleInstallReset = useCallback(() => {
+    clearResetTimer();
+    resetTimerRef.current = setTimeout(() => {
+      resetTimerRef.current = null;
+      setInstallingId(null);
+      setInstallStatus(null);
+      setInstallProgress(0);
+      setInstallSteps([]);
+    }, 2000);
+  }, [clearResetTimer]);
+
   useEffect(() => {
     return () => {
-      // Cleanup interval when hook unmounts
+      // Cleanup interval and reset timer when hook unmounts
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
+      clearResetTimer();
     };
-  }, []);
+  }, [clearResetTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +109,8 @@ export function useMarketplace(): UseMarketplaceReturn {
   }, [trigger]);
 
   const pollStatus = useCallback(async (taskId: string, pluginId: string) => {
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
     try {
       const response = await api.get<InstallTaskStatus>(`/v1/plugins/install/${taskId}/status`);
 
@@ -115,12 +138,7 @@ export function useMarketplace(): UseMarketplaceReturn {
           useNotificationStore.getState().addToast("success", "Cài đặt Plugin thành công!");
           if (pollingRef.current) clearInterval(pollingRef.current);
           setTrigger((t) => t + 1);
-          setTimeout(() => {
-            setInstallingId(null);
-            setInstallStatus(null);
-            setInstallProgress(0);
-            setInstallSteps([]);
-          }, 2000);
+          scheduleInstallReset();
         } else if (
           overallStatus === "FAILED_DIRTY" ||
           overallStatus === "FAILED" ||
@@ -129,12 +147,7 @@ export function useMarketplace(): UseMarketplaceReturn {
           setInstallStatus("failed");
           useNotificationStore.getState().addToast("error", "Cài đặt Plugin thất bại.");
           if (pollingRef.current) clearInterval(pollingRef.current);
-          setTimeout(() => {
-            setInstallingId(null);
-            setInstallStatus(null);
-            setInstallProgress(0);
-            setInstallSteps([]);
-          }, 2000);
+          scheduleInstallReset();
         }
       }
     } catch (err: any) {
@@ -153,20 +166,20 @@ export function useMarketplace(): UseMarketplaceReturn {
       if (pollingRef.current) clearInterval(pollingRef.current);
       setInstallStatus("failed");
       useNotificationStore.getState().addToast("error", "Không thể kiểm tra tiến trình cài đặt. Vui lòng kiểm tra lại Backend.");
-      setTimeout(() => {
-        setInstallingId(null);
-        setInstallStatus(null);
-        setInstallProgress(0);
-      }, 2000);
+      scheduleInstallReset();
+    } finally {
+      pollInFlightRef.current = false;
     }
-  }, []);
+  }, [scheduleInstallReset]);
 
   const installPlugin = useCallback(async (pluginId: string, credentials?: CredentialInput[]) => {
-    // Clear interval cũ nếu có
+    // Clear interval và timeout cũ nếu có
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    clearResetTimer();
+    pollInFlightRef.current = false;
 
     setInstallingId(pluginId);
     setInstallProgress(0);
@@ -206,7 +219,7 @@ export function useMarketplace(): UseMarketplaceReturn {
         setInstallingId(null);
       }
     }
-  }, [install, pollStatus]);
+  }, [install, pollStatus, clearResetTimer]);
 
   return {
     plugins,

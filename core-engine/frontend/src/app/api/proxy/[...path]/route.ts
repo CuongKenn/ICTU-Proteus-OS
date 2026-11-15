@@ -198,13 +198,25 @@ async function proxyHandler(
   }
 
   // Proxy status code và response body nguyên vẹn
+  if (response.status === 204 || response.status === 205 || response.status === 304) {
+    return withCorsHeaders(
+      withRotatedCookie(
+        new NextResponse(null, { status: response.status }),
+        rotatedCookieValue,
+        request
+      ),
+      request
+    );
+  }
+
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const data = await response.json().catch(() => null);
     return withCorsHeaders(
       withRotatedCookie(
         NextResponse.json(data, { status: response.status }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );
@@ -218,7 +230,8 @@ async function proxyHandler(
         status: response.status,
         headers: { "Content-Type": contentType },
       }),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     ),
     request
   );

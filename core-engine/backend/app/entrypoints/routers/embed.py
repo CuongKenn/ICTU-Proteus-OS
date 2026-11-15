@@ -13,7 +13,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.domain.entities import TenantContext
-from app.core.domain.permissions import has_admin_role
 from app.entrypoints.dependencies import get_db_readonly, require_permission
 from app.infrastructure.config import settings
 
@@ -80,7 +79,7 @@ async def get_metabase_embed_url(
     Tạo Signed URL cho iframe Metabase.
     Yêu cầu quyền analytics.view và kiểm tra quyền sở hữu dashboard (#734).
     """
-    if not has_admin_role(ctx.roles):
+    if "superadmin" not in (ctx.roles or []):
         is_owned = await _verify_tenant_dashboard_ownership(
             db, ctx.tenant_id, dashboard_id
         )

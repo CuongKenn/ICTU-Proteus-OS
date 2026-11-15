@@ -13,5 +13,11 @@ export default defineConfig({
     allowedHosts: true, // Allow all hosts (like crm-frontend.proteus.local)
     // Cho phép import source of truth ở plugins/<code>/frontend/src (ngoài root gateway)
     fs: { allow: ['..', '../..'] },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
 })
