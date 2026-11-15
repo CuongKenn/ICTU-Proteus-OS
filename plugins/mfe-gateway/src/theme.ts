@@ -79,6 +79,7 @@ export function initTheme(): Theme {
   });
 
   window.addEventListener('message', (e) => {
+    if (e.origin && e.origin !== window.location.origin) return;
     const data = e.data as { type?: string; theme?: unknown } | null;
     if (data && data.type === 'proteus-theme' && isTheme(data.theme)) {
       applyTheme(data.theme);

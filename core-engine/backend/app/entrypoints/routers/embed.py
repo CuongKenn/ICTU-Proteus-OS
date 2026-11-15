@@ -44,13 +44,12 @@ async def _verify_tenant_dashboard_ownership(
         result = await db.execute(stmt, {"tenant_id": tenant_id})
         rows = result.scalars().all()
     except Exception:
-        return True
+        return False
 
     if not rows:
-        return True
+        return False
 
     str_did = str(dashboard_id)
-    has_metabase_configs = False
     for conf in rows:
         if not conf:
             continue
@@ -61,7 +60,6 @@ async def _verify_tenant_dashboard_ownership(
         if isinstance(data, dict):
             mb = data.get("metabase")
             if mb:
-                has_metabase_configs = True
                 if isinstance(mb, list) and (
                     str_did in [str(x) for x in mb] or dashboard_id in mb
                 ):
@@ -69,7 +67,7 @@ async def _verify_tenant_dashboard_ownership(
                 elif str(mb) == str_did:
                     return True
 
-    return not has_metabase_configs
+    return False
 
 
 @router.get("/metabase/{dashboard_id}", summary="Get Metabase embed URL")

@@ -217,6 +217,9 @@ jobs:
           PYEOF
           python /tmp/validate_manifest.py
 
+      - name: Verify plugin contracts (JSON/BOM, SQL tables, workflows, dashboards)
+        run: python scripts/verify_plugin_contracts.py
+
       - name: Print validation summary
         if: always()
         run: |

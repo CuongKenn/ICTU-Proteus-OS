@@ -47,7 +47,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": {{JSON.stringify($json.title)}},\n  \"text\": {{JSON.stringify($json.text)}},\n  \"collectionId\": {{JSON.stringify($json.collection_id)}},\n  \"parentDocumentId\": {{JSON.stringify($json.parent_document_id)}},\n  \"publish\": {{$json.publish}}\n}",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ title: $json.title, text: $json.text, publish: $json.publish }, $json.collection_id ? { collectionId: $json.collection_id } : {}, $json.parent_document_id ? { parentDocumentId: $json.parent_document_id } : {})) }}",
         "options": {}
       },
       "name": "Create Outline Doc",
@@ -58,7 +58,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\n  \"success\": true,\n  \"doc_id\": \"{{$json.data.id}}\",\n  \"url\": \"{{$json.data.url || ('/doc/' + $json.data.urlId)}}\",\n  \"title\": \"{{$json.data.title}}\"\n}"
+        "responseBody": "={\n  \"success\": true,\n  \"doc_id\": {{JSON.stringify($json.data.id)}},\n  \"url\": {{JSON.stringify($json.data.url || ('/doc/' + $json.data.urlId))}},\n  \"title\": {{JSON.stringify($json.data.title)}}\n}"
       },
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",

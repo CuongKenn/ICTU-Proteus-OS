@@ -145,10 +145,16 @@ async def submit_ai_command(
                 status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
             ) from e
         preview = None
+        real_command_id = body.command_id
         if isinstance(result, dict):
             preview = result.get("dsl_preview")
+            if result.get("command_id"):
+                try:
+                    real_command_id = uuid.UUID(str(result["command_id"]))
+                except (ValueError, TypeError):
+                    pass
         return AICommandResponse(
-            command_id=body.command_id,
+            command_id=real_command_id,
             status=status_code,
             message=message,
             result=result if status_code == AICommandStatus.COMPLETED else None,
@@ -255,7 +261,15 @@ async def transmit_kv_cache_ipc(
         KVCacheTransmitResponse,
     )
 
-    req = KVCacheTransmitRequest(**body)
+    from pydantic import ValidationError
+
+    try:
+        req = KVCacheTransmitRequest(**(body or {}))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=e.errors(),
+        ) from e
 
     redis_publisher = getattr(request.app.state, "redis_event_bus", None)
     if redis_publisher is None:
@@ -494,7 +508,13 @@ async def search_knowledge(
     query = str((body or {}).get("query", "")).strip()
     if not query:
         return {"query": "", "citations": []}
-    limit = int((body or {}).get("limit", 5) or 5)
+    try:
+        limit = int((body or {}).get("limit", 5) or 5)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit phải là số nguyên hợp lệ.",
+        ) from e
     limit = max(1, min(limit, 20))
     try:
         hits = await qdrant.search(
@@ -588,11 +608,17 @@ async def upload_knowledge(
     """
     from app.adapters.external.outline_adapter import OutlineAdapter
     from app.core.use_cases.knowledge_upload import (
+        MAX_UPLOAD_BYTES,
         KnowledgeUploadUseCase,
         UnsupportedFileError,
     )
 
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File vượt quá giới hạn {MAX_UPLOAD_BYTES // (1024 * 1024)}MB.",
+        )
     source = OutlineAdapter(client=request.app.state.http_client)
     use_case = KnowledgeUploadUseCase(document_source=source)
     try:

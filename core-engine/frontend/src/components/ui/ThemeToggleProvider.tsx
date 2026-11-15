@@ -52,6 +52,7 @@ export const ThemeToggleProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Đồng bộ khi MFE plugin (iframe same-origin) đổi theme và postMessage lên.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
+      if (e.origin && e.origin !== window.location.origin) return;
       const d = e.data as { type?: string; theme?: unknown } | null;
       if (d?.type === "proteus-theme" && (d.theme === "dark" || d.theme === "light")) {
         setThemeState(d.theme);

@@ -24,7 +24,7 @@ interface UseMarketplaceReturn {
   installStatus: PluginStatus | null;
   installSteps: InstallTaskStep[];
   installPlugin: (pluginId: string, credentials?: CredentialInput[]) => Promise<void>;
-  uninstallPlugin: (pluginId: string, confirmName?: string) => Promise<void>;
+  uninstallPlugin: (pluginId: string, confirmName?: string) => Promise<void | { task_id: string }>;
 }
 
 export function useMarketplace(): UseMarketplaceReturn {

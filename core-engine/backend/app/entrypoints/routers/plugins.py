@@ -1028,9 +1028,15 @@ async def delete_plugin_record(
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case=Depends(get_plugin_records_use_case),
 ) -> None:
-    await use_case.delete_record(
-        ctx=ctx, plugin_code=code, table=table, record_id=record_id
-    )
+    try:
+        await use_case.delete_record(
+            ctx=ctx, plugin_code=code, table=table, record_id=record_id
+        )
+    except IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Không thể xóa vì dữ liệu đang được tham chiếu bởi bản ghi khác.",
+        ) from e
     return None
 
 

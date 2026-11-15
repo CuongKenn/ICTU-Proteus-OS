@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+import httpx
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError

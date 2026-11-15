@@ -47,8 +47,14 @@ class ConfigurePluginCredentialsUseCase:
             ctx.tenant_id,
         )
 
+        # Validate plugin_id trước khi tạo credential trên n8n (#788)
+        try:
+            pid = uuid.UUID(str(plugin_id))
+        except ValueError as e:
+            raise ValueError(f"plugin_id không hợp lệ: {plugin_id}") from e
+
         # RLS Prefix: tenant_{tenant_id}_{plugin_id}_{payload.credential_name}
-        safe_name = f"tenant_{ctx.tenant_id}_{payload.credential_name}"
+        safe_name = f"t_{str(ctx.tenant_id).replace('-', '')[:8]}_{str(pid).replace('-', '')[:8]}_{payload.credential_name}"
 
         result = await self.n8n_adapter.create_credential(
             credential_type=payload.credential_type,
@@ -59,7 +65,6 @@ class ConfigurePluginCredentialsUseCase:
 
         if self.plugin_repo and cred_id:
             try:
-                pid = uuid.UUID(str(plugin_id))
                 existing_creds = await self.plugin_repo.get_credential_ids(
                     ctx.tenant_id, pid
                 )
