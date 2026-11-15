@@ -36,10 +36,14 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-/** Chỉ cho phép http/https — chặn javascript:/data: chống open-redirect/XSS. */
+/** Chỉ cho phép http/https hoặc relative same-origin path (/...) — chặn javascript:/data: chống XSS. */
 function isSafeEmbedUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    return true;
+  }
   try {
-    const u = new URL(url);
+    const u = new URL(trimmed);
     return u.protocol === "http:" || u.protocol === "https:";
   } catch {
     return false;

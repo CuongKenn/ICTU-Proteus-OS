@@ -23,9 +23,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return Response.json(
-      { error: "Bad Request", message: "Request body không hợp lệ." },
-      { status: 400 }
+    return withRotatedCookie(
+      Response.json(
+        { error: "Bad Request", message: "Request body không hợp lệ." },
+        { status: 400 }
+      ),
+      rotatedCookieValue,
+      request
     );
   }
 
@@ -51,14 +55,22 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
   } catch (err) {
     if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
-      return Response.json(
-        { error: "Gateway Timeout", message: "AI Service mất quá nhiều thời gian phản hồi." },
-        { status: 504 }
+      return withRotatedCookie(
+        Response.json(
+          { error: "Gateway Timeout", message: "AI Service mất quá nhiều thời gian phản hồi." },
+          { status: 504 }
+        ),
+        rotatedCookieValue,
+        request
       );
     }
-    return Response.json(
-      { error: "Service Unavailable", message: "Không thể kết nối tới AI Service." },
-      { status: 503 }
+    return withRotatedCookie(
+      Response.json(
+        { error: "Service Unavailable", message: "Không thể kết nối tới AI Service." },
+        { status: 503 }
+      ),
+      rotatedCookieValue,
+      request
     );
   }
 
@@ -69,9 +81,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     } catch {
       text = "";
     }
-    return Response.json(
-      { error: "Upstream Error", message: text || "Backend trả về response không hợp lệ." },
-      { status: upstream.status || 502 }
+    return withRotatedCookie(
+      Response.json(
+        { error: "Upstream Error", message: text || "Backend trả về response không hợp lệ." },
+        { status: upstream.status || 502 }
+      ),
+      rotatedCookieValue,
+      request
     );
   }
 
@@ -86,7 +102,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     },
   });
 
-  return withRotatedCookie(streamRes, rotatedCookieValue);
+  return withRotatedCookie(streamRes, rotatedCookieValue, request);
 }
 
 export async function GET(): Promise<Response> {

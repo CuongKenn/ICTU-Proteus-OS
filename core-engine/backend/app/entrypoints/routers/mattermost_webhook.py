@@ -214,20 +214,34 @@ async def mattermost_interactive_callback(
             user_id,
         )
         if action == "approve":
-            if tenant_id_str:
-                try:
-                    from app.adapters.repositories.plugin_repo import PluginRepository
-                    from app.core.domain.entities import PluginStatus
+            if not tenant_id_str:
+                return {
+                    "ephemeral_text": f"❌ Thiếu tenant_id để dọn dẹp plugin `{plugin_id_str}`.",
+                }
+            try:
+                from app.adapters.repositories.plugin_repo import (
+                    SQLAlchemyPluginRepository,
+                )
+                from app.core.domain.entities import PluginStatus
+                from app.infrastructure.database import set_session_tenant
 
-                    repo = PluginRepository(session=db)
-                    await repo.update_status(
-                        tenant_id=uuid.UUID(tenant_id_str),
-                        plugin_id=uuid.UUID(plugin_id_str),
-                        status=PluginStatus.UNINSTALLED,
-                    )
-                    await db.commit()
-                except Exception as ex:
-                    logger.warning("Plugin cleanup update status error: %s", ex)
+                await set_session_tenant(db, tenant_id_str)
+                repo = SQLAlchemyPluginRepository(session=db)
+                await repo.update_status(
+                    tenant_id=uuid.UUID(tenant_id_str),
+                    plugin_id=uuid.UUID(plugin_id_str),
+                    status=PluginStatus.DELETED,
+                )
+                await db.commit()
+            except Exception as ex:
+                logger.warning("Plugin cleanup update status error: %s", ex)
+                await db.rollback()
+                return {
+                    "ephemeral_text": (
+                        f"❌ Không thể cập nhật trạng thái dọn dẹp plugin "
+                        f"`{plugin_id_str}`: {ex}"
+                    ),
+                }
             return {
                 "update": {
                     "message": f"✅ Plugin `{plugin_id_str}` đã được dọn dẹp bởi <@{user_id}>.",

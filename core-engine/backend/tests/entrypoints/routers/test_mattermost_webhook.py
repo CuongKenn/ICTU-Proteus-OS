@@ -56,7 +56,13 @@ def override_webhook_dependencies():
             pass
 
     class MockSession:
+        async def execute(self, *args, **kwargs):
+            return None
+
         async def commit(self):
+            pass
+
+        async def rollback(self):
             pass
 
     app.dependency_overrides[get_ai_command_use_case] = lambda: MockAICommandUseCase()
