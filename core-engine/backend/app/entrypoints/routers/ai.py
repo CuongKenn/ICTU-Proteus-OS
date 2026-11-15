@@ -78,27 +78,7 @@ async def submit_ai_chat(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
     # Trả đúng command_id từ execution kết quả hoặc dsl_preview (#731)
-    preview = None
-    real_command_id = None
-    if isinstance(result, dict):
-        preview = result.get("dsl_preview")
-        if preview and isinstance(preview, dict) and preview.get("command_id"):
-            try:
-                real_command_id = uuid.UUID(str(preview["command_id"]))
-            except (ValueError, TypeError):
-                pass
-        if not real_command_id and result.get("steps"):
-            steps = result["steps"]
-            if (
-                steps
-                and isinstance(steps, list)
-                and isinstance(steps[-1], dict)
-                and steps[-1].get("command_id")
-            ):
-                try:
-                    real_command_id = uuid.UUID(str(steps[-1]["command_id"]))
-                except (ValueError, TypeError):
-                    pass
+    preview, real_command_id = _extract_chat_preview_and_command_id(result)
 
     return AICommandResponse(
         command_id=real_command_id or uuid.uuid4(),
@@ -107,6 +87,34 @@ async def submit_ai_chat(
         result=result if status_code == AICommandStatus.COMPLETED else None,
         dsl_preview=preview,
     )
+
+
+def _extract_chat_preview_and_command_id(
+    result: Any,
+) -> tuple[dict | None, uuid.UUID | None]:
+    """Trích xuất dsl_preview và command_id thật từ kết quả AIChatUseCase."""
+    if not isinstance(result, dict):
+        return None, None
+    preview = result.get("dsl_preview")
+    real_command_id: uuid.UUID | None = None
+    if result.get("command_id"):
+        try:
+            real_command_id = uuid.UUID(str(result["command_id"]))
+        except (ValueError, TypeError):
+            pass
+    if not real_command_id and isinstance(preview, dict) and preview.get("command_id"):
+        try:
+            real_command_id = uuid.UUID(str(preview["command_id"]))
+        except (ValueError, TypeError):
+            pass
+    if not real_command_id and isinstance(result.get("steps"), list) and result["steps"]:
+        last_step = result["steps"][-1]
+        if isinstance(last_step, dict) and last_step.get("command_id"):
+            try:
+                real_command_id = uuid.UUID(str(last_step["command_id"]))
+            except (ValueError, TypeError):
+                pass
+    return preview, real_command_id
 
 
 @router.post(
@@ -144,15 +152,8 @@ async def submit_ai_command(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
             ) from e
-        preview = None
-        real_command_id = body.command_id
-        if isinstance(result, dict):
-            preview = result.get("dsl_preview")
-            if result.get("command_id"):
-                try:
-                    real_command_id = uuid.UUID(str(result["command_id"]))
-                except (ValueError, TypeError):
-                    pass
+        preview, extracted_id = _extract_chat_preview_and_command_id(result)
+        real_command_id = extracted_id or body.command_id
         return AICommandResponse(
             command_id=real_command_id,
             status=status_code,
@@ -229,11 +230,19 @@ async def trigger_rag_ingestion(
     Kích hoạt thủ công quá trình Ingestion tài liệu từ Outline vào Qdrant
     cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734).
     """
-    target_collection = (
-        collection_id
-        or getattr(ctx, "outline_collection_id", None)
-        or str(ctx.tenant_id)
+    tenant_collection = (
+        getattr(ctx, "outline_collection_id", None) or str(ctx.tenant_id)
     )
+    if (
+        collection_id
+        and collection_id != tenant_collection
+        and "superadmin" not in (ctx.roles or [])
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Không có quyền ingest collection của tổ chức khác.",
+        )
+    target_collection = collection_id or tenant_collection
     result = await use_case.execute(str(ctx.tenant_id), collection_id=target_collection)
     return result
 

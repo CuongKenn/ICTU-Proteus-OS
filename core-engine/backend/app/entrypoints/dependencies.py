@@ -364,6 +364,11 @@ async def get_current_tenant_context(
             ),
         ) from exc
 
+    # IMPORTANT: Set contextvar và DB session cho RLS (#728) trước khi query user_repo
+    from app.infrastructure.database import set_session_tenant
+
+    await set_session_tenant(db, tenant_id)
+
     # Kiểm tra trạng thái is_active của user trong DB (#743)
     try:
         user_repo = SQLAlchemyUserRepository(session=db)
@@ -385,11 +390,6 @@ async def get_current_tenant_context(
     name_claim = payload.get("name")
     pref_username = payload.get("preferred_username")
     full_name = name_claim or pref_username or "Unknown"
-
-    # IMPORTANT: Set contextvar và DB session cho RLS (#728)
-    from app.infrastructure.database import set_session_tenant
-
-    await set_session_tenant(db, tenant_id)
 
     return TenantContext(
         tenant_id=tenant_id,

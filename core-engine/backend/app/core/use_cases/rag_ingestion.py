@@ -89,14 +89,11 @@ class RAGIngestionUseCase:
                 documents = await self.document_source_port.list_documents()
 
             if target_collection:
-                filtered_docs = [
+                documents = [
                     d
                     for d in documents
-                    if d.get("collectionId") is None
-                    or str(d.get("collectionId")) == str(target_collection)
+                    if str(d.get("collectionId")) == str(target_collection)
                 ]
-                if filtered_docs:
-                    documents = filtered_docs
 
             total_docs = len(documents)
             all_chunks: list[str] = []
