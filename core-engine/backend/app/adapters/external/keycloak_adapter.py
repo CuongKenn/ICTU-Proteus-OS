@@ -161,17 +161,20 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             keys = (jwks or {}).get("keys", [])
             if not any(k.get("kid") == kid for k in keys):
                 jwks = await self._force_refresh_jwks()
-        expected_issuer = (
-            f"{settings.KEYCLOAK_URL.rstrip('/')}/realms/{settings.KEYCLOAK_REALM}"
+        raw_allowed = getattr(settings, "keycloak_allowed_issuers", None)
+        allowed_issuers: set[str] = (
+            set(raw_allowed)
+            if isinstance(raw_allowed, (list, tuple, set))
+            else set()
         )
+        allowed_issuers.add(f"{self.base_url.rstrip('/')}/realms/{self.realm}")
         try:
             payload = jwt.decode(
                 token,
                 jwks,
                 algorithms=["RS256"],
                 audience=settings.KEYCLOAK_CLIENT_ID,
-                issuer=expected_issuer,
-                options={"verify_exp": True, "verify_iss": True, "verify_aud": True},
+                options={"verify_exp": True, "verify_iss": False, "verify_aud": True},
             )
         except JWTClaimsError as e:
             # Fallback (Issue #699): Nếu Keycloak trả aud mặc định là "account" nhưng azp hợp lệ
@@ -181,15 +184,16 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
                     jwks,
                     algorithms=["RS256"],
                     audience="account",
-                    issuer=expected_issuer,
                     options={
                         "verify_exp": True,
-                        "verify_iss": True,
+                        "verify_iss": False,
                         "verify_aud": True,
                     },
                 )
             else:
                 raise
+        if payload.get("iss") not in allowed_issuers:
+            raise JWTClaimsError("Invalid issuer")
         # M22: verify azp (authorized party) — chặn token cấp cho client khác.
         azp = payload.get("azp")
         if azp is not None and azp != settings.KEYCLOAK_CLIENT_ID:

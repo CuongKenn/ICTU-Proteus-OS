@@ -62,14 +62,19 @@ export async function getBffAuth(request: NextRequest): Promise<BffAuthResult> {
       accessToken = refreshed.accessToken as string;
       logger.info("[BFF] Refresh token thành công");
 
-      try {
-        rotatedCookieValue = await encode({
-          token: refreshed,
-          secret: process.env.NEXTAUTH_SECRET ?? "default-secret",
-          maxAge: SESSION_MAX_AGE,
-        });
-      } catch (encodeErr) {
-        logger.error("[BFF] Lỗi encode session cookie sau refresh:", encodeErr);
+      const nextAuthSecret = process.env.NEXTAUTH_SECRET;
+      if (nextAuthSecret) {
+        try {
+          rotatedCookieValue = await encode({
+            token: refreshed,
+            secret: nextAuthSecret,
+            maxAge: SESSION_MAX_AGE,
+          });
+        } catch (encodeErr) {
+          logger.error("[BFF] Lỗi encode session cookie sau refresh:", encodeErr);
+        }
+      } else {
+        logger.error("[BFF] Thiếu NEXTAUTH_SECRET, không thể rotate session cookie");
       }
     } catch (err) {
       logger.error("[BFF] Lỗi khi refresh token:", err);
