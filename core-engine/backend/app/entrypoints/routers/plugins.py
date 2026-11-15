@@ -740,7 +740,6 @@ async def upgrade_plugin(
     plugin_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("plugins.upgrade")),
     use_case: PluginUpgradeUseCase = Depends(get_plugin_upgrade_use_case),
-    repo: AbstractPluginRepository = Depends(get_plugin_repo),
 ) -> dict[str, Any]:
     """
     Validate + đánh dấu UPGRADING rồi chạy pipeline nền (202 Accepted).
@@ -758,7 +757,9 @@ async def upgrade_plugin(
             detail=str(e),
         ) from e
 
-    current_inst_status = await repo.get_installation_status(ctx.tenant_id, plugin_id)
+    current_inst_status = await use_case.plugin_repo.get_installation_status(
+        ctx.tenant_id, plugin_id
+    )
     was_disabled = current_inst_status == _PluginStatus.DISABLED
 
     task_id = uuid.uuid4()
@@ -781,8 +782,9 @@ async def upgrade_plugin(
             }
         ],
     )
-    # Commit ngay để background task thấy state mới (giống install).
-    await repo._session.commit()
+    # Commit ngay trên đúng transactional session của use_case để background task thấy state mới.
+    if hasattr(use_case.plugin_repo, "_session"):
+        await use_case.plugin_repo._session.commit()
 
     asyncio.get_event_loop().create_task(
         _run_upgrade_plugin_background(
