@@ -68,7 +68,8 @@ def test_step_from_dict(chat):
     s = chat._step_from_dict(
         {"action": "a.b", "effect": "bogus", "parameters": "nope"}, dto
     )
-    assert s.effect == "read" and s.parameters == {"raw_input": dto.natural_language_input}
+    assert s.effect == "read"
+    assert s.parameters == {"raw_input": dto.natural_language_input}
     s2 = chat._step_from_dict({"action": "a.b"}, dto)
     assert s2.effect == "read"
 
@@ -431,7 +432,9 @@ async def test_stream_astream_success(uc_mock):
 async def test_stream_ainvoke_fallback(uc_mock):
     # SimpleNamespace without astream -> falls back to ainvoke_json path.
     llm = SimpleNamespace(
-        ainvoke_json=AsyncMock(return_value=SimpleNamespace(content='{"action": "a.b"}'))
+        ainvoke_json=AsyncMock(
+            return_value=SimpleNamespace(content='{"action": "a.b"}')
+        )
     )
     c = AIChatUseCase(llm_port=llm, ai_command_use_case=uc_mock)
     events = [e async for e in c.execute_stream(_dto(), {})]
@@ -445,7 +448,7 @@ async def test_stream_llm_error(uc_mock):
 
     async def _boom(messages):
         raise RuntimeError("stream down")
-        yield  # noqa: unreachable — makes it an async generator
+        yield  # makes it an async generator
 
     llm.astream = _boom
     c = AIChatUseCase(llm_port=llm, ai_command_use_case=uc_mock)

@@ -38,18 +38,22 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, title, duration
     if (onClose) onClose();
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const onDismissRef = React.useRef(onDismiss);
+  const onCloseRef = React.useRef(onClose);
+  onDismissRef.current = onDismiss;
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     requestAnimationFrame(() => setIsVisible(true));
     const timer = setTimeout(() => {
       setIsVisible(false);
       setTimeout(() => {
-        if (onDismiss && id) onDismiss(id);
-        if (onClose) onClose();
+        if (onDismissRef.current && id) onDismissRef.current(id);
+        if (onCloseRef.current) onCloseRef.current();
       }, 300);
     }, duration);
     return () => clearTimeout(timer);
-  }, []);
+  }, [duration, id]);
 
   return (
     <div
