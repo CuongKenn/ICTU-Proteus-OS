@@ -7,97 +7,19 @@
 // Tham chiếu: docs/architecture.md (BFF Pattern), docs/clarification.md §8
 
 import type { NextAuthOptions } from "next-auth";
-import type { JWT } from "next-auth/jwt";
 import {
   isSecureCookies,
   sessionCookieDomain,
   sessionCookieName,
   SESSION_MAX_AGE,
 } from "./sessionCookie";
+import { refreshAccessToken } from "./tokenRefresh";
 
 const publicIssuer = process.env.KEYCLOAK_ISSUER || "";
 const realm = publicIssuer.split("/realms/")[1] || "proteus";
 const internalBase = process.env.KEYCLOAK_INTERNAL_URL
   ? `${process.env.KEYCLOAK_INTERNAL_URL}/realms/${realm}`
   : publicIssuer;
-
-// ─── Silent Token Refresh ─────────────────────────────────────
-// Gọi Keycloak token endpoint để lấy access_token mới bằng refresh_token.
-// Được gọi tự động khi access_token hết hạn trong JWT callback.
-// (Xem tokenRefresh.ts cho BFF Proxy version độc lập)
-// Keyed cache per user/token để tránh concurrent refresh (race condition)
-// nhưng KHÔNG lẫn token giữa các user khác nhau (#686).
-const refreshPromises = new Map<string, Promise<JWT>>();
-
-async function refreshAccessToken(token: JWT): Promise<JWT> {
-  const key = (token.sub as string) || (token.refreshToken as string) || "anonymous";
-
-  const existing = refreshPromises.get(key);
-  if (existing) {
-    return existing;
-  }
-
-  const promise = (async () => {
-    try {
-      const tokenUrl = `${internalBase}/protocol/openid-connect/token`;
-      const response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: process.env.KEYCLOAK_CLIENT_ID!,
-          client_secret: process.env.KEYCLOAK_CLIENT_SECRET!,
-          refresh_token: token.refreshToken as string,
-        }),
-      });
-
-      const refreshed = await response.json();
-
-      if (!response.ok) {
-        return { ...token, error: "RefreshAccessTokenError" };
-      }
-
-      let refreshedRoles = token.roles as string[] | undefined;
-      let refreshedTenantId = token.tenant_id as string | undefined;
-      if (refreshed.access_token) {
-        try {
-          const payloadBase64 = refreshed.access_token.split(".")[1];
-          if (payloadBase64) {
-            const decoded = JSON.parse(
-              Buffer.from(payloadBase64, "base64url").toString("utf-8")
-            );
-            if (decoded?.realm_access?.roles) {
-              refreshedRoles = decoded.realm_access.roles;
-            }
-            if (decoded?.tenant_id) {
-              refreshedTenantId = decoded.tenant_id;
-            }
-          }
-        } catch {
-          // keep existing roles
-        }
-      }
-
-      return {
-        ...token,
-        accessToken: refreshed.access_token,
-        refreshToken: refreshed.refresh_token ?? token.refreshToken,
-        accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
-        idToken: refreshed.id_token ?? token.idToken,
-        roles: refreshedRoles ?? token.roles,
-        tenant_id: refreshedTenantId ?? token.tenant_id,
-        error: undefined,
-      };
-    } catch {
-      return { ...token, error: "RefreshAccessTokenError" };
-    } finally {
-      refreshPromises.delete(key);
-    }
-  })();
-
-  refreshPromises.set(key, promise);
-  return promise;
-}
 
 // ─── NextAuth Config ──────────────────────────────────────────
 export const authOptions: NextAuthOptions = {
@@ -149,8 +71,9 @@ export const authOptions: NextAuthOptions = {
       // Lần đầu login — lưu access_token, refresh_token và expiry vào JWT session
       if (account) {
         let roles: string[] = [];
+        let tenantId = (profile as any)?.tenant_id as string | undefined;
 
-        // Ưu tiên decode access_token để lấy realm_access.roles
+        // Ưu tiên decode access_token để lấy realm_access.roles và tenant_id
         // vì Keycloak đảm bảo realm_access luôn có trong access_token.
         // id_token (profile) chỉ chứa roles nếu đã cấu hình Protocol Mapper riêng.
         if (account.access_token) {
@@ -161,6 +84,9 @@ export const authOptions: NextAuthOptions = {
             );
             if (decoded?.realm_access?.roles) {
               roles = decoded.realm_access.roles;
+            }
+            if (decoded?.tenant_id) {
+              tenantId = decoded.tenant_id;
             }
           } catch {
             // Fallback: thử lấy từ profile (id_token)
@@ -186,6 +112,7 @@ export const authOptions: NextAuthOptions = {
             ? account.expires_at * 1000
             : Date.now() + 60 * 60 * 1000, // Fallback: 1 giờ
           roles,
+          tenant_id: tenantId,
         };
       }
 

@@ -129,7 +129,7 @@ class OutlineAdapter(AbstractDocumentSourcePort):
                 for doc in data:
                     url_id = doc.get("urlId", "")
                     doc["source_url"] = (
-                        f"{self.base_url}/doc/{url_id}" if url_id else ""
+                        f"{self.public_base_url}/doc/{url_id}" if url_id else ""
                     )
                 return data
             except httpx.HTTPError as e:
@@ -146,7 +146,7 @@ class OutlineAdapter(AbstractDocumentSourcePort):
                 for doc in data:
                     url_id = doc.get("urlId", "")
                     doc["source_url"] = (
-                        f"{self.base_url}/doc/{url_id}" if url_id else ""
+                        f"{self.public_base_url}/doc/{url_id}" if url_id else ""
                     )
                 return data
             except httpx.HTTPError as e:

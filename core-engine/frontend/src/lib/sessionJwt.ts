@@ -21,7 +21,12 @@ import type { JWT } from "next-auth/jwt";
 import type { NextRequest, NextResponse } from "next/server";
 
 import { refreshAccessToken } from "@/lib/tokenRefresh";
-import { SESSION_MAX_AGE, isSecureCookies, sessionCookieName } from "@/lib/sessionCookie";
+import {
+  SESSION_MAX_AGE,
+  isSecureCookies,
+  sessionCookieDomain,
+  sessionCookieName,
+} from "@/lib/sessionCookie";
 
 const SECRET = process.env.NEXTAUTH_SECRET;
 
@@ -52,12 +57,22 @@ export async function writeSessionToken(
 ): Promise<void> {
   const encoded = await encode({ token, secret: SECRET!, maxAge: SESSION_MAX_AGE });
   const name = sessionCookieName();
-  const baseOptions = {
+  const domain = sessionCookieDomain();
+  const baseOptions: {
+    httpOnly: boolean;
+    sameSite: "lax";
+    path: string;
+    secure: boolean;
+    domain?: string;
+  } = {
     httpOnly: true,
     sameSite: "lax" as const,
     path: "/",
     secure: isSecureCookies(),
   };
+  if (domain) {
+    baseOptions.domain = domain;
+  }
   const expires = new Date(Date.now() + SESSION_MAX_AGE * 1000);
 
   const chunkCount = Math.max(1, Math.ceil(encoded.length / CHUNK_SIZE));
@@ -76,7 +91,7 @@ export async function writeSessionToken(
   // Xoá các chunk cũ không còn nằm trong bộ mới (đổi số lượng chunk).
   if (req) {
     for (const { name: existing } of req.cookies.getAll()) {
-      if (existing.startsWith(name) && !chunks.has(existing)) {
+      if ((existing === name || existing.startsWith(`${name}.`)) && !chunks.has(existing)) {
         res.cookies.set(existing, "", {
           ...baseOptions,
           maxAge: 0,
