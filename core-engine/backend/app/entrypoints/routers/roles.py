@@ -68,15 +68,15 @@ async def _sync_position_on_assign(
             row = await row
         if row is None:
             return
-        await session.execute(
-            _t(
-                f'UPDATE "{schema}"."hr_employees" SET position = :p '
-                "WHERE lower(email) = lower(:e) "
-                "AND (position IS NULL OR position = '')"
-            ),
-            {"p": display_name, "e": email},
-        )
-        await session.commit()
+        async with session.begin_nested():
+            await session.execute(
+                _t(
+                    f'UPDATE "{schema}"."hr_employees" SET position = :p '
+                    "WHERE lower(email) = lower(:e) "
+                    "AND (position IS NULL OR position = '')"
+                ),
+                {"p": display_name, "e": email},
+            )
     except Exception as exc:
         logging.getLogger(__name__).warning("Sync chức vụ HR bỏ qua: %s", exc)
 

@@ -686,6 +686,11 @@ services:
       - "traefik.http.services.plugins-mfe.loadbalancer.server.port=3001"
       # Cho phép Iframe
       - "traefik.http.routers.plugins-mfe.middlewares=iframe-allow"
+      # Same-origin subpath routing: ${DOMAIN}/plugins-mfe (#789)
+      - "traefik.http.routers.plugins-mfe-sameorigin.rule=Host(`${DOMAIN}`) && PathPrefix(`/plugins-mfe`)"
+      - "traefik.http.routers.plugins-mfe-sameorigin.entrypoints=web"
+      - "traefik.http.routers.plugins-mfe-sameorigin.service=plugins-mfe"
+      - "traefik.http.routers.plugins-mfe-sameorigin.middlewares=iframe-allow"
 
 networks:
   proteus-net:

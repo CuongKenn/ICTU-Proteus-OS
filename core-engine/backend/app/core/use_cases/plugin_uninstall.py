@@ -111,8 +111,11 @@ class PluginUninstallUseCase:
         )
         await self.session.commit()
 
-        config_override = await self.plugin_repo.get_config(
-            tenant_id=context.tenant_id, plugin_id=plugin.id
+        config_override = (
+            await self.plugin_repo.get_config(
+                tenant_id=context.tenant_id, plugin_id=plugin.id
+            )
+            or {}
         )
 
         # Thực hiện 6 bước ngược

@@ -140,11 +140,16 @@ async function proxyHandler(
     "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "",
   });
 
-  // Đọc body một lần — request.text() không thể gọi 2 lần
-  let body: string | undefined = undefined;
+  // Đọc body một lần — dùng arrayBuffer cho multipart/binary để không làm hỏng byte (#786)
+  let body: BodyInit | undefined = undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
     try {
-      body = await request.text();
+      const contentType = (request.headers.get("Content-Type") ?? "").toLowerCase();
+      if (contentType.includes("multipart/form-data") || contentType.includes("application/octet-stream")) {
+        body = await request.arrayBuffer();
+      } else {
+        body = await request.text();
+      }
     } catch (error) {
       logger.error("[BFF] Lỗi đọc request body:", error);
       return withCorsHeaders(

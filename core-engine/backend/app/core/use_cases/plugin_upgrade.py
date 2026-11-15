@@ -701,13 +701,23 @@ class PluginUpgradeUseCase:
 
         import json as _json
 
+        tenant_schema = f"tenant_{str(context.tenant_id).replace('-', '_')}"
+        tenant_id_str = str(context.tenant_id)
+        plugins_base = plugins_dir.resolve()
         new_ids: list[str] = []
         for db in manifest.dashboards:
-            db_path = plugins_dir / plugin_code_name / db.file
+            db_path = (plugins_dir / plugin_code_name / db.file).resolve()
+            if not db_path.is_relative_to(plugins_base):
+                raise PluginUpgradeError(
+                    f"Dashboard path '{db.file}' vượt khỏi thư mục plugin."
+                )
             if not db_path.exists():
                 continue
-            with open(db_path, encoding="utf-8-sig") as f:
-                db_json = _json.load(f)
+            raw_mb = db_path.read_text(encoding="utf-8-sig")
+            raw_mb = raw_mb.replace("{{TENANT_SCHEMA}}", tenant_schema).replace(
+                "{{TENANT_ID}}", tenant_id_str
+            )
+            db_json = _json.loads(raw_mb)
             did = await self.metabase_adapter.import_dashboard(db_json)
             new_ids.append(str(did))
         # Xóa bản cũ sau khi bản mới đã lên (an toàn hơn xóa trước).
@@ -754,10 +764,15 @@ class PluginUpgradeUseCase:
         import json as _json
 
         # Manifest chỉ có 1 appsmith_app duy nhất (giống luồng install).
+        plugins_base = plugins_dir.resolve()
         new_ids: list[str] = []
         app_file = manifest.ui.appsmith_app if manifest.ui else None
         if app_file:
-            app_path = plugins_dir / plugin_code_name / app_file
+            app_path = (plugins_dir / plugin_code_name / app_file).resolve()
+            if not app_path.is_relative_to(plugins_base):
+                raise PluginUpgradeError(
+                    f"Appsmith app path '{app_file}' vượt khỏi thư mục plugin."
+                )
             if app_path.exists():
                 with open(app_path, encoding="utf-8-sig") as f:
                     app_json = _json.load(f)

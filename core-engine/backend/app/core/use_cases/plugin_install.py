@@ -1104,11 +1104,16 @@ class PluginInstallUseCase:
                 integration_config = integration.config
 
         if manifest.ui and manifest.ui.appsmith_app:
+            plugins_base = self.manifest_parser.plugins_dir.resolve()
             app_path = (
                 self.manifest_parser.plugins_dir
                 / plugin_code_name
                 / manifest.ui.appsmith_app
-            )
+            ).resolve()
+            if not app_path.is_relative_to(plugins_base):
+                raise PluginInstallError(
+                    f"Appsmith app path '{manifest.ui.appsmith_app}' vượt khỏi thư mục plugin."
+                )
             if app_path.exists():
                 with open(app_path, encoding="utf-8-sig") as f:
                     app_json = json.load(f)
@@ -1161,7 +1166,7 @@ class PluginInstallUseCase:
                         "tenant_id": context.tenant_id,
                         "plugin_code_name": plugin_code_name,
                         "name": role.name,
-                        "display_name": role.display_name,
+                        "display_name": role.display_name or role.description or role.name,
                         "description": role.description,
                         "permissions": list(role.permissions),
                     }

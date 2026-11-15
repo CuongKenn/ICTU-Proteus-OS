@@ -45,38 +45,53 @@ export function sessionCookieDomain(): string | undefined {
   }
 }
 
-/** Gắn cookie session mới sau khi xoay vòng token cho cả NextResponse và Response thường */
+const CHUNK_SIZE = 4096 - 163;
+
+/** Gắn cookie session mới sau khi xoay vòng token cho cả NextResponse và Response thường (có chia chunk >4KB) */
 export function withRotatedCookie<T extends Response | NextResponse>(
   res: T,
   rotatedCookieValue: string | null
 ): T {
   if (rotatedCookieValue) {
+    const baseName = sessionCookieName();
     const domain = sessionCookieDomain();
-    if ("cookies" in res && typeof (res as any).cookies?.set === "function") {
-      const cookieOptions: any = {
-        name: sessionCookieName(),
-        value: rotatedCookieValue,
-        httpOnly: true,
-        secure: isSecureCookies(),
-        sameSite: "lax",
-        path: "/",
-        maxAge: SESSION_MAX_AGE,
-      };
-      if (domain) {
-        cookieOptions.domain = domain;
-      }
-      (res as NextResponse).cookies.set(cookieOptions);
+    const chunkCount = Math.max(1, Math.ceil(rotatedCookieValue.length / CHUNK_SIZE));
+    const entries: Array<[string, string]> = [];
+    if (chunkCount === 1) {
+      entries.push([baseName, rotatedCookieValue]);
     } else {
-      const parts = [
-        `${sessionCookieName()}=${rotatedCookieValue}`,
-        `Path=/`,
-        `Max-Age=${SESSION_MAX_AGE}`,
-        `SameSite=Lax`,
-        `HttpOnly`,
-      ];
-      if (isSecureCookies()) parts.push("Secure");
-      if (domain) parts.push(`Domain=${domain}`);
-      res.headers.append("Set-Cookie", parts.join("; "));
+      for (let i = 0; i < chunkCount; i++) {
+        entries.push([`${baseName}.${i}`, rotatedCookieValue.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)]);
+      }
+    }
+
+    for (const [cookieName, cookieVal] of entries) {
+      if ("cookies" in res && typeof (res as any).cookies?.set === "function") {
+        const cookieOptions: any = {
+          name: cookieName,
+          value: cookieVal,
+          httpOnly: true,
+          secure: isSecureCookies(),
+          sameSite: "lax",
+          path: "/",
+          maxAge: SESSION_MAX_AGE,
+        };
+        if (domain) {
+          cookieOptions.domain = domain;
+        }
+        (res as NextResponse).cookies.set(cookieOptions);
+      } else {
+        const parts = [
+          `${cookieName}=${cookieVal}`,
+          `Path=/`,
+          `Max-Age=${SESSION_MAX_AGE}`,
+          `SameSite=Lax`,
+          `HttpOnly`,
+        ];
+        if (isSecureCookies()) parts.push("Secure");
+        if (domain) parts.push(`Domain=${domain}`);
+        res.headers.append("Set-Cookie", parts.join("; "));
+      }
     }
   }
   return res;

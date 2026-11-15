@@ -99,9 +99,10 @@ class RAGIngestionUseCase:
                     documents = filtered_docs
 
             total_docs = len(documents)
-            total_chunks = 0
+            all_chunks: list[str] = []
+            all_metadatas: list[dict[str, Any]] = []
 
-            # 2. Chunking & 3. Upsert Qdrant
+            # 2. Chunking
             for doc in documents:
                 title = doc.get("title", "Untitled")
                 source_url = doc.get("source_url", "")
@@ -121,14 +122,23 @@ class RAGIngestionUseCase:
                     }
                     for idx, _ in enumerate(chunks)
                 ]
+                all_chunks.extend(chunks)
+                all_metadatas.extend(metadatas)
 
-                # Upsert to Qdrant
-                # QdrantAdapter sử dụng FastEmbed (Hybrid Search Dense+BM25) bên dưới,
-                # thay thế cho việc gọi thẳng OpenAI API, tối ưu cho RRF.
-                await self.vector_db_port.upsert_vectors(
-                    tenant_id=tenant_id, chunks=chunks, metadatas=metadatas
+            total_chunks = len(all_chunks)
+
+            # 3. Upsert / Replace Qdrant
+            # QdrantAdapter sử dụng FastEmbed (Hybrid Search Dense+BM25) bên dưới,
+            # thay thế cho việc gọi thẳng OpenAI API, tối ưu cho RRF.
+            replace_fn = getattr(self.vector_db_port, "replace_tenant_vectors", None)
+            if callable(replace_fn):
+                await replace_fn(
+                    tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
                 )
-                total_chunks += len(chunks)
+            elif all_chunks:
+                await self.vector_db_port.upsert_vectors(
+                    tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
+                )
 
             logger.info(
                 "RAG Ingestion completed: %s docs, %s chunks.", total_docs, total_chunks

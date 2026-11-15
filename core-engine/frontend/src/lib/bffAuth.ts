@@ -8,7 +8,7 @@ import { encode, getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { refreshAccessToken } from "@/lib/tokenRefresh";
 import { logger } from "@/lib/logger";
-import { SESSION_MAX_AGE } from "@/lib/sessionCookie";
+import { SESSION_MAX_AGE, sessionCookieName } from "@/lib/sessionCookie";
 
 export interface BffAuthSuccess {
   success: true;
@@ -24,7 +24,11 @@ export interface BffAuthFailure {
 export type BffAuthResult = BffAuthSuccess | BffAuthFailure;
 
 export async function getBffAuth(request: NextRequest): Promise<BffAuthResult> {
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName: sessionCookieName(),
+  });
 
   if (!token?.accessToken) {
     logger.error("[BFF] 401: no session token or accessToken found");

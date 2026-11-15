@@ -54,6 +54,7 @@ const App = () => {
       }
     };
     const onMessage = (e: MessageEvent) => {
+      if (e.origin && e.origin !== window.location.origin) return;
       const d = e.data as { type?: string; theme?: unknown } | null;
       if (d?.type === 'proteus-theme' && (d.theme === 'dark' || d.theme === 'light')) {
         setThemeState(d.theme);
