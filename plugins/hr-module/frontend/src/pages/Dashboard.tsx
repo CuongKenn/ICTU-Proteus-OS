@@ -67,39 +67,37 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="mfe-kpi-grid">
         <StatCard label="Tổng nhân viên" value={String(employees.length)} sub={`${active} đang làm việc`} />
         <StatCard label="Phòng ban" value={String(depts.length)} />
-        <StatCard label="Đơn chờ duyệt" value={String(pending)} sub="nghỉ phép PENDING" />
+        <StatCard label="Đơn chờ duyệt" value={String(pending)} sub="Đơn nghỉ phép chờ duyệt" />
         <StatCard label="Tổng lương kỳ này" value={formatVND(totalPayroll)} sub={`${payroll.length} phiếu lương`} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Headcount theo phòng ban</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Nhân sự theo phòng ban</h4>
           {byDept.map((b) => (
-            <div key={b.dept.id} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}>
-              <span style={{ width: 180, color: C.muted, fontSize: '.82rem' }}>{b.dept.name}</span>
-              <div style={{ flex: 1, height: 8, background: 'var(--mfe-panel-2)', borderRadius: 999 }}>
+            <div key={b.dept.id} className="mfe-bar-row">
+              <span style={{ width: 170, color: C.muted, fontSize: '.82rem' }}>{b.dept.name}</span>
+              <div className="mfe-bar-track">
                 <div
-                  style={{
-                    width: `${((b.count / maxCount) * 100).toFixed(0)}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: 'var(--mfe-accent)',
-                  }}
+                  className="mfe-bar-fill"
+                  style={{ width: `${((b.count / maxCount) * 100).toFixed(0)}%` }}
                 />
               </div>
-              <span style={{ width: 28, textAlign: 'right', color: C.text }}>{b.count}</span>
+              <span style={{ width: 32, textAlign: 'right', color: C.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                {b.count}
+              </span>
             </div>
           ))}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `hr_employees.department_id` (chỉ đếm active).
-          </div>
+          <p className="mfe-note">
+            Thống kê chỉ tính nhân sự đang trong trạng thái làm việc chính thức.
+          </p>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Đơn nghỉ gần đây</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Đơn nghỉ gần đây</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -120,9 +118,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `hr_leave_requests` + workflow `wf_leave_request`.
-          </div>
+          <p className="mfe-note">
+            Đơn nghỉ phép tự động gửi yêu cầu phê duyệt tới quản lý trực tiếp.
+          </p>
         </div>
       </div>
     </div>

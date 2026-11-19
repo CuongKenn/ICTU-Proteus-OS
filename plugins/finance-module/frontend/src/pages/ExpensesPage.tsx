@@ -113,8 +113,8 @@ export function ExpensesPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có đề xuất phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Đề xuất chi” gọi workflow n8n `wf_expense_approval` qua dispatcher (202 → xử lý ngầm, tự nhắn người duyệt).
+        <p className="mfe-note">
+          Đề xuất chi mới sẽ tự động đi vào luồng phê duyệt và gửi thông báo tới cấp duyệt liên quan.
         </p>
       )}
 

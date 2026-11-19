@@ -58,16 +58,16 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <StatCard label="Phòng họp" value={String(rooms.filter((r) => r.is_active).length)} sub={`${rooms.length} tổng số`} />
-        <StatCard label="Lịch đã đặt" value={String(bookings.filter((b) => b.status === 'SCHEDULED').length)} sub="chưa diễn ra" />
-        <StatCard label="Việc cần làm" value={String(actions.filter((a) => a.status === 'PENDING' || a.status === 'IN_PROGRESS').length)} sub="đang mở" />
-        <StatCard label="Quá hạn" value={String(overdue.length)} sub="action items trễ" />
+      <div className="mfe-kpi-grid">
+        <StatCard label="Phòng họp" value={String(rooms.filter((r) => r.is_active).length)} sub={`Tổng ${rooms.length} phòng`} />
+        <StatCard label="Lịch đã đặt" value={String(bookings.filter((b) => b.status === 'SCHEDULED').length)} sub="Sắp diễn ra" />
+        <StatCard label="Việc cần làm" value={String(actions.filter((a) => a.status === 'PENDING' || a.status === 'IN_PROGRESS').length)} sub="Đang triển khai" />
+        <StatCard label="Quá hạn" value={String(overdue.length)} sub="Đầu việc trễ hạn" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Lịch họp sắp tới</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Lịch họp sắp tới</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -86,18 +86,18 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          {upcoming.length === 0 && <p style={{ color: C.muted }}>Chưa có lịch sắp tới.</p>}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `meeting_bookings` + workflow `wf_meeting_booking` / `wf_meeting_reminder`.
-          </div>
+          {upcoming.length === 0 && <p className="mfe-empty">Chưa có lịch họp sắp tới.</p>}
+          <p className="mfe-note">
+            Lịch họp tự động gửi thư mời và thông báo nhắc lịch trước giờ bắt đầu.
+          </p>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Việc quá hạn</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Đầu việc quá hạn</h4>
           <TableWrap>
             <thead>
               <tr>
-                <th style={th}>Việc</th>
+                <th style={th}>Công việc</th>
                 <th style={th}>Người phụ trách</th>
                 <th style={th}>Hạn</th>
               </tr>
@@ -107,15 +107,15 @@ export function Dashboard() {
                 <tr key={a.id}>
                   <td style={td}>{a.task_desc}</td>
                   <td style={td}>{a.owner_id}</td>
-                  <td style={{ ...td, color: C.red }}>{a.due_date}</td>
+                  <td style={{ ...td, color: C.red, fontWeight: 500 }}>{a.due_date}</td>
                 </tr>
               ))}
             </tbody>
           </TableWrap>
-          {overdue.length === 0 && <p style={{ color: C.muted }}>Không có việc quá hạn. 🎉</p>}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nhắc việc qua workflow `wf_action_item_followup`.
-          </div>
+          {overdue.length === 0 && <p className="mfe-empty">Không có đầu việc quá hạn.</p>}
+          <p className="mfe-note">
+            Hệ thống tự động nhắc nhở định kỳ đối với các đầu việc sau cuộc họp sắp đến hạn.
+          </p>
         </div>
       </div>
     </div>

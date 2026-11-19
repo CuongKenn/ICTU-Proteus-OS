@@ -61,36 +61,36 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <StatCard label="Giá trị kỳ vọng" value={formatVND(weighted)} sub={`${open.length} cơ hội open`} />
-        <StatCard label="Đã thắng" value={formatVND(won)} />
-        <StatCard label="Lead mới" value={String(leads.filter((l) => l.stage === 'NEW').length)} sub={`tổng ${leads.length}`} />
-        <StatCard label="Ticket quá SLA" value={String(breached)} sub={`tổng ${tickets.length}`} />
+      <div className="mfe-kpi-grid">
+        <StatCard label="Giá trị kỳ vọng" value={formatVND(weighted)} sub={`${open.length} cơ hội đang mở`} />
+        <StatCard label="Đã chốt thành công" value={formatVND(won)} />
+        <StatCard label="Lead mới" value={String(leads.filter((l) => l.stage === 'NEW').length)} sub={`Tổng ${leads.length} tiềm năng`} />
+        <StatCard label="Ticket quá SLA" value={String(breached)} sub={`Tổng ${tickets.length} yêu cầu`} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Phễu pipeline (open)</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Phễu cơ hội đang mở</h4>
           {OPEN_STAGES.map((st) => {
             const rows = open.filter((o) => o.stage === st);
             const sum = rows.reduce((s, o) => s + o.value, 0);
             return (
-              <div key={st} style={{ display: 'flex', justifyContent: 'space-between', padding: '.4rem 0', borderBottom: '1px solid var(--mfe-panel-2)', color: C.text, fontSize: '.88rem' }}>
+              <div key={st} className="mfe-list-row">
                 <span>{st} ({rows.length})</span>
                 <b>{formatVND(sum)}</b>
               </div>
             );
           })}
         </div>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Lead theo nguồn</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Khách hàng tiềm năng theo nguồn</h4>
           {Object.entries(bySource).map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '.4rem 0', borderBottom: '1px solid var(--mfe-panel-2)', color: C.text, fontSize: '.88rem' }}>
+            <div key={k} className="mfe-list-row">
               <span>{k}</span><b>{v}</b>
             </div>
           ))}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Map với `dashboards/sales_pipeline.json` + `workflows/lead_capture.json`.
-          </div>
+          <p className="mfe-note">
+            Dữ liệu được đồng bộ tự động từ kênh tiếp nhận khách hàng tiềm năng và bảng theo dõi doanh số.
+          </p>
         </div>
       </div>
     </div>

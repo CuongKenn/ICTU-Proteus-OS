@@ -120,9 +120,8 @@ export function LeavesPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có đơn nghỉ phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Tạo đơn nghỉ” gọi workflow n8n `wf_leave_request` qua dispatcher (202 → xử lý ngầm:
-          check số dư `hr_leave_balances` rồi nhắn manager).
+        <p className="mfe-note">
+          Khi tạo đơn nghỉ phép, hệ thống tự động kiểm tra quỹ phép còn lại và gửi thông báo tới quản lý duyệt.
         </p>
       )}
 

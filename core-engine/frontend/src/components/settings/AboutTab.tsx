@@ -4,8 +4,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Info, Server, CheckCircle2, XCircle } from "lucide-react";
-import { clsx } from "clsx";
+import { Server, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 
 interface ServiceHealth {
   name: string;
@@ -14,22 +13,20 @@ interface ServiceHealth {
 
 export const AboutTab = () => {
   const [services, setServices] = useState<ServiceHealth[]>([
-    { name: "Frontend (Next.js)", status: "checking" },
-    { name: "Backend (FastAPI)", status: "checking" },
+    { name: "Frontend (Next.js BFF)", status: "checking" },
+    { name: "Backend (FastAPI Core Engine)", status: "checking" },
   ]);
 
   useEffect(() => {
-    // Check Frontend
     setServices((prev) =>
-      prev.map((s) => (s.name === "Frontend (Next.js)" ? { ...s, status: "healthy" } : s))
+      prev.map((s) => (s.name.startsWith("Frontend") ? { ...s, status: "healthy" } : s))
     );
 
-    // Check Backend
     fetch("/api/proxy/health")
       .then((res) => {
         setServices((prev) =>
           prev.map((s) =>
-            s.name === "Backend (FastAPI)"
+            s.name.startsWith("Backend")
               ? { ...s, status: res.ok ? "healthy" : "unhealthy" }
               : s
           )
@@ -37,80 +34,88 @@ export const AboutTab = () => {
       })
       .catch(() => {
         setServices((prev) =>
-          prev.map((s) => (s.name === "Backend (FastAPI)" ? { ...s, status: "unhealthy" } : s))
+          prev.map((s) => (s.name.startsWith("Backend") ? { ...s, status: "unhealthy" } : s))
         );
       });
   }, []);
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div>
-        <h2 className="text-xl font-bold text-text-primary">About Proteus OS</h2>
-        <p className="text-text-secondary text-sm mt-1">
-          System information, version details, and service status.
+    <div className="space-y-7 animate-fade-in">
+      <div className="pb-5 border-b border-line">
+        <h2 className="text-lg font-heading font-semibold text-ink">Thông tin hệ thống</h2>
+        <p className="text-sm text-muted mt-1">
+          Phiên bản nền tảng, giấy phép nguồn mở và trạng thái các dịch vụ lõi.
         </p>
       </div>
 
-      <div className="flex flex-col items-center justify-center p-8 border border-border bg-bg-surface/50 rounded-xl text-center">
-        <div className="w-16 h-16 bg-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-primary/30">
-          <span className="text-primary font-black text-3xl">P</span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 p-5 border border-line bg-paper-subtle/50 rounded-xl">
+        <div className="flex items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-heading font-bold text-xl shrink-0"
+            style={{ background: "var(--accent-solid)" }}
+          >
+            P
+          </div>
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-base font-heading font-bold text-ink">Proteus OS</h3>
+              <span className="font-mono text-xs font-medium px-2 py-0.5 rounded bg-accent/10 text-accent">
+                v1.0.3
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted max-w-md leading-relaxed">
+              Hệ điều hành Chuyển đổi số Lõi mở (DX-OS Open-Core) tích hợp Keycloak, PostgreSQL RLS, n8n, Metabase, Mattermost và Agentic AI.
+            </p>
+          </div>
         </div>
-        <h3 className="text-2xl font-bold text-text-primary">Proteus OS</h3>
-        <span className="inline-block mt-2 px-3 py-1 bg-accent/10 text-accent text-sm font-semibold rounded-full">
-          v0.1.0-alpha
-        </span>
-        <p className="mt-4 text-text-secondary max-w-md text-sm">
-          An open-source AI-native Operating System. Built with Next.js, FastAPI, and integrated with Mattermost, n8n, and Keycloak.
-        </p>
-        <a 
-          href="https://github.com/CuongKenn/ICTU_Proteus-os" 
-          target="_blank" 
+        <a
+          href="https://github.com/CuongKenn/ICTU_Proteus-os"
+          target="_blank"
           rel="noreferrer"
-          className="text-primary text-sm hover:underline mt-4 font-medium"
+          className="btn-ghost btn-sm shrink-0"
         >
-          View Source Code
+          Mã nguồn GitHub
+          <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
 
-      <div className="pt-4">
-        <h3 className="font-semibold text-text-primary mb-4 flex items-center gap-2">
-          <Server className="w-4 h-4" /> System Services Status
+      <div>
+        <h3 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
+          <Server className="w-4 h-4 text-accent" /> Trạng thái dịch vụ lõi
         </h3>
-        <div className="grid gap-3">
+        <div className="divide-y divide-line border border-line rounded-xl overflow-hidden bg-paper-white">
           {services.map((service) => (
-            <div 
+            <div
               key={service.name}
-              className="flex items-center justify-between p-3 border border-border rounded-lg bg-bg-surface"
+              className="flex items-center justify-between px-4 py-3"
             >
-              <span className="text-sm font-medium text-text-primary">{service.name}</span>
-              <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-ink">{service.name}</span>
+              <div>
                 {service.status === "checking" && (
-                  <span className="text-xs text-text-secondary animate-pulse">Checking...</span>
+                  <span className="text-xs text-dim animate-pulse">Đang kiểm tra...</span>
                 )}
                 {service.status === "healthy" && (
-                  <div className="flex items-center gap-1.5 text-success">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span className="text-xs font-semibold">Operational</span>
-                  </div>
+                  <span className="status-badge status-badge--active">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Hoạt động ổn định
+                  </span>
                 )}
                 {service.status === "unhealthy" && (
-                  <div className="flex items-center gap-1.5 text-danger">
-                    <XCircle className="w-4 h-4" />
-                    <span className="text-xs font-semibold">Down</span>
-                  </div>
+                  <span className="status-badge status-badge--failed">
+                    <XCircle className="w-3.5 h-3.5" /> Mất kết nối
+                  </span>
                 )}
               </div>
             </div>
           ))}
         </div>
       </div>
-      
-      <div className="pt-4 border-t border-border">
-        <h3 className="text-sm font-medium text-text-primary mb-2">License</h3>
-        <p className="text-xs text-text-secondary">
-          Proteus OS is licensed under the <strong>AGPL-3.0-or-later</strong> license.
-          <br/>
-          Copyright © 2026 CuongKenn & ICTU Team.
+
+      <div className="pt-4 border-t border-line">
+        <h3 className="text-sm font-semibold text-ink mb-1.5">Giấy phép &amp; Bản quyền</h3>
+        <p className="text-xs text-muted leading-relaxed">
+          Phát hành theo giấy phép nguồn mở <strong className="text-ink">GNU AGPL-3.0-or-later</strong>.
+          <br />
+          Copyright © 2026 CuongKenn &amp; ICTU Team.
         </p>
       </div>
     </div>

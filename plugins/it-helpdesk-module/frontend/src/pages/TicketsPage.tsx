@@ -113,8 +113,8 @@ export function TicketsPage() {
         <Btn primary onClick={() => setShowCreate(true)}>+ Tạo ticket</Btn>
       </Toolbar>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          “Tạo ticket” gọi workflow `wf_ticket_create` (tạo + phân công + nhắn).
+        <p className="mfe-note">
+          Yêu cầu hỗ trợ mới sẽ được tự động phân công kỹ thuật viên phụ trách và gửi thông báo ngay lập tức.
         </p>
       )}
 
@@ -142,7 +142,7 @@ export function TicketsPage() {
                     <div style={{ color: C.muted, fontSize: '.78rem' }}>
                       {catName(t.category_id)} · {t.requester_name}
                       {t.assignee_name ? ` · → ${t.assignee_name}` : ' · chưa gán'}
-                      {t.escalated ? ' · ⚠ escalated' : ''}
+                      {t.escalated ? ' · Đã leo thang SLA' : ''}
                     </div>
                   </td>
                   <td style={td}><SimpleBadge text={t.priority} color={pColor(t.priority)} /></td>

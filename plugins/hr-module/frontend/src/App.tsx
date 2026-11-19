@@ -1,7 +1,6 @@
 // Copyright (c) 2026 CuongKenn & ICTU Team
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// HR Core — root component. Gateway render <HrModuleApp subPath navigate />.
-// subPath: phần sau /hr-module ('' | 'employees' | 'leaves' | 'departments' | 'recruitment').
+// hr-module — Enterprise Micro-Frontend root shell.
 import React from 'react';
 import { hrMeta } from './meta';
 import { Dashboard } from './pages/Dashboard';
@@ -16,45 +15,42 @@ export function HrModuleApp(props: { subPath: string; navigate: (sub: string) =>
   const route = (props.subPath || '').replace(/^\/+|\/+$/g, '');
   const { mode } = useStore();
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
-      <header style={{ marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0, color: 'var(--mfe-text)' }}>{hrMeta.displayName}</h2>
-        <p style={{ margin: '.25rem 0 0', color: 'var(--mfe-muted)', fontSize: '.88rem' }}>{hrMeta.description}</p>
-        <nav style={{ display: 'flex', gap: '.5rem', marginTop: '.75rem', flexWrap: 'wrap' }}>
-          {hrMeta.routes.map((r) => {
-            const active = route === r.path;
-            return (
-              <button
-                key={r.path}
-                onClick={() => props.navigate(r.path ? `/${r.path}` : '')}
-                style={{
-                  padding: '.45rem .9rem',
-                  borderRadius: 8,
-                  border: active ? 'none' : '1px solid var(--mfe-line)',
-                  background: active ? 'var(--mfe-primary)' : 'transparent',
-                  color: active ? 'var(--mfe-on-accent)' : 'var(--mfe-text)',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
-              >
-                {r.label}
-              </button>
-            );
-          })}
-          <span style={{ flex: 1 }} />
-          {/* Chỉ hiện ở DEMO (xóa localStorage demo). LIVE không cần. */}
+    <div className="mfe-module-shell">
+      <header className="mfe-module-header">
+        <div className="mfe-module-header-top">
+          <div>
+            <h2 className="mfe-module-title">{hrMeta.displayName}</h2>
+            <p className="mfe-module-desc">{hrMeta.description}</p>
+          </div>
           {mode !== 'live' && (
             <button
+              type="button"
               onClick={() => {
                 resetStoreCache();
                 window.location.reload();
               }}
               title="Xóa localStorage demo, dò lại API"
-              style={{ background: 'none', border: 'none', color: 'var(--mfe-dim)', cursor: 'pointer', fontSize: '.8rem' }}
+              className="mfe-reset-btn"
             >
               Reset demo
             </button>
           )}
+        </div>
+        <nav className="mfe-tabs" aria-label={hrMeta.displayName}>
+          {hrMeta.routes.map((r) => {
+            const active = route === r.path;
+            return (
+              <button
+                key={r.path}
+                type="button"
+                onClick={() => props.navigate(r.path ? `/${r.path}` : '')}
+                className={active ? 'mfe-tab mfe-tab--active' : 'mfe-tab'}
+                aria-current={active ? 'page' : undefined}
+              >
+                {r.label}
+              </button>
+            );
+          })}
         </nav>
       </header>
       {route === '' && <Dashboard />}

@@ -108,8 +108,8 @@ export function VendorsPage() {
         </tbody>
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có nhà cung cấp phù hợp.</p>}
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Đánh giá định kỳ qua workflow `wf_vendor_evaluation` (manual). Xóa bị chặn nếu NCC còn hợp đồng.
+      <p className="mfe-note">
+        Hồ sơ nhà cung cấp được đánh giá định kỳ. Không thể xóa nhà cung cấp đang có hợp đồng hiệu lực.
       </p>
 
       {showCreate && (

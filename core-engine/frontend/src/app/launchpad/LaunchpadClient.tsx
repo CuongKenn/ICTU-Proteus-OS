@@ -7,20 +7,32 @@ import React, { useState, useEffect } from "react";
 import { usePlugins } from "@/hooks/usePlugins";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { useSession } from "next-auth/react";
-
-const MATTERMOST_URL = process.env.NEXT_PUBLIC_MATTERMOST_URL || "http://chat.proteus.local";
-const OUTLINE_URL = process.env.NEXT_PUBLIC_OUTLINE_URL || "http://wiki.proteus.local";
-const N8N_URL = process.env.NEXT_PUBLIC_N8N_URL || "http://workflow.proteus.local";
 import { useNotificationStore } from "@/store/notificationStore";
-import { Blocks, Box, FileText, MessageSquare, Network, X } from "lucide-react";
+import {
+  Blocks,
+  BarChart3,
+  FileText,
+  MessageSquare,
+  Workflow,
+  X,
+  Store,
+  Bot,
+  Calendar,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useLang } from "@/components/i18n/LanguageContext";
 
+const N8N_URL = process.env.NEXT_PUBLIC_N8N_URL || "http://workflow.proteus.local";
+
 export function LaunchpadClient() {
   const { data: session } = useSession();
   const hasRole = useAuthStore((state) => state.hasRole);
-  const isAdmin = hasRole("tenant_admin") || hasRole("superadmin") || hasRole("system_admin") || hasRole("admin");
+  const isAdmin =
+    hasRole("tenant_admin") ||
+    hasRole("superadmin") ||
+    hasRole("system_admin") ||
+    hasRole("admin");
   const { plugins, isLoading } = usePlugins();
   const [activeApp, setActiveApp] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
@@ -51,119 +63,251 @@ export function LaunchpadClient() {
       if (!res.ok) throw new Error("Failed to fetch signed URL");
       const data = await res.json();
       setIframeUrl(data.url);
-    } catch (err) {
+    } catch {
       addToast("error", "Không thể tải báo cáo Metabase");
       setActiveApp(null);
     }
   };
 
-  const closeIframe = () => { setActiveApp(null); setIframeUrl(null); };
+  const closeIframe = () => {
+    setActiveApp(null);
+    setIframeUrl(null);
+  };
 
   const handleOpenPlugin = (code_name: string) => {
-    const plugin = plugins.find(p => p.code_name === code_name);
-    const targetUrl = plugin?.external_url || plugin?.homepage_url || `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${code_name}`;
+    const plugin = plugins.find((p) => p.code_name === code_name);
+    const targetUrl =
+      plugin?.external_url ||
+      plugin?.homepage_url ||
+      `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${code_name}`;
     openIframe(code_name, targetUrl);
   };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    const timeOfDay = hour < 12 ? t("launchpad.morning") : hour < 18 ? t("launchpad.afternoon") : t("launchpad.evening");
+    const timeOfDay =
+      hour < 12
+        ? t("launchpad.morning")
+        : hour < 18
+        ? t("launchpad.afternoon")
+        : t("launchpad.evening");
     return lang === "en" ? `Good ${timeOfDay}` : `Chào buổi ${timeOfDay}`;
   };
 
+  const visiblePlugins = plugins.filter((p) => {
+    if (isAdmin) return true;
+    if (!p.roles || p.roles.length === 0) return true;
+    return p.roles.some((r) => hasRole(r));
+  });
+
+  const activePluginCount = visiblePlugins.filter((p) => p.status === "ACTIVE").length;
+
   return (
     <div className="relative">
-      <div className="p-6 md:p-10 max-w-[1200px] mx-auto">
-        {/* Header */}
-        <div className="mb-10 animate-slide-up">
-          <div className="mono-tag mb-4">
-            <span className="pulse-dot" />
-            WORKSPACE ACTIVE
+      <div className="p-6 md:p-8 max-w-[1200px] mx-auto space-y-8">
+        {/* Executive Workspace Header */}
+        <div className="card p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-muted mb-2">
+              <Calendar className="w-3.5 h-3.5 text-dim" />
+              <span>
+                {new Date().toLocaleDateString("vi-VN", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </span>
+            </div>
+            <h1 className="text-2xl font-heading font-bold tracking-tight text-ink">
+              {getGreeting()},{" "}
+              <span className="text-accent">{session?.user?.name || "bạn"}</span>
+            </h1>
+            <p className="text-sm text-muted mt-1">
+              Truy cập nhanh các công cụ cộng tác, điều hành và phân hệ nghiệp vụ trong tổ chức.
+            </p>
           </div>
-          <h1 className="text-3xl font-grot font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
-            {getGreeting()}, <span style={{ color: "var(--accent)" }}>{session?.user?.name || 'bạn'}</span>!
-          </h1>
-          <p className="font-mono text-meta" style={{ color: "var(--dim)" }}>
-            {new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => router.push("/ai")}
+              className="btn-ghost"
+            >
+              <Bot className="w-4 h-4 text-accent" />
+              Proteus AI
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/marketplace")}
+              className="btn-accent"
+            >
+              <Store className="w-4 h-4" />
+              Marketplace
+            </button>
+          </div>
         </div>
 
-        {/* System Apps */}
-        <section className="mb-12 animate-fade-in">
-          <h2 className="font-mono text-meta font-medium mb-6 flex items-center gap-3" style={{ color: "var(--dim)" }}>
-            <span>{t("launchpad.system")}</span>
-            <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
-          </h2>
-          <div className="flex flex-wrap gap-6 sm:gap-8">
-            <AppIcon appName="Mattermost" icon={<MessageSquare className="w-7 h-7" style={{ color: "var(--accent)" }} />} onClick={() => router.push("/chat")} isActive />
-            <AppIcon appName="Outline Wiki" icon={<FileText className="w-7 h-7" style={{ color: "var(--muted)" }} />} onClick={() => router.push("/wiki")} isActive />
-            {isAdmin && <AppIcon appName="n8n Workflow" icon={<Network className="w-7 h-7" style={{ color: "var(--amber)" }} />} onClick={() => openIframe("n8n", N8N_URL)} isActive />}
-            {isAdmin && <AppIcon appName="Metabase" icon={<Box className="w-7 h-7" style={{ color: "var(--accent)" }} />} onClick={handleOpenMetabase} isActive />}
+        {/* System Core Tools (H-P-D) */}
+        <section className="space-y-3.5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-heading font-semibold text-ink">
+              {t("launchpad.system")}
+            </h2>
+            <span className="text-xs text-dim">Dịch vụ nền tảng lõi</span>
           </div>
-        </section>
-
-        {/* Plugin Apps */}
-        <section className="animate-fade-in">
-          <h2 className="font-mono text-meta font-medium mb-6 flex items-center gap-3" style={{ color: "var(--dim)" }}>
-            <span>{t("launchpad.plugins")}</span>
-            <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
-          </h2>
-          <div className="flex flex-wrap gap-6 sm:gap-8">
-            {isLoading && Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex flex-col items-center gap-2 w-24 animate-pulse">
-                <div className="w-[72px] h-[72px] rounded-2xl" style={{ background: "var(--line)" }} />
-                <div className="h-3 rounded-lg w-16 mt-1" style={{ background: "var(--line)" }} />
-              </div>
-            ))}
-            {!isLoading && plugins.filter((p) => {
-              if (isAdmin) return true;
-              if (!p.roles || p.roles.length === 0) return true;
-              return p.roles.some((r) => hasRole(r));
-            }).map((plugin) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <AppIcon
+              appName="Mattermost"
+              subtitle="Giao tiếp & Phê duyệt"
+              icon={<MessageSquare className="w-5 h-5 text-accent" strokeWidth={1.75} />}
+              onClick={() => router.push("/chat")}
+              isActive
+            />
+            <AppIcon
+              appName="Outline Wiki"
+              subtitle="Kho tri thức nội bộ"
+              icon={<FileText className="w-5 h-5 text-ink-soft" strokeWidth={1.75} />}
+              onClick={() => router.push("/wiki")}
+              isActive
+            />
+            {isAdmin && (
               <AppIcon
-                key={plugin.id}
-                appName={plugin.display_name}
-                icon={<Blocks className="w-7 h-7" style={{ color: "var(--accent)" }} />}
-                onClick={() => handleOpenPlugin(plugin.code_name)}
-                isActive={plugin.status === "ACTIVE"}
+                appName="n8n Workflow"
+                subtitle="Tự động hóa quy trình"
+                icon={<Workflow className="w-5 h-5" style={{ color: "var(--amber)" }} strokeWidth={1.75} />}
+                onClick={() => openIframe("n8n", N8N_URL)}
+                isActive
               />
-            ))}
+            )}
+            {isAdmin && (
+              <AppIcon
+                appName="Metabase"
+                subtitle="Phân tích & Báo cáo BI"
+                icon={<BarChart3 className="w-5 h-5" style={{ color: "var(--emerald)" }} strokeWidth={1.75} />}
+                onClick={handleOpenMetabase}
+                isActive
+              />
+            )}
           </div>
         </section>
 
-        {/* Empty State */}
-        {!isLoading && plugins.length === 0 && (
-          <div className="mt-16 text-center animate-fade-in">
-            <div className="card inline-flex items-center justify-center w-20 h-20 mb-6">
-              <Blocks className="w-10 h-10" style={{ color: "var(--ghost)" }} />
+        {/* Installed Business Modules */}
+        <section className="space-y-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-sm font-heading font-semibold text-ink">
+                {t("launchpad.plugins")}
+              </h2>
+              {!isLoading && visiblePlugins.length > 0 && (
+                <span className="status-badge status-badge--active tabular-nums">
+                  {activePluginCount} đang hoạt động
+                </span>
+              )}
             </div>
-            <h3 className="text-xl font-grot font-bold mb-3" style={{ color: "var(--ink)" }}>{t("launchpad.no_plugins")}</h3>
-            <p className="max-w-sm mx-auto leading-relaxed mb-6" style={{ color: "var(--muted)" }}>
-              Không gian làm việc của bạn chưa được cài đặt bất kỳ công cụ nào.
-            </p>
-            <button onClick={() => router.push('/marketplace')} className="btn-accent">{t("launchpad.explore")}</button>
+            {!isLoading && visiblePlugins.length > 0 && (
+              <button
+                type="button"
+                onClick={() => router.push("/marketplace")}
+                className="text-xs font-medium text-accent hover:underline cursor-pointer"
+              >
+                Quản lý ứng dụng
+              </button>
+            )}
           </div>
-        )}
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="card p-4 flex-row items-center gap-3.5 animate-pulse"
+                >
+                  <div className="w-11 h-11 rounded-lg bg-paper-subtle shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 rounded bg-paper-subtle w-2/3" />
+                    <div className="h-3 rounded bg-paper-subtle w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : visiblePlugins.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {visiblePlugins.map((plugin) => (
+                <AppIcon
+                  key={plugin.id}
+                  appName={plugin.display_name}
+                  subtitle={plugin.category || plugin.code_name}
+                  icon={<Blocks className="w-5 h-5 text-accent" strokeWidth={1.75} />}
+                  onClick={() => handleOpenPlugin(plugin.code_name)}
+                  isActive={plugin.status === "ACTIVE"}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="card p-10 text-center items-center border-dashed">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-paper-subtle border border-line">
+                <Blocks className="w-6 h-6 text-dim" />
+              </div>
+              <h3 className="text-base font-heading font-semibold text-ink mb-1.5">
+                {t("launchpad.no_plugins")}
+              </h3>
+              <p className="text-sm text-muted max-w-md mb-5">
+                Không gian làm việc của bạn chưa cài đặt phân hệ nghiệp vụ nào. Truy cập Marketplace để triển khai nhanh.
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push("/marketplace")}
+                className="btn-accent"
+              >
+                {t("launchpad.explore")}
+              </button>
+            </div>
+          )}
+        </section>
       </div>
 
-      {/* Iframe Overlay */}
+      {/* Fullscreen Iframe Overlay */}
       {activeApp && iframeUrl && (
-        <div className="fixed inset-0 z-[100] flex flex-col animate-fade-in" style={{ background: "var(--paper)" }}>
-          <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ borderBottom: "1px solid var(--line)", background: "var(--paper-raised)" }}>
-            <h2 className="font-mono text-meta font-medium" style={{ color: "var(--ink)" }}>
-              {activeApp === "metabase" ? "Metabase Analytics" : activeApp === "n8n" ? "n8n Workflow" : plugins.find(p => p.code_name === activeApp)?.display_name || activeApp}
-            </h2>
-            <button onClick={closeIframe} className="p-2 rounded-lg transition-colors" style={{ color: "var(--dim)" }} title="Đóng (Esc)">
-              <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-[100] flex flex-col bg-paper animate-fade-in">
+          <div className="h-12 flex items-center justify-between px-4 md:px-6 shrink-0 border-b border-line bg-paper-raised">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="pulse-dot" />
+              <h2 className="text-sm font-semibold text-ink truncate">
+                {activeApp === "metabase"
+                  ? "Metabase Analytics"
+                  : activeApp === "n8n"
+                  ? "n8n Workflow"
+                  : plugins.find((p) => p.code_name === activeApp)?.display_name || activeApp}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={closeIframe}
+              className="btn-ghost btn-sm"
+              title="Đóng (Esc)"
+            >
+              <X className="w-4 h-4" />
+              Đóng
             </button>
           </div>
           <div className="flex-1 relative">
             {isIframeLoading && (
-              <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "var(--paper)" }}>
-                <div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: "var(--line)", borderTopColor: "var(--accent)" }} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-paper">
+                <div
+                  className="w-7 h-7 border-2 rounded-full animate-spin"
+                  style={{ borderColor: "var(--line)", borderTopColor: "var(--accent)" }}
+                />
+                <span className="text-xs text-muted">Đang tải ứng dụng...</span>
               </div>
             )}
-            <iframe src={iframeUrl} className="w-full h-full border-none" onLoad={() => setIsIframeLoading(false)} allow="clipboard-read; clipboard-write; fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+            <iframe
+              src={iframeUrl}
+              className="w-full h-full border-none"
+              onLoad={() => setIsIframeLoading(false)}
+              allow="clipboard-read; clipboard-write; fullscreen"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            />
           </div>
         </div>
       )}

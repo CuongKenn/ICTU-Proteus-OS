@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building, Mail, Lock, User, ArrowRight, Loader2 } from "lucide-react";
+import { Building2, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useLang } from "@/components/i18n/LanguageContext";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -17,23 +17,23 @@ export function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { t } = useLang();
-  
+
   const [formData, setFormData] = useState({
     companyName: "",
     adminFullName: "",
     email: "",
     password: "",
-    confirmPassword: ""
+    confirmPassword: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (formData.password !== formData.confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
       return;
@@ -68,8 +68,8 @@ export function SignupForm() {
           company_name: formData.companyName,
           admin_full_name: formData.adminFullName,
           admin_email: formData.email,
-          admin_password: formData.password
-        })
+          admin_password: formData.password,
+        }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -85,92 +85,178 @@ export function SignupForm() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      {/* Simple top bar */}
-      <div className="flex items-center justify-between px-6 py-4">
+    <div className="min-h-screen flex flex-col bg-paper text-ink">
+      {/* Header */}
+      <header className="h-16 flex items-center justify-between px-6 border-b border-line bg-paper-raised">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center font-grot font-bold text-white text-xs" style={{ background: "var(--accent)" }}>P</div>
-          <span className="font-grot text-lg font-medium tracking-tight">Proteus <span style={{ color: "var(--accent)" }}>OS</span></span>
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center font-heading font-bold text-white text-xs"
+            style={{ background: "var(--accent-solid)" }}
+          >
+            P
+          </div>
+          <span className="font-heading text-base font-bold tracking-tight text-ink">
+            Proteus <span className="text-accent">OS</span>
+          </span>
         </Link>
         <div className="flex items-center gap-2">
           <LanguageToggle />
           <ThemeToggle />
         </div>
-      </div>
+      </header>
 
       {/* Centered Form */}
-      <div className="flex-1 flex items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md">
-          <div className="card p-8">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-grot font-bold mb-2" style={{ color: "var(--ink)" }}>{t("auth.signup_title")}</h1>
-              <div className="mono-tag mx-auto mt-3">
-                <span className="pulse-dot" />
-                <span>PROTEUS OS · ONBOARDING</span>
-              </div>
+      <main className="flex-1 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[460px]">
+          <div className="card p-8 sm:p-9">
+            <div className="mb-7">
+              <h1 className="text-2xl font-heading font-bold tracking-tight text-ink">
+                {t("auth.signup_title")}
+              </h1>
+              <p className="text-sm text-muted mt-1.5">
+                Khởi tạo không gian làm việc đa thuê ước cho tổ chức của bạn.
+              </p>
             </div>
 
             {error && (
-              <div className="mb-6 p-4 rounded-xl text-sm" style={{ background: "var(--rose-fill)", border: "1px solid var(--rose)", color: "var(--rose)" }}>
-                {error}
+              <div
+                className="mb-5 p-3.5 rounded-lg text-sm flex items-start gap-2.5 border"
+                style={{
+                  background: "var(--rose-fill)",
+                  borderColor: "rgba(190, 18, 60, 0.25)",
+                  color: "var(--rose)",
+                }}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="font-mono text-meta font-medium ml-1" style={{ color: "var(--dim)" }}>{t("auth.company")}</label>
+                <label htmlFor="companyName" className="block text-[13px] font-medium text-ink-soft">
+                  {t("auth.company")}
+                </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><Building className="h-4 w-4" style={{ color: "var(--dim)" }} /></div>
-                  <input type="text" name="companyName" value={formData.companyName} onChange={handleChange} required className="input-field input-field-icon" placeholder="Acme Corp" />
+                  <Building2 className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="companyName"
+                    type="text"
+                    name="companyName"
+                    value={formData.companyName}
+                    onChange={handleChange}
+                    required
+                    className="input-field input-field-icon"
+                    placeholder="VD: Công ty Cổ phần ICTU"
+                  />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-mono text-meta font-medium ml-1" style={{ color: "var(--dim)" }}>{t("auth.admin_name")}</label>
+                <label htmlFor="adminFullName" className="block text-[13px] font-medium text-ink-soft">
+                  {t("auth.admin_name")}
+                </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><User className="h-4 w-4" style={{ color: "var(--dim)" }} /></div>
-                  <input type="text" name="adminFullName" value={formData.adminFullName} onChange={handleChange} required className="input-field input-field-icon" placeholder="Nguyễn Văn A" />
+                  <User className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="adminFullName"
+                    type="text"
+                    name="adminFullName"
+                    value={formData.adminFullName}
+                    onChange={handleChange}
+                    required
+                    className="input-field input-field-icon"
+                    placeholder="Nguyễn Văn A"
+                  />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-mono text-meta font-medium ml-1" style={{ color: "var(--dim)" }}>{t("auth.email")}</label>
+                <label htmlFor="email" className="block text-[13px] font-medium text-ink-soft">
+                  {t("auth.email")}
+                </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><Mail className="h-4 w-4" style={{ color: "var(--dim)" }} /></div>
-                  <input type="email" name="email" value={formData.email} onChange={handleChange} required className="input-field input-field-icon" placeholder="admin@acme.com" />
+                  <Mail className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="input-field input-field-icon"
+                    placeholder="admin@doanhnghiep.vn"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="font-mono text-meta font-medium ml-1" style={{ color: "var(--dim)" }}>{t("auth.password")}</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><Lock className="h-4 w-4" style={{ color: "var(--dim)" }} /></div>
-                  <input type="password" name="password" value={formData.password} onChange={handleChange} required minLength={8} className="input-field input-field-icon" placeholder="••••••••" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1.5">
+                  <label htmlFor="password" className="block text-[13px] font-medium text-ink-soft">
+                    {t("auth.password")}
+                  </label>
+                  <div className="relative">
+                    <Lock className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      id="password"
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                      minLength={8}
+                      className="input-field input-field-icon"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-ink-soft">
+                    {t("auth.confirm_password")}
+                  </label>
+                  <div className="relative">
+                    <Lock className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      required
+                      minLength={8}
+                      className="input-field input-field-icon"
+                      placeholder="••••••••"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="font-mono text-meta font-medium ml-1" style={{ color: "var(--dim)" }}>{t("auth.confirm_password")}</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><Lock className="h-4 w-4" style={{ color: "var(--dim)" }} /></div>
-                  <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} required minLength={8} className="input-field input-field-icon" placeholder="••••••••" />
-                </div>
-              </div>
+              <p className="text-xs text-dim">
+                Mật khẩu cần tối thiểu 8 ký tự gồm chữ hoa, chữ thường và chữ số.
+              </p>
 
-              <button type="submit" disabled={loading} className="btn-accent btn-lg w-full mt-6 group">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>{t("auth.signup_btn")} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" /></>}
+              <button type="submit" disabled={loading} className="btn-accent btn-lg w-full mt-2 group">
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    {t("auth.signup_btn")}
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                  </>
+                )}
               </button>
             </form>
-            
-            <div className="mt-8 text-center text-sm" style={{ color: "var(--dim)" }}>
+
+            <div className="mt-6 pt-5 border-t border-line text-center text-sm text-muted">
               {t("auth.has_account")}{" "}
-              <Link href="/login" className="font-medium transition-colors" style={{ color: "var(--accent)" }}>
+              <Link href="/login" className="font-medium text-accent hover:underline">
                 {t("nav.login")}
               </Link>
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -6,11 +6,28 @@
 import React from "react";
 import Image from "next/image";
 import clsx from "clsx";
-import { Download, CheckCircle2, ArrowUpCircle, XCircle, Trash2, ShieldCheck, Lock } from "lucide-react";
+import {
+  Download,
+  CheckCircle2,
+  ArrowUpCircle,
+  XCircle,
+  Trash2,
+  ShieldCheck,
+  Lock,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 
-export type PluginStatus = "available" | "installing" | "uninstalling" | "upgrading" | "active" | "update_available" | "failed" | "disabled";
+export type PluginStatus =
+  | "available"
+  | "installing"
+  | "uninstalling"
+  | "upgrading"
+  | "active"
+  | "update_available"
+  | "failed"
+  | "disabled";
 
 export interface PluginData {
   id: string;
@@ -58,7 +75,6 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   onUninstall,
 }) => {
   const isDisabled = status === "disabled";
-  const rating = plugin.rating ?? null;
   const category = plugin.category || "Utilities";
   const developer = plugin.author || plugin.developer || "Proteus Core";
   const tags = plugin.tags ?? [];
@@ -70,8 +86,9 @@ export const PluginCard: React.FC<PluginCardProps> = ({
         variant="ghost"
         onClick={() => onUninstall(plugin.id)}
         disabled={!canInstall}
-        className={canInstall ? "" : "opacity-50 cursor-not-allowed"}
+        className={clsx("!px-2.5", canInstall ? "hover:!text-error hover:!border-error/40" : "opacity-50 cursor-not-allowed")}
         title={!canInstall ? "Bạn không có quyền thao tác" : "Gỡ cài đặt"}
+        aria-label={!canInstall ? "Bạn không có quyền thao tác" : "Gỡ cài đặt"}
       >
         {!canInstall ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
       </Button>
@@ -83,19 +100,19 @@ export const PluginCard: React.FC<PluginCardProps> = ({
       case "active":
         return (
           <span className="status-badge status-badge--active">
-            <CheckCircle2 className="w-3 h-3" /> Active
+            <CheckCircle2 className="w-3.5 h-3.5" /> Đang chạy
           </span>
         );
       case "failed":
         return (
           <span className="status-badge status-badge--failed">
-            <XCircle className="w-3 h-3" /> Failed
+            <XCircle className="w-3.5 h-3.5" /> Lỗi cài đặt
           </span>
         );
       case "disabled":
         return (
           <span className="status-badge status-badge--disabled">
-            Disabled
+            Tạm tắt
           </span>
         );
       default:
@@ -104,80 +121,87 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   };
 
   return (
-    <div className={clsx("card p-5 flex flex-col gap-3", isDisabled && "opacity-60 grayscale-[50%]")}>
-      {/* ── Header ── */}
+    <div
+      className={clsx(
+        "card-interactive p-5 flex flex-col gap-3.5",
+        isDisabled && "opacity-65 grayscale-[35%]"
+      )}
+    >
+      {/* Header */}
       <div className="flex items-start gap-3.5">
-        {/* Icon */}
         <div className="plugin-icon">
           {plugin.iconUrl ? (
-            <Image src={plugin.iconUrl} alt={plugin.name} width={32} height={32} className="object-contain" unoptimized />
+            <Image
+              src={plugin.iconUrl}
+              alt={plugin.name}
+              width={28}
+              height={28}
+              className="object-contain"
+              unoptimized
+            />
           ) : (
-            <span className="text-lg font-bold font-grot" style={{ color: "var(--accent)" }}>
+            <span className="text-base font-bold font-heading text-accent">
               {plugin.name.charAt(0)}
             </span>
           )}
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-[0.9375rem] font-semibold font-grot truncate" style={{ color: "var(--ink)" }}>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[15px] font-semibold font-heading text-ink truncate">
               {plugin.name}
             </h3>
             {plugin.isOfficial && (
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent)" }} />
+              <ShieldCheck
+                className="w-4 h-4 shrink-0 text-accent"
+                aria-label="Official Plugin"
+              />
             )}
           </div>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="font-mono text-meta truncate max-w-[120px]" style={{ color: "var(--dim)" }}>
-              {developer}
-            </span>
-          </div>
-          {/* Metadata row */}
+          <p className="text-xs text-dim truncate mt-0.5">{developer}</p>
+
           <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className="mono-tag !py-0.5 !px-1.5 !text-[9px] !gap-0 !border-0" style={{ background: "var(--paper)", color: "var(--dim)" }}>
+            <span className="font-mono text-[11px] font-medium px-2 py-0.5 rounded bg-paper-subtle text-muted border border-line">
               v{plugin.version}
             </span>
-            <span className="mono-tag !py-0.5 !px-1.5 !text-[9px] !gap-0 !border-0" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+            <span
+              className="text-[11px] font-medium px-2 py-0.5 rounded"
+              style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+            >
               {category}
             </span>
-            {rating && (
-              <span className="font-mono text-meta ml-auto" style={{ color: "var(--amber)" }}>
-                ★ {rating}
-              </span>
-            )}
           </div>
         </div>
       </div>
 
-      {/* ── Description ── */}
-      <p className="text-sm line-clamp-2 min-h-[2.5rem] leading-relaxed" style={{ color: "var(--muted)" }}>
+      {/* Description */}
+      <p className="text-[13.5px] line-clamp-2 min-h-[2.6rem] leading-relaxed text-muted">
         {plugin.description}
       </p>
 
-      {/* ── Tags ── */}
+      {/* Tags */}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {tags.slice(0, 4).map((tag) => (
-            <span key={tag} className="tag-chip">{tag}</span>
+          {tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="tag-chip">
+              {tag}
+            </span>
           ))}
-          {tags.length > 4 && (
-            <span className="tag-chip" style={{ color: "var(--muted)" }}>+{tags.length - 4}</span>
+          {tags.length > 3 && (
+            <span className="tag-chip text-dim">+{tags.length - 3}</span>
           )}
         </div>
       )}
 
-      {/* ── Separator ── */}
-      <div className="separator" />
-
-      {/* ── Actions ── */}
-      <div className="mt-auto flex items-center justify-between min-h-[2.5rem]">
+      {/* Footer Actions */}
+      <div className="mt-auto pt-3.5 border-t border-line flex items-center justify-between min-h-[2.5rem] gap-2">
         {status === "available" && (
           <Button
             onClick={() => canInstall && onInstall?.(plugin.id)}
             disabled={!canInstall}
             className="w-full"
           >
-            {!canInstall ? <Lock className="w-4 h-4 mr-2" /> : <Download className="w-4 h-4 mr-2" />}
+            {!canInstall ? <Lock className="w-4 h-4" /> : <Download className="w-4 h-4" />}
             Nhận
           </Button>
         )}
@@ -190,8 +214,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({
                 status === "uninstalling"
                   ? "Đang gỡ cài đặt..."
                   : status === "upgrading"
-                    ? "Đang nâng cấp..."
-                    : "Đang cài đặt..."
+                  ? "Đang nâng cấp..."
+                  : "Đang cài đặt..."
               }
               status="installing"
             />
@@ -199,9 +223,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({
         )}
 
         {status === "active" && (
-          <div className="flex items-center justify-between w-full">
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => onOpen?.(plugin.id)}>Mở</Button>
+          <div className="flex items-center justify-between w-full gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => onOpen?.(plugin.id)}>
+                <ExternalLink className="w-3.5 h-3.5" />
+                Mở
+              </Button>
               {renderUninstallButton()}
             </div>
             {statusBadge()}
@@ -209,15 +236,21 @@ export const PluginCard: React.FC<PluginCardProps> = ({
         )}
 
         {status === "update_available" && (
-          <Button onClick={() => onUpdate?.(plugin.id)} className="btn-accent w-full" style={{ background: "var(--amber)", borderColor: "var(--amber)" }}>
-            <ArrowUpCircle className="w-4 h-4 mr-2" /> Cập nhật
+          <Button
+            onClick={() => onUpdate?.(plugin.id)}
+            className="btn-accent w-full"
+            style={{ background: "var(--amber)" }}
+          >
+            <ArrowUpCircle className="w-4 h-4" /> Cập nhật
           </Button>
         )}
 
         {status === "failed" && (
-          <div className="flex items-center justify-between w-full">
-            <div className="flex gap-2">
-              <Button variant="danger" onClick={() => onRetry?.(plugin.id)}>Thử lại</Button>
+          <div className="flex items-center justify-between w-full gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="danger" onClick={() => onRetry?.(plugin.id)}>
+                Thử lại
+              </Button>
               {renderUninstallButton()}
             </div>
             {statusBadge()}
@@ -225,9 +258,11 @@ export const PluginCard: React.FC<PluginCardProps> = ({
         )}
 
         {status === "disabled" && (
-          <div className="flex items-center justify-between w-full">
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => onEnable?.(plugin.id)}>Bật</Button>
+          <div className="flex items-center justify-between w-full gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => onEnable?.(plugin.id)}>
+                Bật
+              </Button>
               {renderUninstallButton()}
             </div>
             {statusBadge()}

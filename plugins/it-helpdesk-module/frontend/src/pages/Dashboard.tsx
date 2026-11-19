@@ -57,16 +57,16 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <StatCard label="Tickets đang mở" value={String(open.length)} sub={`${tickets.length} tickets tổng`} />
-        <StatCard label="Vi phạm SLA" value={String(breached.length)} sub="quá hạn chưa đóng" />
-        <StatCard label="Đã giải quyết" value={String(done.length)} sub="resolved + closed" />
+      <div className="mfe-kpi-grid">
+        <StatCard label="Tickets đang mở" value={String(open.length)} sub={`Tổng ${tickets.length} yêu cầu`} />
+        <StatCard label="Vi phạm SLA" value={String(breached.length)} sub="Quá hạn chưa đóng" />
+        <StatCard label="Đã giải quyết" value={String(done.length)} sub="Đã xử lý và đóng" />
         <StatCard label="Hài lòng trung bình" value={`${avgRating}/5`} sub={`${rated.length} lượt đánh giá`} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Tickets mới nhất</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Yêu cầu mới nhất</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -92,8 +92,8 @@ export function Dashboard() {
           </TableWrap>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Bài viết được xem nhiều</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Bài viết được xem nhiều</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -110,9 +110,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            SLA theo `it_sla_policies` + workflow `wf_sla_escalation` (cron 30 phút).
-          </div>
+          <p className="mfe-note">
+            Thời hạn xử lý được tính tự động theo chính sách SLA và cảnh báo leo thang mỗi 30 phút.
+          </p>
         </div>
       </div>
     </div>
