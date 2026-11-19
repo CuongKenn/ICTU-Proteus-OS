@@ -6,13 +6,17 @@
 import React, { useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
-import { Bell, Search, LogOut, User, ChevronDown } from "lucide-react";
+import { Bell, LogOut, ChevronDown, Menu, ChevronRight } from "lucide-react";
 import { NotificationPanel } from "@/components/NotificationPanel";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LanguageToggle } from "@/components/i18n/LanguageToggle";
 import { useNotificationStore } from "@/store/notificationStore";
 
-export function Topbar() {
+interface TopbarProps {
+  onOpenMobileMenu?: () => void;
+}
+
+export function Topbar({ onOpenMobileMenu }: TopbarProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -32,45 +36,66 @@ export function Topbar() {
 
   const pageTitle = (() => {
     if (pathname.startsWith("/launchpad")) return "Dashboard";
+    if (pathname.startsWith("/ai")) return "Proteus AI";
     if (pathname.startsWith("/marketplace")) return "Marketplace";
     if (pathname.startsWith("/settings")) return "Settings";
     if (pathname.startsWith("/chat")) return "Mattermost";
     if (pathname.startsWith("/wiki")) return "Outline Wiki";
-    return "Proteus OS";
+    if (pathname.startsWith("/apps")) return "Apps (Low-code)";
+    if (pathname.startsWith("/plugins/")) {
+      const slug = pathname.replace("/plugins/", "").split("/")[0];
+      return slug ? slug.replace(/-/g, " ") : "Plugin";
+    }
+    return "Workspace";
   })();
 
+  const userInitial = (session?.user?.name || session?.user?.email || "U")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+
   return (
-    <header
-      className="h-14 flex items-center justify-between px-4 md:px-6 shrink-0"
-      style={{ background: "var(--paper-raised)", borderBottom: "1px solid var(--line)" }}
-    >
-      {/* Left: Breadcrumb */}
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-meta" style={{ color: "var(--dim)" }}>proteus-os</span>
-        <span style={{ color: "var(--ghost)" }}>/</span>
-        <span className="text-sm font-medium" style={{ color: "var(--ink)" }}>{pageTitle}</span>
+    <header className="h-14 flex items-center justify-between px-4 md:px-6 shrink-0 bg-paper-raised border-b border-line">
+      {/* Left: Mobile drawer button + Clean Enterprise Breadcrumb */}
+      <div className="flex items-center gap-2 min-w-0">
+        {onOpenMobileMenu && (
+          <button
+            type="button"
+            onClick={onOpenMobileMenu}
+            className="icon-btn p-2 -ml-1 md:hidden"
+            aria-label="Mở menu điều hướng"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm min-w-0">
+          <span className="text-dim font-medium hidden sm:inline">Proteus OS</span>
+          <ChevronRight className="w-3.5 h-3.5 text-ghost hidden sm:inline shrink-0" />
+          <span className="font-semibold text-ink truncate capitalize">{pageTitle}</span>
+        </nav>
       </div>
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2">
+      {/* Right: Utility Controls */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <LanguageToggle />
         <ThemeToggle />
 
         {/* Notifications */}
         <div className="relative">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2 rounded-lg transition-colors relative"
-            style={{ color: "var(--muted)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            type="button"
+            onClick={() => {
+              setShowNotifications((v) => !v);
+              setShowUserMenu(false);
+            }}
+            className="icon-btn p-2 relative"
             aria-label="Thông báo"
           >
             <Bell className="w-[18px] h-[18px]" />
             {unreadCount > 0 && (
               <span
-                className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 text-[10px] font-bold text-white rounded-full flex items-center justify-center pointer-events-none"
-                style={{ background: "var(--rose, #f43f5e)" }}
+                className="absolute top-1 right-1 min-w-[16px] h-4 px-1 text-[10px] font-semibold text-white rounded-full flex items-center justify-center pointer-events-none tabular-nums"
+                style={{ background: "var(--rose)" }}
               >
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
@@ -86,26 +111,33 @@ export function Topbar() {
           )}
         </div>
 
+        {/* Divider */}
+        {session?.user && <div className="h-5 w-px bg-line mx-1 hidden sm:block" />}
+
         {/* User Menu */}
         {session?.user && (
           <div className="relative">
             <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 px-2 py-1 rounded-lg transition-colors"
-              style={{ color: "var(--ink)" }}
+              type="button"
+              onClick={() => {
+                setShowUserMenu((v) => !v);
+                setShowNotifications(false);
+              }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-paper-subtle transition-colors cursor-pointer"
+              aria-expanded={showUserMenu}
+              aria-haspopup="menu"
             >
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                style={{ background: "var(--accent)" }}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0"
+                style={{ background: "var(--accent-solid)" }}
               >
-                {session.user.name?.charAt(0) || "U"}
+                {userInitial}
               </div>
-              <span className="text-[13px] font-medium hidden lg:inline" style={{ color: "var(--ink)" }}>
+              <span className="text-[13px] font-medium text-ink hidden lg:inline max-w-[140px] truncate">
                 {session.user.name}
               </span>
               <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${showUserMenu ? "rotate-180" : ""}`}
-                style={{ color: "var(--dim)" }}
+                className={`w-3.5 h-3.5 text-dim transition-transform duration-150 ${showUserMenu ? "rotate-180" : ""}`}
               />
             </button>
 
@@ -113,20 +145,23 @@ export function Topbar() {
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
                 <div
-                  className="absolute right-0 mt-2 w-48 rounded-xl py-1 z-50 animate-scale-in origin-top-right"
-                  style={{ background: "var(--paper-raised)", border: "1px solid var(--line-hi)", boxShadow: "var(--shadow-elevated)" }}
+                  role="menu"
+                  className="absolute right-0 mt-2 w-56 rounded-xl py-1 z-50 bg-paper-white border border-line-hi shadow-elevated animate-scale-in origin-top-right"
                 >
-                  <div className="px-3.5 py-2.5" style={{ borderBottom: "1px solid var(--line)" }}>
-                    <p className="text-[13px] font-semibold truncate" style={{ color: "var(--ink)" }}>{session.user.name}</p>
-                    <p className="text-[11px] truncate" style={{ color: "var(--dim)" }}>{session.user.email}</p>
+                  <div className="px-3.5 py-2.5 border-b border-line">
+                    <p className="text-[13px] font-semibold text-ink truncate">
+                      {session.user.name}
+                    </p>
+                    <p className="text-xs text-dim truncate mt-0.5">
+                      {session.user.email}
+                    </p>
                   </div>
                   <div className="p-1">
                     <button
+                      type="button"
+                      role="menuitem"
                       onClick={handleLogout}
-                      className="w-full text-left px-3 py-2 text-[13px] rounded-lg transition-colors flex items-center gap-2"
-                      style={{ color: "var(--rose)" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--rose-fill)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      className="w-full text-left px-3 py-2 text-[13px] font-medium rounded-lg transition-colors flex items-center gap-2 text-error hover:bg-error/10 cursor-pointer"
                     >
                       <LogOut className="w-4 h-4" />
                       Đăng xuất

@@ -231,11 +231,11 @@ export const UsersTab = () => {
         </div>
       )}
 
-      <div className="bg-bg-surface/50 border border-border rounded-xl overflow-hidden backdrop-blur-glass">
+      <div className="bg-paper-white border border-border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-border bg-bg-surface/30">
+              <tr className="border-b border-border bg-paper-subtle">
                 <th className="py-3 px-4 text-sm font-medium text-text-secondary">Tên & Email</th>
                 <th className="py-3 px-4 text-sm font-medium text-text-secondary">Vai trò</th>
                 <th className="py-3 px-4 text-sm font-medium text-text-secondary">Trạng thái</th>
@@ -273,15 +273,15 @@ export const UsersTab = () => {
                     </td>
                     <td className="py-3 px-4">
                       {user.is_active ? (
-                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-green-500/10 text-green-400">
+                        <span className="status-badge status-badge--active">
                           Đang hoạt động
                         </span>
                       ) : !user.last_login_at ? (
-                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-amber-500/10 text-amber-400">
+                        <span className="status-badge status-badge--warning">
                           Chờ kích hoạt
                         </span>
                       ) : (
-                        <span className="px-2 py-1 text-xs rounded-md font-medium bg-red-500/10 text-red-400">
+                        <span className="status-badge status-badge--failed">
                           Vô hiệu hóa
                         </span>
                       )}

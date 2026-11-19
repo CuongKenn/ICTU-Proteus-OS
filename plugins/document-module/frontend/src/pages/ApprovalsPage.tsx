@@ -122,8 +122,8 @@ export function ApprovalsPage() {
           }
         />
       )}
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Duyệt ký đi qua workflow `wf_document_approval` (ký tuần tự theo `order_no`).
+      <p className="mfe-note">
+        Hồ sơ được trình ký và phê duyệt tuần tự theo thứ tự cấp duyệt đã thiết lập.
       </p>
     </div>
   );

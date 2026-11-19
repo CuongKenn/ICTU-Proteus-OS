@@ -21,6 +21,20 @@ interface ModalProps {
   confirmKeyword?: string;
 }
 
+const MAX_WIDTH_MAP: Record<string, string> = {
+  sm: "384px",
+  md: "448px",
+  lg: "512px",
+  xl: "576px",
+  "2xl": "672px",
+  "3xl": "768px",
+  "4xl": "896px",
+  "5xl": "1024px",
+  "6xl": "1152px",
+  "7xl": "1280px",
+  full: "100%",
+};
+
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
@@ -50,65 +64,51 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   const isConfirmEnabled = confirmKeyword ? keywordInput === confirmKeyword : true;
-
   const btnClass = confirmVariant === "danger" ? "btn-danger" : "btn-accent";
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-
-      {/* Modal Card */}
       <div
-        className="relative w-full rounded-2xl animate-scale-in"
-        style={{
-          maxWidth: (() => {
-            const MAX_WIDTH_MAP: Record<string, string> = {
-              sm: "384px",
-              md: "448px",
-              lg: "512px",
-              xl: "576px",
-              "2xl": "672px",
-              "3xl": "768px",
-              "4xl": "896px",
-              "5xl": "1024px",
-              "6xl": "1152px",
-              "7xl": "1280px",
-              full: "100%",
-            };
-            return MAX_WIDTH_MAP[maxWidth] || maxWidth;
-          })(),
-          background: "var(--paper-white)",
-          border: "1px solid var(--line-hi)",
-          boxShadow: "var(--shadow-modal)",
-        }}
+        className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] animate-fade-in"
+        onClick={onClose}
+      />
+
+      {/* Dialog Surface */}
+      <div
+        className="relative w-full rounded-xl bg-paper-white border border-line-hi shadow-modal animate-scale-in overflow-hidden flex flex-col max-h-[90vh]"
+        style={{ maxWidth: MAX_WIDTH_MAP[maxWidth] || maxWidth }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
-          <h2 className="text-lg font-grot font-semibold" style={{ color: "var(--ink)" }}>{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0">
+          <h2 className="text-base font-heading font-semibold text-ink">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ color: "var(--dim)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--dim)")}
+            className="icon-btn p-1.5 -mr-1.5"
+            aria-label="Đóng hộp thoại"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="px-6 py-5" style={{ color: "var(--ink-soft)" }}>
+        {/* Body */}
+        <div className="px-6 py-5 text-sm text-ink-soft overflow-y-auto">
           {children}
         </div>
 
-        {/* Footer — only if onConfirm is provided */}
+        {/* Footer */}
         {onConfirm && (
-          <div className="px-6 py-4 flex items-center justify-end gap-3" style={{ borderTop: "1px solid var(--line)" }}>
+          <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-end justify-end gap-3 border-t border-line bg-paper-subtle/40 shrink-0">
             {confirmKeyword && (
-              <div className="flex-1">
-                <p className="text-xs mb-1.5" style={{ color: "var(--dim)" }}>
-                  Nhập <strong style={{ color: "var(--ink)" }}>{confirmKeyword}</strong> để xác nhận:
+              <div className="flex-1 w-full">
+                <p className="text-xs text-muted mb-1.5">
+                  Nhập <strong className="text-ink font-mono">{confirmKeyword}</strong> để xác nhận:
                 </p>
                 <input
                   type="text"
@@ -119,15 +119,20 @@ export const Modal: React.FC<ModalProps> = ({
                 />
               </div>
             )}
-            <button onClick={onClose} className="btn-ghost">Hủy</button>
-            <button
-              onClick={onConfirm}
-              disabled={!isConfirmEnabled || isConfirmLoading}
-              className={btnClass}
-              style={!isConfirmEnabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-            >
-              {isConfirmLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
-            </button>
+            <div className="flex items-center justify-end gap-2 shrink-0">
+              <button type="button" onClick={onClose} className="btn-ghost">
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={!isConfirmEnabled || isConfirmLoading}
+                className={btnClass}
+                style={!isConfirmEnabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+              >
+                {isConfirmLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
+              </button>
+            </div>
           </div>
         )}
       </div>

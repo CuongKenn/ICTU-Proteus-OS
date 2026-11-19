@@ -67,39 +67,37 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="mfe-kpi-grid">
         <StatCard label="Tổng tài sản" value={String(items.length)} sub={`${items.filter((i) => i.status === 'AVAILABLE').length} sẵn sàng`} />
-        <StatCard label="Giá trị còn lại" value={formatVND(totalValue)} sub="chưa thanh lý" />
+        <StatCard label="Giá trị còn lại" value={formatVND(totalValue)} sub="Chưa thanh lý" />
         <StatCard label="Đang cấp phát" value={String(byStatus['ASSIGNED'] ?? 0)} />
-        <StatCard label="Chờ thanh lý" value={String(pendingDisposals)} sub="đề xuất PENDING" />
+        <StatCard label="Chờ thanh lý" value={String(pendingDisposals)} sub="Đề xuất chờ duyệt" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Phân bổ trạng thái</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Phân bổ trạng thái</h4>
           {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>).map((st) => (
-            <div key={st} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}>
-              <span style={{ width: 110, color: C.muted, fontSize: '.82rem' }}>{STATUS_LABEL[st]}</span>
-              <div style={{ flex: 1, height: 8, background: 'var(--mfe-panel-2)', borderRadius: 999 }}>
+            <div key={st} className="mfe-bar-row">
+              <span style={{ width: 118, color: C.muted, fontSize: '.82rem' }}>{STATUS_LABEL[st]}</span>
+              <div className="mfe-bar-track">
                 <div
-                  style={{
-                    width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: 'var(--mfe-accent)',
-                  }}
+                  className="mfe-bar-fill"
+                  style={{ width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%` }}
                 />
               </div>
-              <span style={{ width: 28, textAlign: 'right', color: C.text }}>{byStatus[st] ?? 0}</span>
+              <span style={{ width: 32, textAlign: 'right', color: C.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                {byStatus[st] ?? 0}
+              </span>
             </div>
           ))}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Khấu hao đường thẳng theo `calculate_depreciation_batch` (migrations).
-          </div>
+          <p className="mfe-note">
+            Giá trị còn lại được tính theo phương pháp khấu hao đường thẳng định kỳ.
+          </p>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Bảo trì sắp tới</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Bảo trì sắp tới</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -121,14 +119,14 @@ export function Dashboard() {
               })}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `asset_maintenance_logs.next_due` + workflow `wf_maintenance_schedule`.
-          </div>
+          <p className="mfe-note">
+            Hệ thống tự động gửi thông báo nhắc lịch khi tài sản sắp đến kỳ bảo trì.
+          </p>
         </div>
       </div>
 
-      <div style={{ marginTop: '.75rem', color: C.muted, fontSize: '.82rem' }}>
-        Danh mục: {cats.map((c) => `${c.code} (${c.name})`).join(' · ')}
+      <div className="mfe-note" style={{ marginTop: '1rem' }}>
+        Danh mục tài sản: {cats.map((c) => `${c.code} (${c.name})`).join(' · ')}
       </div>
     </div>
   );

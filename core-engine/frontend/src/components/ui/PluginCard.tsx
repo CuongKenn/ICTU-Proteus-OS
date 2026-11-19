@@ -7,7 +7,17 @@ import React from "react";
 import clsx from "clsx";
 import { Button } from "./Button";
 import { ProgressBar } from "./ProgressBar";
-import { CheckCircle2, ArrowUpCircle, XCircle, Trash2, Lock } from "lucide-react";
+import {
+  CheckCircle2,
+  ArrowUpCircle,
+  XCircle,
+  Trash2,
+  Lock,
+  Database,
+  Workflow,
+  Users,
+  BadgeCheck,
+} from "lucide-react";
 import { useRBAC } from "@/hooks/useRBAC";
 
 export type PluginStatus = "available" | "installing" | "active" | "update_available" | "failed" | "disabled";
@@ -83,19 +93,19 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   };
   
   return (
-    <div className={clsx("glass-card p-4 flex flex-col gap-4 relative", isDisabled && "opacity-60 grayscale-[50%]")}>
+    <div className={clsx("card-interactive p-5 flex flex-col gap-4 relative", isDisabled && "opacity-60 grayscale-[50%]")}>
       {/* Header */}
-      <div className="flex items-start gap-4">
-        <div className="w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 border border-border">
-          <span className="text-xl font-bold text-primary">{plugin.name.charAt(0)}</span>
+      <div className="flex items-start gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-accent-soft flex items-center justify-center shrink-0 border border-accent/20">
+          <span className="text-lg font-bold text-accent">{plugin.name.charAt(0)}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-bold text-text-primary truncate pr-4">{plugin.name}</h3>
-          <div className="flex items-center gap-2 text-xs text-text-secondary mt-1">
-            <span>v{plugin.version}</span>
+          <h3 className="text-base font-semibold text-text-primary truncate pr-4">{plugin.name}</h3>
+          <div className="flex items-center gap-2 text-xs text-text-secondary mt-0.5">
+            <span className="font-mono">v{plugin.version}</span>
             {plugin.isOfficial && (
-              <span className="flex items-center text-warning">
-                <span className="mr-1">⭐</span> Official
+              <span className="inline-flex items-center gap-1 text-accent font-medium">
+                <BadgeCheck className="w-3.5 h-3.5" /> Official
               </span>
             )}
           </div>
@@ -108,13 +118,20 @@ export const PluginCard: React.FC<PluginCardProps> = ({
       </p>
 
       {/* Stats */}
-      <div className="flex flex-col gap-2 text-xs text-text-muted mt-2 border-t border-border-subtle pt-3">
+      <div className="flex flex-col gap-1.5 text-xs text-text-muted mt-1 border-t border-border pt-3">
         <div className="flex gap-4">
-          <span>📦 {plugin.tablesCount} tables</span>
-          <span>🔄 {plugin.workflowsCount} workflows</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Database className="w-3.5 h-3.5 text-ink-soft" />
+            {plugin.tablesCount} tables
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Workflow className="w-3.5 h-3.5 text-ink-soft" />
+            {plugin.workflowsCount} workflows
+          </span>
         </div>
-        <div className="truncate" title={plugin.requiredRoles.join(", ")}>
-          👤 {plugin.requiredRoles.join(", ")}
+        <div className="inline-flex items-center gap-1.5 truncate" title={plugin.requiredRoles.join(", ")}>
+          <Users className="w-3.5 h-3.5 text-ink-soft shrink-0" />
+          <span className="truncate">{plugin.requiredRoles.join(", ")}</span>
         </div>
       </div>
 

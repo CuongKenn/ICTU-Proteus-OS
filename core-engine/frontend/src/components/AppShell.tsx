@@ -3,7 +3,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { AIChatWidget } from "@/components/AIChatWidget";
@@ -13,13 +13,17 @@ import { usePathname } from "next/navigation";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar />
-        <main className="flex-1 overflow-y-auto" style={{ background: "var(--paper)" }}>
+    <div className="flex h-screen overflow-hidden bg-paper text-ink">
+      <Sidebar
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Topbar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+        <main className="flex-1 overflow-y-auto bg-paper">
           {children}
         </main>
       </div>

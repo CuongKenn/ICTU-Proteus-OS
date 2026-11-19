@@ -118,8 +118,8 @@ export function DisposalsPage() {
           }
         />
       )}
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Duyệt thanh lý sẽ chuyển tài sản sang `DISPOSED` và đưa giá trị còn lại về 0 (mô phỏng workflow `wf_asset_request`).
+      <p className="mfe-note">
+        Khi duyệt thanh lý, trạng thái tài sản sẽ chuyển sang Đã thanh lý và giá trị còn lại được cập nhật về 0.
       </p>
     </div>
   );

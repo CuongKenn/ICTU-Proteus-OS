@@ -11,20 +11,9 @@ export const LanguageToggle: React.FC<{ className?: string }> = ({ className }) 
 
   return (
     <button
+      type="button"
       onClick={() => setLang(lang === "vi" ? "en" : "vi")}
-      className={`px-2 py-1 rounded-md text-[11px] font-mono font-medium tracking-wider uppercase transition-colors duration-200 ${className || ""}`}
-      style={{
-        color: "var(--muted)",
-        border: "1px solid var(--line-hi)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = "var(--ink)";
-        e.currentTarget.style.borderColor = "var(--ink)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = "var(--muted)";
-        e.currentTarget.style.borderColor = "var(--line-hi)";
-      }}
+      className={`px-2.5 py-1 rounded-md text-xs font-medium tracking-wide uppercase border border-line-hi text-muted hover:text-ink hover:bg-paper-subtle hover:border-ghost transition-colors cursor-pointer ${className || ""}`}
       title={lang === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"}
       aria-label="Toggle language"
     >

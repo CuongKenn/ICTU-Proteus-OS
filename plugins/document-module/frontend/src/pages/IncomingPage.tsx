@@ -122,9 +122,8 @@ export function IncomingPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có văn bản phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Tiếp nhận” gọi workflow n8n `wf_incoming_document`, “Điều chuyển” gọi
-          `wf_reassign_document` qua dispatcher (202 → xử lý ngầm).
+        <p className="mfe-note">
+          Thao tác “Tiếp nhận” và “Điều chuyển” tự động kích hoạt luồng xử lý văn bản và thông báo tới người phụ trách.
         </p>
       )}
 

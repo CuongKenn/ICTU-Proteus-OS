@@ -227,7 +227,7 @@ export const RolesTab = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {Array.isArray(roles) && roles.map((role) => (
-          <div key={role.id} className="bg-bg-surface/50 border border-border rounded-xl p-6 backdrop-blur-glass flex flex-col h-full hover:border-primary/50 transition-colors">
+          <div key={role.id} className="bg-paper-white border border-border rounded-xl p-6 shadow-sm flex flex-col h-full hover:border-border-hi transition-colors">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-primary/10 rounded-lg text-primary">

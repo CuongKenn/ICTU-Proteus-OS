@@ -14,18 +14,33 @@ import { InstallPreviewDialog } from "./InstallPreviewDialog";
 import { InstallProgressModal } from "@/components/marketplace/InstallProgressModal";
 import { useMarketplace } from "@/hooks/useMarketplace";
 import { usePlugins } from "@/hooks/usePlugins";
-import { PackageOpen, Sparkles } from "lucide-react";
+import { PackageOpen, AlertTriangle } from "lucide-react";
 import type { CredentialFieldSchema, CredentialInput } from "@/types";
 
 const CATEGORIES = ["HR", "CRM", "Finance", "Utilities", "Analytics", "Communication"];
 
 export const MarketplaceClient: React.FC = () => {
   useSession();
-  const { hasPermission, isLoading: isRBACLoading } = useRBAC();
+  const { hasPermission } = useRBAC();
   const canInstall = hasPermission("plugins:install");
 
-  const { plugins: availablePlugins, isLoading: isLoadingAvailable, installingId, installProgress, installStatus, installSteps, installPlugin, uninstallPlugin } = useMarketplace();
-  const { plugins: installedPlugins, isLoading: isLoadingInstalled, refetch: refetchInstalled, enable, upgrade } = usePlugins();
+  const {
+    plugins: availablePlugins,
+    isLoading: isLoadingAvailable,
+    installingId,
+    installProgress,
+    installStatus,
+    installSteps,
+    installPlugin,
+    uninstallPlugin,
+  } = useMarketplace();
+  const {
+    plugins: installedPlugins,
+    isLoading: isLoadingInstalled,
+    refetch: refetchInstalled,
+    enable,
+    upgrade,
+  } = usePlugins();
 
   const [previewPlugin, setPreviewPlugin] = useState<PluginData | null>(null);
   const [previewCredSchema, setPreviewCredSchema] = useState<CredentialFieldSchema[]>([]);
@@ -39,15 +54,19 @@ export const MarketplaceClient: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
 
   const allPlugins = useMemo(() => {
-    const list: Array<{ data: PluginData; credSchema: CredentialFieldSchema[]; status: PluginStatus; isInstalled: boolean }> = [];
+    const list: Array<{
+      data: PluginData;
+      credSchema: CredentialFieldSchema[];
+      status: PluginStatus;
+      isInstalled: boolean;
+    }> = [];
 
-    // Add installed plugins
-    installedPlugins.forEach(p => {
+    installedPlugins.forEach((p) => {
       let uiStatus: PluginStatus = "active";
       if (p.status === "FAILED_DIRTY") uiStatus = "failed";
       else if (p.status === "DISABLED") uiStatus = "disabled";
       else if (p.status === "INSTALLING") uiStatus = "installing";
-      else if (p.status === "PENDING_CREDENTIALS") uiStatus = "failed"; // show as warning
+      else if (p.status === "PENDING_CREDENTIALS") uiStatus = "failed";
 
       list.push({
         data: {
@@ -71,9 +90,8 @@ export const MarketplaceClient: React.FC = () => {
       });
     });
 
-    // Add available plugins (not already installed)
-    availablePlugins.forEach(p => {
-      if (!installedPlugins.find(ip => ip.code_name === p.code_name)) {
+    availablePlugins.forEach((p) => {
+      if (!installedPlugins.find((ip) => ip.code_name === p.code_name)) {
         list.push({
           data: {
             id: p.id,
@@ -100,24 +118,23 @@ export const MarketplaceClient: React.FC = () => {
     return list;
   }, [availablePlugins, installedPlugins]);
 
-  // Filter plugins based on search and category
   const filteredPlugins = useMemo(() => {
-    return allPlugins.filter(p => {
+    return allPlugins.filter((p) => {
       const matchCategory = selectedCategory === "All" || p.data.category === selectedCategory;
       const searchLower = searchQuery.toLowerCase();
-      const matchSearch = p.data.name.toLowerCase().includes(searchLower) || 
-                          p.data.description.toLowerCase().includes(searchLower) ||
-                          p.data.tags?.some(tag => tag.toLowerCase().includes(searchLower));
+      const matchSearch =
+        p.data.name.toLowerCase().includes(searchLower) ||
+        p.data.description.toLowerCase().includes(searchLower) ||
+        p.data.tags?.some((tag) => tag.toLowerCase().includes(searchLower));
       return matchCategory && matchSearch;
     });
   }, [allPlugins, searchQuery, selectedCategory]);
 
   const isLoading = isLoadingAvailable || isLoadingInstalled;
 
-  // Handlers
   const handleInstallClick = (id: string) => {
     if (!canInstall) return;
-    const found = allPlugins.find(p => p.data.id === id);
+    const found = allPlugins.find((p) => p.data.id === id);
     if (found) {
       setPreviewPlugin(found.data);
       setPreviewCredSchema(found.credSchema);
@@ -128,14 +145,13 @@ export const MarketplaceClient: React.FC = () => {
   const handleConfirmInstall = async (credentials: CredentialInput[]) => {
     if (previewPlugin && canInstall) {
       setIsInstallPreviewOpen(false);
-      // Pass credentials vào install — backend sẽ xử lý n8n credential creation
       await installPlugin(previewPlugin.id || "", credentials);
     }
   };
 
   const handleUninstallClick = (id: string) => {
     if (!canInstall) return;
-    const plugin = allPlugins.find(p => p.data.id === id)?.data;
+    const plugin = allPlugins.find((p) => p.data.id === id)?.data;
     if (plugin) {
       setUninstallPluginData({ id: plugin.id || "", name: plugin.codeName || plugin.name });
       setIsUninstallConfirmOpen(true);
@@ -158,7 +174,7 @@ export const MarketplaceClient: React.FC = () => {
       await enable(id);
       refetchInstalled();
     } catch {
-      // error handled in hook toast
+      // handled in hook toast
     }
   };
 
@@ -167,7 +183,7 @@ export const MarketplaceClient: React.FC = () => {
       await upgrade(id);
       refetchInstalled();
     } catch {
-      // error handled in hook toast
+      // handled in hook toast
     }
   };
 
@@ -178,30 +194,38 @@ export const MarketplaceClient: React.FC = () => {
       setIsUninstalling(false);
       setIsUninstallConfirmOpen(false);
       setUninstallPluginData(null);
-      // Refresh list after uninstall
       setTimeout(() => refetchInstalled(), 1000);
     }
   };
 
   return (
-    <div className="flex flex-col gap-8 pb-20 w-full max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-12 mt-8">
-      {/* Hero Section */}
-      <div className="card p-8 md:p-12">
-        <div className="flex flex-col gap-3 max-w-2xl">
-          <div className="mono-tag w-fit">
-            <Sparkles className="w-3 h-3" />
-            <span>MARKETPLACE</span>
+    <div className="flex flex-col gap-6 pb-16 w-full max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 md:pt-8">
+      {/* Header Panel */}
+      <div className="card p-6 md:p-7">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 border-b border-line">
+          <div className="max-w-2xl">
+            <h1 className="text-2xl font-heading font-bold tracking-tight text-ink">
+              Khám phá Ứng dụng
+            </h1>
+            <p className="text-sm text-muted mt-1 leading-relaxed">
+              Mở rộng năng lực quản trị tổ chức với các phân hệ nghiệp vụ tiêu chuẩn, tự động cài đặt bảng dữ liệu, quy trình và báo cáo.
+            </p>
           </div>
-          <h1 className="text-3xl md:text-4xl font-grot font-bold tracking-tight" style={{ color: 'var(--ink)' }}>
-            Khám phá Ứng dụng
-          </h1>
-          <p className="text-[0.9375rem]" style={{ color: 'var(--muted)' }}>
-            Mở rộng khả năng của hệ thống với hàng chục ứng dụng được thiết kế tối ưu cho doanh nghiệp của bạn.
-          </p>
+          {!isLoading && (
+            <div className="flex items-center gap-3 text-xs text-muted tabular-nums shrink-0">
+              <span>
+                <strong className="text-ink font-semibold">{installedPlugins.length}</strong> đã cài
+              </span>
+              <span className="text-ghost">/</span>
+              <span>
+                <strong className="text-ink font-semibold">{allPlugins.length}</strong> tổng phân hệ
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="mt-6 w-full">
-          <CategoryFilter 
+        <div className="pt-5 w-full">
+          <CategoryFilter
             categories={CATEGORIES}
             selectedCategory={selectedCategory}
             onSelectCategory={setSelectedCategory}
@@ -211,10 +235,10 @@ export const MarketplaceClient: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Grid Content */}
-      <div className="flex flex-col gap-6">
+      {/* Main Grid */}
+      <div className="flex flex-col gap-5">
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-bento">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
@@ -223,41 +247,44 @@ export const MarketplaceClient: React.FC = () => {
             <SkeletonCard />
           </div>
         ) : allPlugins.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 rounded-2xl text-center" style={{ border: '1px dashed var(--line-hi)' }}>
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6" style={{ background: 'var(--paper)', border: '1px solid var(--line-hi)' }}>
-              <PackageOpen className="w-10 h-10" style={{ color: 'var(--ghost)' }} />
+          <div className="card p-16 items-center text-center border-dashed">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-paper-subtle border border-line">
+              <PackageOpen className="w-6 h-6 text-dim" />
             </div>
-            <h3 className="text-xl font-grot font-bold mb-2" style={{ color: 'var(--ink)' }}>Chưa có Plugin nào trên Marketplace</h3>
-            <p style={{ color: 'var(--muted)' }} className="max-w-md">
+            <h3 className="text-base font-heading font-semibold text-ink mb-1.5">
+              Chưa có Plugin nào trên Marketplace
+            </h3>
+            <p className="text-sm text-muted max-w-md">
               Hệ thống hiện chưa có ứng dụng nào được phát hành. Vui lòng quay lại sau.
             </p>
           </div>
         ) : filteredPlugins.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 rounded-2xl text-center" style={{ border: '1px dashed var(--line-hi)' }}>
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6" style={{ background: 'var(--paper)', border: '1px solid var(--line-hi)' }}>
-              <PackageOpen className="w-10 h-10" style={{ color: 'var(--ghost)' }} />
+          <div className="card p-16 items-center text-center border-dashed">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-paper-subtle border border-line">
+              <PackageOpen className="w-6 h-6 text-dim" />
             </div>
-            <h3 className="text-xl font-grot font-bold mb-2" style={{ color: 'var(--ink)' }}>Không tìm thấy ứng dụng nào</h3>
-            <p style={{ color: 'var(--muted)' }} className="max-w-md">
-              {searchQuery 
-                ? `Không có kết quả nào khớp với "${searchQuery}". Hãy thử tìm kiếm với từ khóa khác.`
+            <h3 className="text-base font-heading font-semibold text-ink mb-1.5">
+              Không tìm thấy ứng dụng phù hợp
+            </h3>
+            <p className="text-sm text-muted max-w-md">
+              {searchQuery
+                ? `Không có kết quả nào khớp với "${searchQuery}". Hãy thử từ khóa khác.`
                 : "Marketplace hiện chưa có ứng dụng nào trong danh mục này."}
             </p>
             {searchQuery && (
-              <button 
+              <button
+                type="button"
                 onClick={() => setSearchQuery("")}
-                className="mt-6 font-medium transition-colors" style={{ color: 'var(--accent)' }}
+                className="btn-ghost mt-5"
               >
-                Xóa tìm kiếm
+                Xóa bộ lọc tìm kiếm
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-bento auto-rows-fr">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
             {filteredPlugins.map(({ data, status }) => {
-              // Override status if this plugin is currently installing
-              const currentStatus = installingId === data.id ? (installStatus || status) : status;
-              
+              const currentStatus = installingId === data.id ? installStatus || status : status;
               return (
                 <PluginCard
                   key={data.id}
@@ -278,7 +305,7 @@ export const MarketplaceClient: React.FC = () => {
         )}
       </div>
 
-      {/* Install Preview Dialog — với dynamic credential form */}
+      {/* Install Preview Dialog */}
       <InstallPreviewDialog
         isOpen={isInstallPreviewOpen}
         plugin={previewPlugin}
@@ -290,7 +317,7 @@ export const MarketplaceClient: React.FC = () => {
       {/* Install Progress Modal */}
       <InstallProgressModal
         isOpen={Boolean(installingId)}
-        pluginName={allPlugins.find(p => p.data.id === installingId)?.data.name}
+        pluginName={allPlugins.find((p) => p.data.id === installingId)?.data.name}
         steps={installSteps || []}
         overallProgress={installProgress}
         status={installStatus}
@@ -312,13 +339,23 @@ export const MarketplaceClient: React.FC = () => {
         isConfirmLoading={isUninstalling}
       >
         <div className="flex flex-col gap-4">
-          <p>
-            Bạn có chắc chắn muốn gỡ cài đặt ứng dụng <strong>{uninstallPluginData?.name}</strong>?
+          <p className="text-sm text-ink-soft">
+            Bạn có chắc chắn muốn gỡ cài đặt ứng dụng{" "}
+            <strong className="text-ink font-semibold">{uninstallPluginData?.name}</strong>?
           </p>
-            <div className="text-sm p-4 rounded-xl font-medium" style={{ background: 'var(--rose-fill)', border: '1px solid var(--rose)', color: 'var(--rose)' }}>
-              ⚠️ <strong>Cảnh báo nguy hiểm:</strong> Hành động này không thể hoàn tác. 
-              Toàn bộ dữ liệu nghiệp vụ, bảng (tables), và workflows liên quan đến ứng dụng này sẽ bị xóa vĩnh viễn khỏi hệ thống.
-            </div>
+          <div
+            className="text-sm p-3.5 rounded-lg flex items-start gap-2.5 border"
+            style={{
+              background: "var(--rose-fill)",
+              borderColor: "rgba(190, 18, 60, 0.25)",
+              color: "var(--rose)",
+            }}
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p className="text-xs leading-relaxed">
+              <strong>Cảnh báo:</strong> Hành động này không thể hoàn tác. Toàn bộ dữ liệu nghiệp vụ, bảng dữ liệu và workflows liên quan đến ứng dụng này sẽ bị xóa vĩnh viễn khỏi hệ thống.
+            </p>
+          </div>
         </div>
       </Modal>
     </div>

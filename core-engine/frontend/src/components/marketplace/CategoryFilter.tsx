@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import clsx from "clsx";
+import { clsx } from "clsx";
 import { Search } from "lucide-react";
 
 export interface CategoryFilterProps {
@@ -23,49 +23,39 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   onSearchChange,
 }) => {
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
-      {/* Category Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide shrink-0">
-        <button
-          onClick={() => onSelectCategory("All")}
-          className="btn-sm font-mono text-meta whitespace-nowrap transition-all"
-          style={{
-            background: selectedCategory === "All" ? "var(--ink)" : "transparent",
-            color: selectedCategory === "All" ? "var(--paper)" : "var(--muted)",
-            border: `1px solid ${selectedCategory === "All" ? "var(--ink)" : "var(--line-hi)"}`,
-            borderRadius: "6px",
-          }}
-        >
-          Tất cả
-        </button>
-        {categories.map((category) => (
-          <button
-            key={category}
-            onClick={() => onSelectCategory(category)}
-            className="btn-sm font-mono text-meta whitespace-nowrap transition-all"
-            style={{
-              background: selectedCategory === category ? "var(--ink)" : "transparent",
-              color: selectedCategory === category ? "var(--paper)" : "var(--muted)",
-              border: `1px solid ${selectedCategory === category ? "var(--ink)" : "var(--line-hi)"}`,
-              borderRadius: "6px",
-            }}
-          >
-            {category}
-          </button>
-        ))}
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 w-full">
+      {/* Category Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-hide shrink-0">
+        {["All", ...categories].map((category) => {
+          const isSelected = selectedCategory === category;
+          const label = category === "All" ? "Tất cả" : category;
+          return (
+            <button
+              key={category}
+              type="button"
+              onClick={() => onSelectCategory(category)}
+              className={clsx(
+                "px-3 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap transition-colors cursor-pointer border",
+                isSelected
+                  ? "bg-ink text-paper-white border-transparent"
+                  : "bg-paper-white text-muted border-line hover:text-ink hover:bg-paper-subtle hover:border-line-hi"
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Search */}
       <div className="relative w-full md:w-72 shrink-0">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-          <Search className="h-4 w-4" style={{ color: "var(--dim)" }} />
-        </div>
+        <Search className="h-4 w-4 text-dim absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           type="text"
           placeholder="Tìm kiếm ứng dụng..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="input-field input-field-icon"
+          className="input-field input-field-icon text-sm"
         />
       </div>
     </div>

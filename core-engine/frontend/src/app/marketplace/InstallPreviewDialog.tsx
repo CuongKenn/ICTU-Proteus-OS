@@ -6,6 +6,7 @@
 // Không còn JSON textarea thô — mỗi field được render riêng biệt.
 
 import React, { useState, useCallback, useEffect } from "react";
+import { Database, KeyRound, ShieldCheck, Workflow } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import type { PluginData } from "@/components/marketplace/PluginCard";
 import type { CredentialFieldSchema, CredentialInput } from "@/types";
@@ -202,9 +203,11 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
         </p>
 
         {/* Resources list */}
-        <div className="bg-bg-base rounded-lg p-4 border border-border space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">📦</span>
+        <div className="bg-paper-subtle rounded-lg p-4 border border-border space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0">
+              <Database className="w-4 h-4" />
+            </div>
             <div>
               <div className="font-semibold text-sm text-text-primary">Database Schema</div>
               <div className="text-xs text-text-secondary">
@@ -212,8 +215,10 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🔄</span>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0">
+              <Workflow className="w-4 h-4" />
+            </div>
             <div>
               <div className="font-semibold text-sm text-text-primary">Automation Workflows</div>
               <div className="text-xs text-text-secondary">
@@ -221,13 +226,15 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xl">👤</span>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
             <div>
               <div className="font-semibold text-sm text-text-primary">RBAC Roles</div>
               <div className="text-xs text-text-secondary">
                 Tạo các role:{" "}
-                <span className="text-primary font-mono bg-primary/10 px-1 rounded">
+                <span className="text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded">
                   {plugin.requiredRoles?.join(", ") || "N/A"}
                 </span>
               </div>
@@ -238,8 +245,8 @@ export const InstallPreviewDialog: React.FC<InstallPreviewDialogProps> = ({
         {/* ─── Dynamic Credentials Form (từ credentials_schema) ─── */}
         {hasAnyCreds && (
           <div className="border border-border rounded-lg overflow-hidden">
-            <div className="flex items-center gap-2 p-3 bg-bg-surface border-b border-border">
-              <span className="text-base">🔑</span>
+            <div className="flex items-center gap-2 p-3 bg-paper-subtle border-b border-border">
+              <KeyRound className="w-4 h-4 text-accent shrink-0" />
               <span className="font-medium text-sm text-text-primary">
                 Cấu hình Tích hợp (Credentials)
               </span>

@@ -63,36 +63,34 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="mfe-kpi-grid">
         <StatCard label="Tổng dự án" value={String(projects.length)} sub={`${active} đang triển khai`} />
-        <StatCard label="Tổng ngân sách" value={formatVND(totalBudget)} sub="chưa hủy" />
+        <StatCard label="Tổng ngân sách" value={formatVND(totalBudget)} sub="Dự án hiệu lực" />
         <StatCard label="Công việc hoàn thành" value={`${doneTasks}/${tasks.length}`} />
-        <StatCard label="Task quá hạn" value={String(overdue.length)} sub="chưa DONE mà trễ hạn" />
+        <StatCard label="Công việc quá hạn" value={String(overdue.length)} sub="Chưa hoàn thành trễ hạn" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Phân bổ trạng thái dự án</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Phân bổ trạng thái dự án</h4>
           {(Object.keys(PROJECT_STATUS_LABEL) as Array<keyof typeof PROJECT_STATUS_LABEL>).map((st) => (
-            <div key={st} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}>
+            <div key={st} className="mfe-bar-row">
               <span style={{ width: 130, color: C.muted, fontSize: '.82rem' }}>{PROJECT_STATUS_LABEL[st]}</span>
-              <div style={{ flex: 1, height: 8, background: 'var(--mfe-panel-2)', borderRadius: 999 }}>
+              <div className="mfe-bar-track">
                 <div
-                  style={{
-                    width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: 'var(--mfe-accent)',
-                  }}
+                  className="mfe-bar-fill"
+                  style={{ width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%` }}
                 />
               </div>
-              <span style={{ width: 28, textAlign: 'right', color: C.text }}>{byStatus[st] ?? 0}</span>
+              <span style={{ width: 32, textAlign: 'right', color: C.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                {byStatus[st] ?? 0}
+              </span>
             </div>
           ))}
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Cột mốc sắp tới</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Cột mốc sắp tới</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -114,9 +112,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `project_milestones.due_date` + workflow `wf_milestone_reminder`.
-          </div>
+          <p className="mfe-note">
+            Hệ thống tự động gửi nhắc nhở trước thời hạn của từng cột mốc dự án.
+          </p>
         </div>
       </div>
     </div>

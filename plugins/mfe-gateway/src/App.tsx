@@ -1,13 +1,11 @@
 // Copyright (c) 2026 CuongKenn & ICTU Team
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// MFE Gateway shell — theme-aware (light/dark), đồng bộ với core-engine.
+// MFE Gateway shell — Enterprise Swiss Slate theme (light/dark), synchronized with core-engine.
 import React, { useCallback, useEffect, useState } from 'react';
 import { registry } from './plugins/registry';
 import { applyTheme, resolveInitialTheme, toggleTheme, type Theme } from './theme';
 
-// Base path khi host dưới subpath (cùng origin BFF). Vite base = '/plugins-mfe/'.
-// Path dạng: /plugins-mfe/<code>[/<sub>]  hoặc /plugins-mfe/.
 const BASE = '/plugins-mfe';
 
 function stripBase(pathname: string): string {
@@ -23,12 +21,33 @@ function parsePath(): { pluginId: string; subPath: string } {
   return { pluginId, subPath: rest.length ? `/${rest.join('/')}` : '' };
 }
 
-const panel: React.CSSProperties = {
-  background: 'var(--mfe-panel)',
-  border: '1px solid var(--mfe-line)',
-  borderRadius: 14,
-  boxShadow: 'var(--mfe-shadow)',
-};
+/* Crisp inline SVG icons (zero emojis) */
+const IconArrowLeft = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </svg>
+);
+
+const IconSun = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+  </svg>
+);
+
+const IconMoon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+  </svg>
+);
+
+const IconArrowUpRight = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M7 7h10v10" />
+    <path d="M7 17 17 7" />
+  </svg>
+);
 
 const App = () => {
   const [route, setRoute] = useState(parsePath);
@@ -39,14 +58,12 @@ const App = () => {
     applyTheme(theme);
   }, [theme]);
 
-  // Global busy indicator: plugin API client phát 'mfe-busy' khi có request.
   useEffect(() => {
     const onBusy = (e: Event) => setBusy(Number((e as CustomEvent).detail) || 0);
     window.addEventListener('mfe-busy', onBusy as EventListener);
     return () => window.removeEventListener('mfe-busy', onBusy as EventListener);
   }, []);
 
-  // Đồng bộ theme khi app chính đổi (storage) hoặc gửi postMessage.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'proteus-theme' && (e.newValue === 'dark' || e.newValue === 'light')) {
@@ -75,7 +92,6 @@ const App = () => {
   }, []);
 
   const navigate = useCallback((to: string) => {
-    // Giữ base subpath để reload/iframe URL vẫn đúng dưới /plugins-mfe/.
     const target = to.startsWith(BASE) ? to : `${BASE}${to.startsWith('/') ? '' : '/'}${to}`;
     window.history.pushState(null, '', target);
     setRoute(parsePath());
@@ -93,68 +109,85 @@ const App = () => {
   const entry = route.pluginId ? registry.find((p) => p.code === route.pluginId) : undefined;
 
   return (
-    <div
-      style={{
-        background: 'var(--mfe-bg)',
-        color: 'var(--mfe-text)',
-        minHeight: '100vh',
-        fontFamily: 'system-ui, -apple-system, Inter, sans-serif',
-      }}
-    >
-      {/* Global busy progress bar (mọi plugin dùng chung) */}
+    <div style={{ background: 'var(--mfe-bg)', color: 'var(--mfe-text)', minHeight: '100vh' }}>
+      {/* Global busy progress bar */}
       <div className="mfe-busy-track">
         {busy > 0 && <div className="mfe-busy-bar" />}
       </div>
 
-      {/* Shell top bar */}
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '.75rem',
-          padding: '.6rem 1.25rem',
-          background: 'var(--mfe-panel)',
-          borderBottom: '1px solid var(--mfe-line)',
-          backdropFilter: 'blur(8px)',
-        }}
-      >
+      {/* Executive Shell Topbar */}
+      <header className="mfe-topbar">
         {route.pluginId ? (
-          <button
-            onClick={() => navigate('/')}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--mfe-line)',
-              color: 'var(--mfe-muted)',
-              borderRadius: 8,
-              padding: '.35rem .7rem',
-              cursor: 'pointer',
-              fontSize: '.8rem',
-            }}
-          >
-            ← Tất cả plugins
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+            <button type="button" onClick={() => navigate('/')} className="mfe-back-btn">
+              <IconArrowLeft />
+              <span>Tất cả phân hệ</span>
+            </button>
+            {entry && (
+              <>
+                <span style={{ color: 'var(--mfe-line-hi)' }}>/</span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    color: 'var(--mfe-text)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {entry.displayName}
+                </span>
+              </>
+            )}
+          </div>
         ) : (
-          <span style={{ fontWeight: 700, fontSize: '.9rem' }}>
-            Proteus <span style={{ color: 'var(--mfe-accent)' }}>Plugins</span>
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 7,
+                background: 'var(--mfe-primary)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'var(--mfe-font-heading)',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+              }}
+            >
+              P
+            </div>
+            <span
+              style={{
+                fontFamily: 'var(--mfe-font-heading)',
+                fontWeight: 700,
+                fontSize: '0.94rem',
+                letterSpacing: '-0.015em',
+              }}
+            >
+              Proteus <span style={{ color: 'var(--mfe-accent)' }}>Modules</span>
+            </span>
+          </div>
         )}
+
         <span style={{ flex: 1 }} />
+
         <button
+          type="button"
           className="mfe-theme-toggle"
           onClick={onToggleTheme}
           aria-label="Đổi chế độ sáng/tối"
           title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}
         >
-          {theme === 'dark' ? '☀ Sáng' : '🌙 Tối'}
+          {theme === 'dark' ? <IconSun /> : <IconMoon />}
+          <span>{theme === 'dark' ? 'Sáng' : 'Tối'}</span>
         </button>
       </header>
 
-      {/* / → catalog */}
       {!route.pluginId && <Catalog navigate={navigate} />}
-
       {route.pluginId && !entry && <NotFound pluginId={route.pluginId} navigate={navigate} />}
       {route.pluginId && entry && !entry.ready && (
         <ComingSoon code={entry.code} name={entry.displayName} desc={entry.description} navigate={navigate} />
@@ -166,59 +199,76 @@ const App = () => {
 
 function Catalog(props: { navigate: (to: string) => void }) {
   return (
-    <div style={{ padding: '2rem 1.25rem' }}>
-      <div style={{ maxWidth: 1040, margin: '0 auto' }}>
-        <h1 style={{ margin: 0, color: 'var(--mfe-text)', letterSpacing: '-0.02em' }}>
-          Micro-Frontend Gateway
+    <div className="mfe-module-shell">
+      <div style={{ paddingBottom: '1.25rem', borderBottom: '1px solid var(--mfe-line)' }}>
+        <h1 className="mfe-module-title" style={{ fontSize: '1.5rem' }}>
+          Danh mục Phân hệ Nghiệp vụ
         </h1>
-        <p style={{ color: 'var(--mfe-muted)', marginTop: '.4rem' }}>
-          Mỗi plugin có code thật ở <code>plugins/&lt;tên&gt;/frontend/src</code>. Gateway chỉ là host định tuyến.
+        <p className="mfe-module-desc">
+          Các ứng dụng Micro-Frontend vận hành đồng bộ trên kiến trúc Proteus OS Multi-Tenant.
         </p>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-            gap: '1rem',
-            marginTop: '1.75rem',
-          }}
-        >
-          {registry.map((p) => (
-            <button
-              key={p.code}
-              onClick={() => p.ready && props.navigate(`/${p.code}`)}
-              disabled={!p.ready}
-              style={{
-                ...panel,
-                textAlign: 'left',
-                padding: '1.1rem',
-                cursor: p.ready ? 'pointer' : 'not-allowed',
-                opacity: p.ready ? 1 : 0.6,
-                color: 'var(--mfe-text)',
-                transition: 'transform .2s, border-color .2s',
-              }}
-              onMouseEnter={(e) => {
-                if (p.ready) e.currentTarget.style.borderColor = 'var(--mfe-accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--mfe-line)';
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{p.displayName}</div>
-              <div style={{ color: 'var(--mfe-muted)', fontSize: '.8rem', margin: '.4rem 0' }}>
-                {p.code}
-              </div>
+      </div>
+
+      <div className="mfe-catalog-grid">
+        {registry.map((p) => (
+          <button
+            key={p.code}
+            type="button"
+            onClick={() => p.ready && props.navigate(`/${p.code}`)}
+            disabled={!p.ready}
+            className="mfe-catalog-card"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.65rem' }}>
               <div
                 style={{
-                  color: p.ready ? 'var(--mfe-success)' : 'var(--mfe-warning)',
-                  fontSize: '.78rem',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 9,
+                  background: 'var(--mfe-accent-soft)',
+                  color: 'var(--mfe-accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontFamily: 'var(--mfe-font-heading)',
                   fontWeight: 700,
+                  fontSize: '0.9rem',
                 }}
               >
-                {p.ready ? 'Sẵn sàng' : 'Đang phát triển'}
+                {p.displayName.charAt(0)}
               </div>
-            </button>
-          ))}
-        </div>
+              <span style={{ color: 'var(--mfe-dim)' }}>
+                <IconArrowUpRight />
+              </span>
+            </div>
+
+            <div style={{ fontWeight: 600, fontSize: '0.95rem', fontFamily: 'var(--mfe-font-heading)' }}>
+              {p.displayName}
+            </div>
+            <div
+              style={{
+                color: 'var(--mfe-muted)',
+                fontSize: '0.82rem',
+                margin: '0.3rem 0 0.85rem',
+                lineHeight: 1.45,
+                flex: 1,
+              }}
+            >
+              {p.description || p.code}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingTop: '0.7rem', borderTop: '1px solid var(--mfe-line-soft)' }}>
+              <span style={{ fontFamily: 'var(--mfe-font-mono)', fontSize: '0.72rem', color: 'var(--mfe-dim)' }}>
+                {p.code}
+              </span>
+              <span
+                className="mfe-badge"
+                style={{ color: p.ready ? 'var(--mfe-success)' : 'var(--mfe-warning)' }}
+              >
+                <span className="mfe-badge-dot" />
+                {p.ready ? 'Sẵn sàng' : 'Đang phát triển'}
+              </span>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -232,12 +282,24 @@ function ComingSoon(props: {
 }) {
   return (
     <div style={{ padding: '4rem 1.25rem', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ ...panel, padding: '2rem', maxWidth: 560, color: 'var(--mfe-text)' }}>
-        <h2 style={{ marginTop: 0 }}>{props.name}</h2>
-        <p style={{ color: 'var(--mfe-muted)' }}>{props.desc}</p>
-        <p style={{ color: 'var(--mfe-warning)' }}>
-          Plugin <code>{props.code}</code> chưa có <code>frontend/src</code>.
+      <div
+        style={{
+          background: 'var(--mfe-panel)',
+          border: '1px solid var(--mfe-line)',
+          borderRadius: 12,
+          padding: '2rem',
+          maxWidth: 520,
+          boxShadow: 'var(--mfe-shadow)',
+        }}
+      >
+        <h2 style={{ marginTop: 0, fontFamily: 'var(--mfe-font-heading)', fontSize: '1.2rem' }}>{props.name}</h2>
+        <p style={{ color: 'var(--mfe-muted)', fontSize: '0.9rem' }}>{props.desc}</p>
+        <p style={{ color: 'var(--mfe-warning)', fontSize: '0.85rem' }}>
+          Phân hệ <code>{props.code}</code> hiện đang trong quá trình hoàn thiện giao diện.
         </p>
+        <button type="button" onClick={() => props.navigate('/')} className="mfe-btn" style={{ marginTop: '0.5rem' }}>
+          <IconArrowLeft /> Quay lại danh mục
+        </button>
       </div>
     </div>
   );
@@ -246,12 +308,9 @@ function ComingSoon(props: {
 function NotFound(props: { pluginId: string; navigate: (to: string) => void }) {
   return (
     <div style={{ padding: '4rem 1.25rem', textAlign: 'center', color: 'var(--mfe-text)' }}>
-      <h2>Không tìm thấy plugin: {props.pluginId}</h2>
-      <button
-        onClick={() => props.navigate('/')}
-        style={{ color: 'var(--mfe-accent)', background: 'none', border: 'none', cursor: 'pointer' }}
-      >
-        ← Về catalog
+      <h2 style={{ fontFamily: 'var(--mfe-font-heading)' }}>Không tìm thấy phân hệ: {props.pluginId}</h2>
+      <button type="button" onClick={() => props.navigate('/')} className="mfe-btn" style={{ marginTop: '0.75rem' }}>
+        <IconArrowLeft /> Về danh mục phân hệ
       </button>
     </div>
   );

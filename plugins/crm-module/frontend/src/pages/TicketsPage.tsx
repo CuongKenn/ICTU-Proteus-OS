@@ -102,8 +102,8 @@ export function TicketsPage() {
         <Btn primary onClick={() => setShowCreate(true)}>+ Tạo ticket</Btn>
       </div>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          “Tạo ticket” gọi workflow `wf_ticket_assignment` (tìm agent → gán → nhắn).
+        <p className="mfe-note">
+          Khi tạo yêu cầu hỗ trợ mới, hệ thống tự động phân công nhân sự phụ trách và gửi thông báo.
         </p>
       )}
       <div style={{ overflowX: 'auto', border: '1px solid var(--mfe-line)', borderRadius: 12 }}>
