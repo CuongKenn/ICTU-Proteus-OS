@@ -232,6 +232,66 @@ async def create_orion_subscription(
     }
 
 
+@router.get("/subscriptions", status_code=status.HTTP_200_OK)
+async def list_orion_subscriptions(
+    tenant_context=Depends(get_current_tenant_context),
+):
+    """Lấy danh sách subscriptions đang hoạt động của tenant (Issue #846)."""
+    tenant_id = str(tenant_context.tenant_id)
+    async with AsyncSessionLocal() as session:
+        query = text("""
+            SELECT subscription_id, entity_type, endpoint, status, created_at
+            FROM context.subscriptions
+            WHERE tenant_id = :tenant_id AND status = 'ACTIVE'
+            ORDER BY created_at DESC;
+            """)
+        result = await session.execute(query, {"tenant_id": uuid.UUID(tenant_id)})
+        rows = result.fetchall()
+
+    return [
+        {
+            "subscription_id": r[0],
+            "entity_type": r[1],
+            "endpoint": r[2],
+            "status": r[3],
+            "created_at": r[4].isoformat() if r[4] else None,
+        }
+        for r in rows
+    ]
+
+
+@router.delete("/subscriptions/{subscription_id}", status_code=status.HTTP_200_OK)
+async def delete_orion_subscription(
+    subscription_id: str,
+    tenant_context=Depends(get_current_tenant_context),
+):
+    """Hủy đăng ký subscription trên Orion-LD và cập nhật CSDL (Issue #846, #848)."""
+    tenant_id = str(tenant_context.tenant_id)
+    adapter = OrionAdapter()
+    try:
+        await adapter.delete_subscription(subscription_id, tenant_id=tenant_id)
+    except Exception as e:
+        logger.warning("Could not delete subscription on Orion: %s", e)
+
+    async with AsyncSessionLocal() as session:
+        query = text("""
+            UPDATE context.subscriptions
+            SET status = 'DELETED'
+            WHERE subscription_id = :sub_id AND tenant_id = :tenant_id;
+            """)
+        await session.execute(
+            query,
+            {"sub_id": subscription_id, "tenant_id": uuid.UUID(tenant_id)},
+        )
+        await session.commit()
+
+    return {
+        "status": "success",
+        "subscription_id": subscription_id,
+        "message": "Subscription cancelled.",
+    }
+
+
 @router.post("/outbox/replay-dlq", status_code=status.HTTP_200_OK)
 async def replay_outbox_dlq(
     limit: int = 100,

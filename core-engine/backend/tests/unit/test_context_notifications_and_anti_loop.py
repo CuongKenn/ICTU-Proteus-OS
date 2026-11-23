@@ -8,6 +8,7 @@ Tham chiếu: Issue #847 [L3-602], Issue #848 [L3-603], Issue #850 [L3-605].
 
 import uuid
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -97,3 +98,61 @@ async def test_notifications_endpoint_anti_loop_and_redis_stream():
         s_args, s_kwargs = mock_redis.xadd.call_args
         assert s_args[0] == "stream:context:events"
         assert s_args[1]["event_type"] == "context.notification.received"
+
+
+@pytest.mark.asyncio
+async def test_subscriptions_crud_endpoints():
+    """Kiểm thử API đăng ký, lấy danh sách và hủy Orion subscription (#846, #848)."""
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+
+    from app.core.domain.entities import TenantContext
+    from app.entrypoints.dependencies import get_current_tenant_context
+
+    tid = uuid.uuid4()
+    ctx = TenantContext(tenant_id=tid, user_id=uuid.uuid4(), roles=["tenant_admin"])
+    app.dependency_overrides[get_current_tenant_context] = lambda: ctx
+
+    mock_session = AsyncMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        (
+            "sub-abc-123",
+            "Meeting",
+            "http://test/cb",
+            "ACTIVE",
+            datetime.now(timezone.utc),
+        )
+    ]
+    mock_session.execute.return_value = mock_cursor
+
+    try:
+        with (
+            patch("app.entrypoints.routers.context.AsyncSessionLocal") as mock_sess_cls,
+            patch(
+                "app.adapters.external.orion_adapter.OrionAdapter.delete_subscription"
+            ) as mock_del_sub,
+        ):
+            mock_sess_cls.return_value.__aenter__.return_value = mock_session
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                # GET subscriptions
+                get_resp = await client.get("/api/v1/context/subscriptions")
+                assert get_resp.status_code == 200
+                subs = get_resp.json()
+                assert len(subs) == 1
+                assert subs[0]["subscription_id"] == "sub-abc-123"
+
+                # DELETE subscription
+                del_resp = await client.delete(
+                    "/api/v1/context/subscriptions/sub-abc-123"
+                )
+                assert del_resp.status_code == 200
+                del_data = del_resp.json()
+                assert del_data["status"] == "success"
+                mock_del_sub.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
