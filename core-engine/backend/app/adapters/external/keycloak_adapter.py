@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class KeycloakAdapterError(Exception):
     """Lỗi khi tương tác với Keycloak."""
+
     pass
 
 
@@ -102,7 +103,9 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
                 "Fetching JWKS from Keycloak", extra={"url": settings.keycloak_jwks_url}
             )
             try:
-                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response = await self._client.get(
+                    settings.keycloak_jwks_url, timeout=10.0
+                )
                 response.raise_for_status()
                 self._jwks_cache = response.json()
                 self._jwks_cached_at = time.monotonic()
@@ -112,14 +115,17 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
                 logger.error(f"Failed to fetch JWKS from Keycloak: {e}")
                 if self._jwks_cache is not None:
                     return self._jwks_cache
-                raise KeycloakAdapterError(f"Cannot reach Keycloak to fetch JWKS: {e}") from e
+                raise KeycloakAdapterError(
+                    f"Cannot reach Keycloak to fetch JWKS: {e}"
+                ) from e
 
     async def _force_refresh_jwks(self) -> dict[str, Any]:
         """M22: ép refresh JWKS (khi kid miss sau rotate) với cooldown (Issue #740)."""
         now = time.monotonic()
         if (
             self._jwks_cache is not None
-            and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+            and (now - self._last_force_refresh_at)
+            < self._FORCE_REFRESH_COOLDOWN_SECONDS
         ):
             return self._jwks_cache
 
@@ -127,11 +133,14 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
             now = time.monotonic()
             if (
                 self._jwks_cache is not None
-                and (now - self._last_force_refresh_at) < self._FORCE_REFRESH_COOLDOWN_SECONDS
+                and (now - self._last_force_refresh_at)
+                < self._FORCE_REFRESH_COOLDOWN_SECONDS
             ):
                 return self._jwks_cache
             try:
-                response = await self._client.get(settings.keycloak_jwks_url, timeout=10.0)
+                response = await self._client.get(
+                    settings.keycloak_jwks_url, timeout=10.0
+                )
                 response.raise_for_status()
                 self._jwks_cache = response.json()
                 self._jwks_cached_at = time.monotonic()
@@ -142,7 +151,9 @@ class KeycloakAdapter(AbstractIdentityProviderPort):
                 logger.error(f"Failed to force refresh JWKS from Keycloak: {e}")
                 if self._jwks_cache is not None:
                     return self._jwks_cache
-                raise KeycloakAdapterError(f"Cannot reach Keycloak to refresh JWKS: {e}") from e
+                raise KeycloakAdapterError(
+                    f"Cannot reach Keycloak to refresh JWKS: {e}"
+                ) from e
 
     async def verify_and_decode_token(self, token: str) -> dict[str, Any]:
         """

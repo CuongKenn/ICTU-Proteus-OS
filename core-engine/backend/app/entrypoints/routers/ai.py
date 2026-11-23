@@ -5,8 +5,8 @@
 # Tham chiếu: docs/api-swagger.yaml POST /ai/command, docs/dsl-spec.md
 
 import logging
-from typing import Any
 import uuid
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -108,7 +108,11 @@ def _extract_chat_preview_and_command_id(
             real_command_id = uuid.UUID(str(preview["command_id"]))
         except (ValueError, TypeError):
             pass
-    if not real_command_id and isinstance(result.get("steps"), list) and result["steps"]:
+    if (
+        not real_command_id
+        and isinstance(result.get("steps"), list)
+        and result["steps"]
+    ):
         last_step = result["steps"][-1]
         if isinstance(last_step, dict) and last_step.get("command_id"):
             try:
@@ -231,8 +235,8 @@ async def trigger_rag_ingestion(
     Kích hoạt thủ công quá trình Ingestion tài liệu từ Outline vào Qdrant
     cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734).
     """
-    tenant_collection = (
-        getattr(ctx, "outline_collection_id", None) or str(ctx.tenant_id)
+    tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
+        ctx.tenant_id
     )
     if (
         collection_id
@@ -263,6 +267,8 @@ async def transmit_kv_cache_ipc(
     Kích hoạt giao tiếp IPC giữa 2 AI Agents, sử dụng State Pointer (UUID)
     thay vì gửi toàn bộ Context Text qua Event Bus.
     """
+    from pydantic import ValidationError
+
     from app.adapters.external.qdrant_adapter import QdrantAdapter
     from app.adapters.external.redis_event_bus import RedisEventBusPublisher
     from app.ai.kv_cache_ipc import KVCacheIPCManager
@@ -270,8 +276,6 @@ async def transmit_kv_cache_ipc(
         KVCacheTransmitRequest,
         KVCacheTransmitResponse,
     )
-
-    from pydantic import ValidationError
 
     try:
         req = KVCacheTransmitRequest(**(body or {}))

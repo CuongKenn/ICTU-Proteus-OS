@@ -294,7 +294,11 @@ class PluginUpgradeUseCase:
             # 2. n8n update-in-place
             self._log_step("n8n", "RUNNING")
             new_n8n_ids = await self._step_n8n_update(
-                context, plugin_code_name, manifest, snapshot, collected=created_assets["n8n"]
+                context,
+                plugin_code_name,
+                manifest,
+                snapshot,
+                collected=created_assets["n8n"],
             )
             created_assets["n8n"] = new_n8n_ids
             self._log_step("n8n", "DONE")
@@ -303,7 +307,11 @@ class PluginUpgradeUseCase:
             # 3. Metabase blue-green (import mới → xóa cũ)
             self._log_step("metabase", "RUNNING")
             new_mb_ids = await self._step_metabase_replace(
-                context, plugin_code_name, manifest, snapshot, collected=created_assets["metabase"]
+                context,
+                plugin_code_name,
+                manifest,
+                snapshot,
+                collected=created_assets["metabase"],
             )
             created_assets["metabase"] = new_mb_ids
             self._log_step("metabase", "DONE")
@@ -312,7 +320,11 @@ class PluginUpgradeUseCase:
             # 4. Appsmith blue-green
             self._log_step("appsmith", "RUNNING")
             new_app_ids = await self._step_appsmith_replace(
-                context, plugin_code_name, manifest, snapshot, collected=created_assets["appsmith"]
+                context,
+                plugin_code_name,
+                manifest,
+                snapshot,
+                collected=created_assets["appsmith"],
             )
             created_assets["appsmith"] = new_app_ids
             self._log_step("appsmith", "DONE")

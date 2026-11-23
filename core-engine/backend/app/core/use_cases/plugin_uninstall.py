@@ -414,7 +414,9 @@ class PluginUninstallUseCase:
                     schema_name,
                 )
                 return
-            await self.session.execute(text(f'SET LOCAL search_path TO "{schema_name}"'))
+            await self.session.execute(
+                text(f'SET LOCAL search_path TO "{schema_name}"')
+            )
             for table_name in manifest.database.tables:
                 if not re.match(r"^[a-zA-Z0-9_]+$", table_name):
                     logger.warning(

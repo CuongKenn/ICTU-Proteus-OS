@@ -496,12 +496,18 @@ async def deactivate_user(
     if target.keycloak_id:
         try:
             await keycloak.disable_user(
-                realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(target.keycloak_id)
+                realm=getattr(context, "keycloak_realm", None)
+                or settings.KEYCLOAK_REALM,
+                user_id=str(target.keycloak_id),
             )
         except Exception as e:
             logger.error(f"Không thể disable user trên Keycloak: {e}")
         try:
-            await keycloak.logout_user(realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM, user_id=str(target.keycloak_id))
+            await keycloak.logout_user(
+                realm=getattr(context, "keycloak_realm", None)
+                or settings.KEYCLOAK_REALM,
+                user_id=str(target.keycloak_id),
+            )
         except Exception as e:
             logger.error(f"Không thể logout user trên Keycloak: {e}")
 
