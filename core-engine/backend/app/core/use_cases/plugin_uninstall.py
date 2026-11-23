@@ -266,13 +266,36 @@ class PluginUninstallUseCase:
         manifest: PluginManifest,
         asset_ids: list[str],
     ) -> None:
-        """Xóa webhooks từ n8n."""
+        """Xóa webhooks từ n8n và dọn sạch subscriptions context (#838)."""
         for sub in manifest.event_subscriptions:
             # Dummy logic until event bus registry is fully spec'd
             logger.info(
                 "Deleting event subscription: %s",
                 f"{sub.source_plugin}_{'-'.join(sub.event_types)}",
             )
+
+        if getattr(manifest, "ngsi", None) and manifest.ngsi.entities:
+            try:
+                from sqlalchemy import text
+
+                from app.infrastructure.database import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as session:
+                    for ent in manifest.ngsi.entities:
+                        await session.execute(
+                            text(
+                                "DELETE FROM context.subscriptions "
+                                "WHERE tenant_id = :tid AND entity_type = :etype;"
+                            ),
+                            {"tid": context.tenant_id, "etype": ent.type},
+                        )
+                    await session.commit()
+            except Exception as e:
+                logger.warning(
+                    "Could not clean context subscriptions for plugin %s: %s",
+                    plugin_code_name,
+                    e,
+                )
 
     async def _step_2_keycloak(
         self,

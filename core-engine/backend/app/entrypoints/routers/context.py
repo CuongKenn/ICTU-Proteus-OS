@@ -230,3 +230,23 @@ async def create_orion_subscription(
         "endpoint": callback,
         "status": "ACTIVE",
     }
+
+
+@router.post("/outbox/replay-dlq", status_code=status.HTTP_200_OK)
+async def replay_outbox_dlq(
+    limit: int = 100,
+    tenant_context=Depends(get_current_tenant_context),
+):
+    """Tái xử lý các bản ghi outbox lỗi trong Dead Letter Queue (DLQ) cho tenant (Issue #836)."""
+    tenant_id = str(tenant_context.tenant_id)
+    async with AsyncSessionLocal() as session:
+        repo = SQLAlchemyOutboxRepository(session)
+        replayed_count = await repo.replay_dlq(tenant_id, max_records=limit)
+        await session.commit()
+
+    return {
+        "status": "success",
+        "tenant_id": tenant_id,
+        "replayed_count": replayed_count,
+        "message": f"Successfully re-queued {replayed_count} DLQ records.",
+    }
