@@ -1191,11 +1191,17 @@ class PluginInstallUseCase:
     async def _step_6_events(
         self, context: TenantContext, plugin_code_name: str, manifest: PluginManifest
     ) -> list[str]:
-        """Tạo n8n webhooks cho Event Subscriptions."""
+        """Tạo n8n webhooks cho Event Subscriptions & Context Broker mapping (#838)."""
         registered_events = []
         for sub in manifest.event_subscriptions:
             # Dummy logic until event bus registry is fully spec'd
             registered_events.append(f"{sub.source_plugin}_{'-'.join(sub.event_types)}")
+
+        # Hook Context Sync (#838): Đăng ký mapping thực thể NGSI-LD nếu có
+        if getattr(manifest, "ngsi", None) and manifest.ngsi.entities:
+            for ent in manifest.ngsi.entities:
+                registered_events.append(f"context_entity:{ent.type}")
+
         return registered_events
 
     async def _step_1_5_credentials(

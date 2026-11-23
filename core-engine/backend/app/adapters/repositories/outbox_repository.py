@@ -187,3 +187,31 @@ class SQLAlchemyOutboxRepository:
             WHERE tenant_id = :tenant_id AND entity_id = :entity_id;
             """)
         await self.session.execute(query, {"tenant_id": t_id, "entity_id": entity_id})
+
+    async def replay_dlq(
+        self, tenant_id: uuid.UUID | str, max_records: int = 100
+    ) -> int:
+        """Đưa các bản ghi trạng thái DLQ trở lại hàng đợi PENDING để tái xử lý (Replay DLQ)."""
+        t_id = uuid.UUID(str(tenant_id))
+        query = text("""
+            WITH to_replay AS (
+                SELECT id FROM context.context_outbox
+                WHERE tenant_id = :tenant_id AND status = 'DLQ'
+                ORDER BY created_at ASC
+                LIMIT :limit
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE context.context_outbox
+            SET status = 'PENDING',
+                retry_count = 0,
+                error_message = NULL,
+                updated_at = clock_timestamp()
+            FROM to_replay
+            WHERE context_outbox.id = to_replay.id
+            RETURNING context_outbox.id;
+            """)
+        result = await self.session.execute(
+            query, {"tenant_id": t_id, "limit": max_records}
+        )
+        replayed_rows = result.fetchall()
+        return len(replayed_rows)
