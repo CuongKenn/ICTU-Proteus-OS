@@ -78,8 +78,8 @@ export function TasksPage() {
         <Btn primary onClick={() => setShowCreate(true)}>+ Thêm công việc</Btn>
       </div>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          “Thêm công việc” gọi workflow `wf_task_assignment` (ghi DB + nhắn người được giao).
+        <p className="mfe-note">
+          Khi tạo công việc mới, hệ thống tự động lưu phân công và gửi thông báo tới nhân sự thực hiện.
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '.75rem' }}>

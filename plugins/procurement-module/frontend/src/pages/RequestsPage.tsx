@@ -76,8 +76,8 @@ export function RequestsPage() {
         <Btn primary onClick={() => setShowCreate(true)}>+ Tạo đề xuất</Btn>
       </Toolbar>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          “Tạo đề xuất” gọi workflow n8n `wf_purchase_request` qua dispatcher (202 → xử lý ngầm).
+        <p className="mfe-note">
+          Đề xuất mua sắm mới tự động khởi tạo quy trình xét duyệt và gửi thông báo đến cấp phê duyệt.
         </p>
       )}
 
@@ -154,8 +154,8 @@ export function RequestsPage() {
         </tbody>
       </TableWrap>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Duyệt/Từ chối” PO gọi workflow `wf_po_approval` qua dispatcher.
+        <p className="mfe-note">
+          Thao tác duyệt hoặc từ chối đơn mua hàng (PO) được ghi nhận theo luồng phê duyệt chuẩn của doanh nghiệp.
         </p>
       )}
 

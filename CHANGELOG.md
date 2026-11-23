@@ -7,6 +7,8 @@ Dự án tuân thủ theo nguyên tắc [Semantic Versioning](https://semver.org
 ## [Unreleased] - Sắp tới
 
 ### Fixed
+- [core-engine/frontend] Bổ sung fallback `NEXTAUTH_SECRET` tại `vitest.setup.ts` và workflow `frontend-ci.yml`, giúp toàn bộ 24/24 test suite (100/100 tests) pass hoàn toàn trên GitHub Actions CI (Closes #808).
+
 - [core-engine/backend] `create_record` không còn nhận `tenant_id` (và `id`/audit) từ client; luôn ghi đè `tenant_id` bằng context JWT, `update_record` dùng chung danh sách cột server-owned (#697).
 - [core-engine/backend] Siết phân quyền plugin chi tiết theo resource/bảng và verb (read/write/delete) trong `PluginRecordsUseCase` và `PluginActionUseCase`; chặn triệt để lỗ hổng user read-only có thể ghi/xóa bảng hoặc trigger workflow write (#683).
 - [core-engine/backend] Server-side derive AI command effect từ catalog, chặn client bypass phê duyệt bằng `effect=read` và chặn read-only user dispatch workflow write (#684).
@@ -25,6 +27,9 @@ Dự án tuân thủ theo nguyên tắc [Semantic Versioning](https://semver.org
 - [core-engine/backend] Tăng cường bảo mật RBAC: yêu cầu quyền users.read cho GET /api/v1/users, yêu cầu roles.read cho GET /api/v1/roles, và giới hạn get_user_permissions theo tenant_id cũng như loại trừ người dùng đã bị xóa (deleted_at) (#696).
 
 ### Changed
+- [core-engine/frontend] Tái thiết kế toàn diện UI/UX theo hệ thống thiết kế doanh nghiệp **Swiss Slate v4.0** (Light & Dark mode đạt chuẩn WCAG AA, font `Plus Jakarta Sans` + `Inter` + `JetBrains Mono`, sửa lỗi Tailwind CSS variable opacity modifiers, loại bỏ hover-jump trên card tĩnh, bổ sung mobile sidebar drawer, nâng cấp LandingPage, Login/Signup, Launchpad horizontal app tiles, Marketplace, Settings, và đồng bộ theme-aware cho AI Chat Widget).
+- [plugins/mfe-gateway] + [plugins/*] Đồng bộ 1:1 design system **Swiss Slate v4.0** trên MFE Gateway và toàn bộ 9 business plugins (`asset`, `crm`, `document`, `finance`, `hr`, `it-helpdesk`, `meeting`, `procurement`, `project`): bổ sung bộ class `.mfe-*` (underline tabs, soft-tinted status badges, bảng dữ liệu doanh nghiệp, KPI cards, dashboard panels), thay emoji bằng SVG chuẩn và chuẩn hóa toàn bộ ghi chú kỹ thuật sang ngôn ngữ người dùng cuối.
+- [landing-page] Chuyển đổi trang giới thiệu tĩnh sang phong cách doanh nghiệp Swiss Slate nhất quán với Core Engine (loại bỏ gradient neon tím, hiệu ứng bay lơ lửng và emoji trang trí; chuẩn hóa icon FontAwesome và cập nhật lộ trình hoàn thành Phases 1–4).
 - [hardening] Nâng cấp SQL migration denylist chống DDL nguy hiểm, loại bỏ artificial sleeps trong cài đặt plugin, rollback session khi lưu steps_log lỗi, hiện thực update_message Mattermost và delete_credential n8n, bổ sung retry cho AI approval webhook (Closes #701).
 - [landing-page] Polish UI/UX giữ nguyên tone màu Deep Blue/Neon Purple: thay inline-grid vỡ mobile bằng class responsive (pain/quick/mini/roadmap), tăng contrast label, thêm skip-link, focus-visible, scroll-margin, lazy-load ảnh và menu mobile có khóa scroll + phím Escape.
 

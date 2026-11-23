@@ -95,6 +95,8 @@ jobs:
         run: npm ci
 
       - name: Run Unit Tests (Vitest)
+        env:
+          NEXTAUTH_SECRET: ci-build-secret-placeholder
         run: |
           if [ -d "src/__tests__" ]; then
             npm run test -- --run

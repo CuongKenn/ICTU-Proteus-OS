@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Finance Module — Tổng quan: KPI thu/chi + chờ duyệt + hóa đơn sắp hạn.
 import React, { useEffect, useState } from 'react';
-import { formatVND, type ExpenseRequest, type FinanceInvoice, type FinanceTransaction } from '../types';
+import { INVOICE_STATUS_LABEL, formatVND, type ExpenseRequest, type FinanceInvoice, type FinanceTransaction } from '../types';
 import { errText, reasonText, useStore } from '../lib/useStore';
 import { C, DataSourceBar, InlineError, SimpleBadge, StatCard, TableWrap, td, th } from '../components/ui';
 
@@ -59,16 +59,16 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="mfe-kpi-grid">
         <StatCard label="Tổng thu" value={formatVND(totalIn)} sub={`${txns.filter((t) => t.type === 'CREDIT').length} giao dịch`} />
         <StatCard label="Tổng chi" value={formatVND(totalOut)} sub={`${txns.filter((t) => t.type === 'DEBIT').length} giao dịch`} />
         <StatCard label="Số dư (thu − chi)" value={formatVND(totalIn - totalOut)} />
         <StatCard label="Chờ duyệt chi" value={String(pendingExpenses.length)} sub={formatVND(pendingExpenseSum)} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Giao dịch gần đây</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Giao dịch gần đây</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -80,9 +80,9 @@ export function Dashboard() {
             <tbody>
               {recent.map((t) => (
                 <tr key={t.id}>
-                  <td style={td}>{t.transaction_date}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{t.transaction_date}</td>
                   <td style={td}>{t.description || t.category}</td>
-                  <td style={{ ...td, color: t.type === 'CREDIT' ? C.green : C.red, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  <td style={{ ...td, color: t.type === 'CREDIT' ? C.green : C.red, fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {t.type === 'CREDIT' ? '+' : '−'}{formatVND(t.amount)}
                   </td>
                 </tr>
@@ -91,8 +91,8 @@ export function Dashboard() {
           </TableWrap>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Hóa đơn cần thanh toán ({overdue.length} quá hạn)</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Hóa đơn cần thanh toán ({overdue.length} quá hạn)</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -108,10 +108,10 @@ export function Dashboard() {
                     <b style={{ color: C.text }}>{i.invoice_number}</b>
                     <div style={{ color: C.muted, fontSize: '.78rem' }}>{i.vendor_name}</div>
                   </td>
-                  <td style={td}>{i.due_date}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{i.due_date}</td>
                   <td style={td}>
                     <SimpleBadge
-                      text={i.status}
+                      text={INVOICE_STATUS_LABEL[i.status] ?? i.status}
                       color={i.status === 'OVERDUE' ? C.red : i.status === 'PAID' ? C.green : C.amber}
                     />
                   </td>
@@ -119,9 +119,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `finance_invoices.due_date` + workflow `wf_invoice_processing`.
-          </div>
+          <p className="mfe-note">
+            Hệ thống theo dõi công nợ theo hạn thanh toán và gửi nhắc tự động trước kỳ hạn.
+          </p>
         </div>
       </div>
     </div>

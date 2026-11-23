@@ -127,9 +127,8 @@ export function BookingsPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có lịch phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Đặt phòng” kiểm tra trùng giờ phía client rồi gọi workflow n8n
-          `wf_meeting_booking` qua dispatcher (202 → xử lý ngầm, gửi invite).
+        <p className="mfe-note">
+          Hệ thống tự động kiểm tra trùng lịch phòng họp và gửi thư mời tới các thành viên tham gia.
         </p>
       )}
 

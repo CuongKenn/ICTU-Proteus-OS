@@ -134,8 +134,8 @@ export function AssetsPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có tài sản phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Cấp phát” gọi workflow n8n `wf_asset_request` qua dispatcher (202 → xử lý ngầm).
+        <p className="mfe-note">
+          Thao tác “Cấp phát” tự động kích hoạt quy trình phê duyệt và bàn giao tài sản chạy nền.
         </p>
       )}
 

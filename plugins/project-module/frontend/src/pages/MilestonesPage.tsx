@@ -124,8 +124,8 @@ export function MilestonesPage() {
         </tbody>
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có cột mốc phù hợp.</p>}
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Cập nhật tiến độ = `PATCH project_milestones.completion_pct` (live) — workflow `wf_milestone_reminder` nhắc khi sắp đến hạn.
+      <p className="mfe-note">
+        Tiến độ cột mốc được đồng bộ trực tiếp và hệ thống tự động nhắc nhở khi sắp đến hạn hoàn thành.
       </p>
 
       {showCreate && (

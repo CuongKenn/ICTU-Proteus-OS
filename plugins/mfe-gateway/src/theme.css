@@ -1,68 +1,85 @@
 /* ═══════════════════════════════════════════════════════════
-   MFE GATEWAY — Theme tokens (light/dark)
-   Đồng bộ với Design System v3.0 của core-engine (Paper/Ink).
-   Các plugin module dùng biến --mfe-* để đổi màu theo theme.
+   MFE GATEWAY — Enterprise Design System v4.0 (Swiss Slate)
+   1:1 synchronized with Core Engine (Light & Dark).
+   Powers all 9 business plugins seamlessly.
    Copyright (c) 2026 CuongKenn & ICTU Team
    SPDX-License-Identifier: AGPL-3.0-or-later
    ═══════════════════════════════════════════════════════════ */
 
 :root,
 html[data-theme="light"] {
-  --mfe-bg: #eff2f1;
-  --mfe-bg-soft: #e6eae9;
-  --mfe-panel: #ffffff;
-  --mfe-panel-2: #f4f6f5;
-  --mfe-line: #d9dddc;
-  --mfe-line-soft: #e8ebea;
-  --mfe-text: #15181b;
-  --mfe-muted: #60686d;
-  --mfe-dim: #929a9e;
-  --mfe-accent: #0ea5e9;
-  --mfe-accent-hover: #0284c7;
-  --mfe-accent-soft: rgba(14, 165, 233, 0.1);
-  --mfe-primary: #0ea5e9;
-  --mfe-on-accent: #ffffff;
+  --mfe-bg: #F8FAFC;
+  --mfe-bg-soft: #F1F5F9;
+  --mfe-panel: #FFFFFF;
+  --mfe-panel-2: #F8FAFC;
+  --mfe-hover: #F1F5F9;
+  --mfe-line: #E2E8F0;
+  --mfe-line-hi: #CBD5E1;
+  --mfe-line-soft: #F1F5F9;
+  --mfe-text: #0F172A;
+  --mfe-text-soft: #334155;
+  --mfe-muted: #475569;
+  --mfe-dim: #64748B;
+  --mfe-accent: #0369A1;
+  --mfe-accent-hover: #075985;
+  --mfe-accent-soft: rgba(3, 105, 161, 0.08);
+  --mfe-primary: #0369A1;
+  --mfe-on-accent: #FFFFFF;
   --mfe-success: #047857;
-  --mfe-success-soft: rgba(4, 120, 87, 0.1);
-  --mfe-warning: #b45309;
-  --mfe-warning-soft: rgba(180, 83, 9, 0.12);
-  --mfe-danger: #be123c;
-  --mfe-danger-soft: rgba(190, 18, 60, 0.09);
-  --mfe-violet: #6d28d9;
-  --mfe-violet-soft: rgba(109, 40, 217, 0.1);
-  --mfe-selected: #e0f2fe;
-  --mfe-overlay: rgba(15, 23, 42, 0.32);
-  --mfe-shadow: 0 1px 3px rgba(20, 23, 26, 0.07);
-  --mfe-shadow-lg: 0 18px 44px rgba(20, 23, 26, 0.16);
+  --mfe-success-soft: rgba(4, 120, 87, 0.09);
+  --mfe-warning: #B45309;
+  --mfe-warning-soft: rgba(180, 83, 9, 0.09);
+  --mfe-danger: #BE123C;
+  --mfe-danger-soft: rgba(190, 18, 60, 0.08);
+  --mfe-violet: #5B21B6;
+  --mfe-violet-soft: rgba(91, 33, 182, 0.08);
+  --mfe-selected: #E0F2FE;
+  --mfe-overlay: rgba(15, 23, 42, 0.42);
+  --mfe-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.02);
+  --mfe-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.04);
+  --mfe-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --mfe-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mfe-font-heading: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+  --mfe-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
 html[data-theme="dark"] {
-  --mfe-bg: #0b0f14;
-  --mfe-bg-soft: #0f1216;
-  --mfe-panel: #12161c;
-  --mfe-panel-2: #0f1216;
-  --mfe-line: #2a2f35;
-  --mfe-line-soft: #1e2228;
-  --mfe-text: #e8ecef;
-  --mfe-muted: #8a939a;
-  --mfe-dim: #5c646b;
-  --mfe-accent: #3b82f6;
-  --mfe-accent-hover: #2563eb;
-  --mfe-accent-soft: rgba(59, 130, 246, 0.14);
-  --mfe-primary: #2563eb;
-  --mfe-on-accent: #ffffff;
-  --mfe-success: #34d399;
+  --mfe-bg: #0B1120;
+  --mfe-bg-soft: #0F172A;
+  --mfe-panel: #131C31;
+  --mfe-panel-2: #0F172A;
+  --mfe-hover: #1E293B;
+  --mfe-line: #1E293B;
+  --mfe-line-hi: #334155;
+  --mfe-line-soft: rgba(30, 41, 59, 0.75);
+  --mfe-text: #F1F5F9;
+  --mfe-text-soft: #CBD5E1;
+  --mfe-muted: #94A3B8;
+  --mfe-dim: #64748B;
+  --mfe-accent: #38BDF8;
+  --mfe-accent-hover: #0369A1;
+  --mfe-accent-soft: rgba(56, 189, 248, 0.12);
+  --mfe-primary: #0284C7;
+  --mfe-on-accent: #FFFFFF;
+  --mfe-success: #34D399;
   --mfe-success-soft: rgba(52, 211, 153, 0.12);
-  --mfe-warning: #fbbf24;
+  --mfe-warning: #FBBF24;
   --mfe-warning-soft: rgba(251, 191, 36, 0.12);
-  --mfe-danger: #fb7185;
+  --mfe-danger: #FB7185;
   --mfe-danger-soft: rgba(251, 113, 133, 0.12);
-  --mfe-violet: #a78bfa;
+  --mfe-violet: #A78BFA;
   --mfe-violet-soft: rgba(167, 139, 250, 0.14);
-  --mfe-selected: #1e3a5f;
-  --mfe-overlay: rgba(2, 6, 23, 0.7);
-  --mfe-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  --mfe-shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --mfe-selected: #1E3A5F;
+  --mfe-overlay: rgba(2, 6, 23, 0.72);
+  --mfe-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --mfe-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --mfe-shadow-lg: 0 28px 60px rgba(0, 0, 0, 0.58);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 html,
@@ -70,32 +87,32 @@ body {
   margin: 0;
   background: var(--mfe-bg);
   color: var(--mfe-text);
+  font-family: var(--mfe-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
 }
 
-.mfe-theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid var(--mfe-line);
-  background: var(--mfe-panel);
-  color: var(--mfe-text);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 600;
-  transition: border-color 0.2s, background 0.2s, transform 0.2s;
-}
-.mfe-theme-toggle:hover {
-  border-color: var(--mfe-accent);
-  transform: translateY(-1px);
+:focus-visible {
+  outline: 2px solid var(--mfe-accent);
+  outline-offset: 2px;
 }
 
-/* Thanh tiến trình khi có request đang chạy (global busy indicator). */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--mfe-line-hi); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mfe-dim); }
+
+/* ── Global Busy Progress Bar ─────────────────────────────── */
 @keyframes mfe-progress {
   0% { width: 0%; opacity: 1; }
   55% { width: 75%; }
@@ -107,7 +124,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 2.5px;
   z-index: 60;
   pointer-events: none;
   background: transparent;
@@ -115,6 +132,577 @@ body {
 .mfe-busy-bar {
   height: 100%;
   background: var(--mfe-accent);
-  box-shadow: 0 0 8px var(--mfe-accent);
-  animation: mfe-progress 1.2s ease-in-out infinite;
+  animation: mfe-progress 1.1s ease-in-out infinite;
+}
+
+/* ── Gateway Topbar ───────────────────────────────────────── */
+.mfe-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.5rem;
+  background: var(--mfe-panel);
+  border-bottom: 1px solid var(--mfe-line);
+}
+
+.mfe-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line-hi);
+  color: var(--mfe-text-soft);
+  border-radius: 7px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.mfe-back-btn:hover {
+  background: var(--mfe-hover);
+  color: var(--mfe-text);
+  border-color: var(--mfe-dim);
+}
+
+.mfe-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 7px;
+  border: 1px solid var(--mfe-line-hi);
+  background: var(--mfe-panel);
+  color: var(--mfe-text-soft);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.mfe-theme-toggle:hover {
+  border-color: var(--mfe-dim);
+  background: var(--mfe-hover);
+  color: var(--mfe-text);
+}
+
+/* ── Module Page Shell & Header ───────────────────────────── */
+.mfe-module-shell {
+  padding: 1.5rem 1.75rem 2.5rem;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.mfe-module-header {
+  margin-bottom: 1.5rem;
+}
+
+.mfe-module-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.mfe-module-title {
+  margin: 0;
+  font-family: var(--mfe-font-heading);
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--mfe-text);
+  line-height: 1.25;
+}
+
+.mfe-module-desc {
+  margin: 0.25rem 0 0;
+  color: var(--mfe-muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/* Clean Enterprise Underline Tab Bar */
+.mfe-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 1.15rem;
+  border-bottom: 1px solid var(--mfe-line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mfe-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mfe-tab {
+  position: relative;
+  padding: 0.6rem 0.9rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--mfe-muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.mfe-tab:hover {
+  color: var(--mfe-text);
+}
+.mfe-tab--active {
+  color: var(--mfe-accent);
+  font-weight: 600;
+  border-bottom-color: var(--mfe-accent);
+}
+
+.mfe-reset-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--mfe-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.mfe-reset-btn:hover {
+  color: var(--mfe-text);
+  background: var(--mfe-hover);
+}
+
+/* ── Stat / KPI Cards ─────────────────────────────────────── */
+.mfe-stat {
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  min-width: 170px;
+  flex: 1;
+  box-shadow: var(--mfe-shadow);
+}
+.mfe-stat-label {
+  color: var(--mfe-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+.mfe-stat-value {
+  color: var(--mfe-text);
+  font-family: var(--mfe-font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.mfe-stat-sub {
+  color: var(--mfe-dim);
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Status Badges (Soft-tinted with indicator dot) ───────── */
+.mfe-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+}
+.mfe-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ── Toolbar, Inputs, Selects, Buttons ────────────────────── */
+.mfe-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.mfe-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+}
+.mfe-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--mfe-dim);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.mfe-input,
+.mfe-select {
+  height: 36px;
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line-hi);
+  color: var(--mfe-text);
+  border-radius: 8px;
+  padding: 0 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mfe-input {
+  width: 100%;
+}
+.mfe-input--search {
+  padding-left: 2.2rem;
+}
+.mfe-input::placeholder {
+  color: var(--mfe-dim);
+}
+.mfe-input:hover:not(:disabled),
+.mfe-select:hover:not(:disabled) {
+  border-color: var(--mfe-dim);
+}
+.mfe-input:focus,
+.mfe-select:focus {
+  outline: none;
+  border-color: var(--mfe-accent);
+  box-shadow: 0 0 0 3px var(--mfe-accent-soft);
+}
+
+.mfe-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--mfe-line-hi);
+  background: var(--mfe-panel);
+  color: var(--mfe-text-soft);
+  cursor: pointer;
+  font-size: 0.825rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.mfe-btn:hover:not(:disabled) {
+  background: var(--mfe-hover);
+  color: var(--mfe-text);
+  border-color: var(--mfe-dim);
+}
+.mfe-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mfe-btn--primary {
+  background: var(--mfe-primary);
+  color: var(--mfe-on-accent);
+  border-color: transparent;
+}
+.mfe-btn--primary:hover:not(:disabled) {
+  background: var(--mfe-accent-hover);
+  color: var(--mfe-on-accent);
+  border-color: transparent;
+}
+
+/* ── Enterprise Data Tables ───────────────────────────────── */
+.mfe-table-wrap {
+  overflow-x: auto;
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line);
+  border-radius: 10px;
+  box-shadow: var(--mfe-shadow);
+}
+
+.mfe-table,
+.mfe-module-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  color: var(--mfe-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mfe-table thead th,
+.mfe-module-shell table thead th {
+  text-align: left;
+  padding: 0.7rem 0.95rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--mfe-muted);
+  background: var(--mfe-bg-soft);
+  border-bottom: 1px solid var(--mfe-line);
+  white-space: nowrap;
+}
+
+.mfe-table tbody td,
+.mfe-module-shell table tbody td {
+  padding: 0.75rem 0.95rem;
+  border-bottom: 1px solid var(--mfe-line-soft);
+  vertical-align: middle;
+  color: var(--mfe-text);
+}
+
+.mfe-table tbody tr:last-child td,
+.mfe-module-shell table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mfe-table tbody tr,
+.mfe-module-shell table tbody tr {
+  transition: background-color 0.12s ease;
+}
+.mfe-table tbody tr:hover,
+.mfe-module-shell table tbody tr:hover {
+  background: var(--mfe-hover);
+}
+
+/* ── Modal Dialog ─────────────────────────────────────────── */
+@keyframes mfe-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.mfe-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--mfe-overlay);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.mfe-modal {
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line-hi);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--mfe-text);
+  box-shadow: var(--mfe-shadow-lg);
+  overflow: hidden;
+  animation: mfe-modal-in 0.16s ease-out both;
+}
+
+.mfe-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.35rem;
+  border-bottom: 1px solid var(--mfe-line);
+}
+.mfe-modal-title {
+  margin: 0;
+  font-family: var(--mfe-font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--mfe-text);
+}
+.mfe-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  color: var(--mfe-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.mfe-modal-close:hover {
+  background: var(--mfe-hover);
+  color: var(--mfe-text);
+}
+.mfe-modal-body {
+  padding: 1.25rem 1.35rem 1.4rem;
+  overflow-y: auto;
+}
+
+/* ── Alerts & Demo Banner ─────────────────────────────────── */
+.mfe-demo-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--mfe-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--mfe-warning) 28%, transparent);
+  color: var(--mfe-warning);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.mfe-alert-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--mfe-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--mfe-danger) 28%, transparent);
+  color: var(--mfe-danger);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+/* ── Dashboard Panels & Charts ────────────────────────────── */
+.mfe-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.mfe-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.mfe-panel {
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line);
+  border-radius: 12px;
+  padding: 1.15rem 1.25rem;
+  box-shadow: var(--mfe-shadow);
+}
+
+.mfe-panel-title {
+  margin: 0 0 0.85rem 0;
+  font-family: var(--mfe-font-heading);
+  font-size: 0.925rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--mfe-text);
+}
+
+.mfe-panel .mfe-table-wrap {
+  box-shadow: none;
+  border-radius: 8px;
+}
+
+.mfe-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.mfe-bar-row:last-of-type {
+  margin-bottom: 0;
+}
+.mfe-bar-track {
+  flex: 1;
+  height: 7px;
+  background: var(--mfe-bg-soft);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mfe-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--mfe-accent);
+  transition: width 0.25s ease;
+}
+
+.mfe-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--mfe-line-soft);
+  color: var(--mfe-text);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+.mfe-list-row:last-of-type {
+  border-bottom: none;
+}
+
+.mfe-note {
+  color: var(--mfe-dim);
+  font-size: 0.78rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  line-height: 1.45;
+}
+
+.mfe-empty {
+  color: var(--mfe-muted);
+  font-size: 0.84rem;
+  margin: 0.75rem 0 0;
+}
+
+/* ── Gateway Catalog Cards ────────────────────────────────── */
+.mfe-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.mfe-catalog-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 1.2rem;
+  background: var(--mfe-panel);
+  border: 1px solid var(--mfe-line);
+  border-radius: 12px;
+  box-shadow: var(--mfe-shadow);
+  color: var(--mfe-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mfe-catalog-card:not(:disabled) {
+  cursor: pointer;
+}
+.mfe-catalog-card:not(:disabled):hover {
+  border-color: var(--mfe-line-hi);
+  box-shadow: var(--mfe-shadow-md);
+}
+.mfe-catalog-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

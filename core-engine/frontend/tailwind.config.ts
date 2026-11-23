@@ -3,6 +3,8 @@
 
 import type { Config } from "tailwindcss";
 
+const withOpacity = (varName: string) => `rgb(var(${varName}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: "class",
   content: [
@@ -14,26 +16,28 @@ const config: Config = {
     extend: {
       colors: {
         paper: {
-          DEFAULT: "var(--paper)",
-          raised: "var(--paper-raised)",
-          white: "var(--paper-white)",
+          DEFAULT: withOpacity("--paper-rgb"),
+          raised: withOpacity("--paper-raised-rgb"),
+          subtle: withOpacity("--paper-subtle-rgb"),
+          white: withOpacity("--paper-white-rgb"),
         },
         ink: {
-          DEFAULT: "var(--ink)",
-          soft: "var(--ink-soft)",
+          DEFAULT: withOpacity("--ink-rgb"),
+          soft: withOpacity("--ink-soft-rgb"),
         },
-        muted: "var(--muted)",
-        dim: "var(--dim)",
-        ghost: "var(--ghost)",
+        muted: withOpacity("--muted-rgb"),
+        dim: withOpacity("--dim-rgb"),
+        ghost: withOpacity("--ghost-rgb"),
         accent: {
-          DEFAULT: "var(--accent)",
-          hover: "var(--accent-hover)",
+          DEFAULT: withOpacity("--accent-rgb"),
+          hover: withOpacity("--accent-hover-rgb"),
+          solid: withOpacity("--accent-solid-rgb"),
           soft: "var(--accent-soft)",
           glow: "var(--accent-glow)",
         },
         line: {
-          DEFAULT: "var(--line)",
-          hi: "var(--line-hi)",
+          DEFAULT: withOpacity("--line-rgb"),
+          hi: withOpacity("--line-hi-rgb"),
           focus: "var(--line-focus)",
         },
         plate: {
@@ -43,55 +47,60 @@ const config: Config = {
         },
         // Semantic
         semantic: {
-          cyan: "var(--cyan)",
-          emerald: "var(--emerald)",
-          amber: "var(--amber)",
-          rose: "var(--rose)",
-          violet: "var(--violet)",
+          cyan: withOpacity("--cyan-rgb"),
+          emerald: withOpacity("--emerald-rgb"),
+          amber: withOpacity("--amber-rgb"),
+          rose: withOpacity("--rose-rgb"),
+          violet: withOpacity("--violet-rgb"),
         },
-        // Legacy v2 color aliases compatibility (#750)
+        // Legacy & semantic color aliases (with alpha modifier support for /10, /20, /50...)
         primary: {
-          DEFAULT: "var(--accent)",
-          hover: "var(--accent-hover)",
-          dark: "var(--accent-hover)",
+          DEFAULT: withOpacity("--accent-rgb"),
+          hover: withOpacity("--accent-hover-rgb"),
+          dark: withOpacity("--accent-hover-rgb"),
           light: "var(--accent-soft)",
           soft: "var(--accent-soft)",
           glow: "var(--accent-glow)",
           50: "var(--accent-soft)",
           100: "var(--accent-soft)",
-          500: "var(--accent)",
-          600: "var(--accent-hover)",
-          700: "var(--accent-hover)",
+          500: withOpacity("--accent-rgb"),
+          600: withOpacity("--accent-hover-rgb"),
+          700: withOpacity("--accent-hover-rgb"),
         },
-        "brand-primary": "var(--accent)",
-        "bg-base": "var(--paper)",
-        "bg-surface": "var(--paper-raised)",
-        "bg-hover": "var(--paper-raised)",
-        "text-primary": "var(--ink)",
-        "text-secondary": "var(--muted)",
-        border: "var(--line)",
+        "brand-primary": withOpacity("--accent-rgb"),
+        "bg-base": withOpacity("--paper-rgb"),
+        "bg-surface": withOpacity("--paper-raised-rgb"),
+        "bg-hover": withOpacity("--hover-rgb"),
+        "text-primary": withOpacity("--ink-rgb"),
+        "text-secondary": withOpacity("--muted-rgb"),
+        "text-muted": withOpacity("--dim-rgb"),
+        "text-disabled": withOpacity("--dim-rgb"),
+        border: withOpacity("--line-rgb"),
         error: {
-          DEFAULT: "var(--rose)",
+          DEFAULT: withOpacity("--rose-rgb"),
+          light: "var(--rose-fill)",
+        },
+        danger: {
+          DEFAULT: withOpacity("--rose-rgb"),
           light: "var(--rose-fill)",
         },
         warning: {
-          DEFAULT: "var(--amber)",
+          DEFAULT: withOpacity("--amber-rgb"),
           light: "var(--amber-fill)",
         },
         success: {
-          DEFAULT: "var(--emerald)",
+          DEFAULT: withOpacity("--emerald-rgb"),
           light: "var(--emerald-fill)",
         },
       },
       fontFamily: {
         sans: ["var(--font-inter)", "Inter", "system-ui", "-apple-system", "sans-serif"],
-        heading: ["var(--font-space-grotesk)", "Space Grotesk", "Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "Fira Code", "monospace"],
-        display: ["Dancing Script", "cursive"],
+        heading: ["var(--font-jakarta)", "Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
+        mono: ["var(--font-jetbrains)", "JetBrains Mono", "Fira Code", "monospace"],
       },
       fontSize: {
-        hero: ["clamp(2.5rem, 5vw, 3.75rem)", { lineHeight: "1.08", letterSpacing: "-0.025em" }],
-        meta: ["0.5625rem", { letterSpacing: "0.16em" }],
+        hero: ["clamp(2.25rem, 4.2vw, 3.25rem)", { lineHeight: "1.12", letterSpacing: "-0.028em" }],
+        meta: ["0.75rem", { lineHeight: "1.35", letterSpacing: "0.02em" }],
       },
       maxWidth: {
         container: "var(--container-max)",
@@ -106,13 +115,13 @@ const config: Config = {
         modal: "var(--shadow-modal)",
       },
       borderRadius: {
-        card: "14px",
+        card: "12px",
       },
       animation: {
-        "fade-in": "fade-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
-        "slide-up": "slide-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both",
-        "slide-down": "slide-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
-        "scale-in": "scale-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "fade-in": "fade-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "slide-up": "slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "slide-down": "slide-down 0.2s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "scale-in": "scale-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
       keyframes: {
         "fade-in": {
@@ -120,15 +129,15 @@ const config: Config = {
           to: { opacity: "1" },
         },
         "slide-up": {
-          from: { opacity: "0", transform: "translateY(16px)" },
+          from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
         "slide-down": {
-          from: { opacity: "0", transform: "translateY(-8px)" },
+          from: { opacity: "0", transform: "translateY(-6px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
         "scale-in": {
-          from: { opacity: "0", transform: "scale(0.95)" },
+          from: { opacity: "0", transform: "scale(0.97)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
       },

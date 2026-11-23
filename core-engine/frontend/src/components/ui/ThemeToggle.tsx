@@ -12,15 +12,17 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className }) => 
 
   return (
     <button
+      type="button"
       onClick={toggleTheme}
-      className={`p-2 rounded-lg transition-colors duration-200 ${className || ""}`}
-      style={{ color: "var(--muted)" }}
-      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
-      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
-      title={theme === "dark" ? "Chuyển sang sáng" : "Chuyển sang tối"}
+      className={`icon-btn p-2 ${className || ""}`}
+      title={theme === "dark" ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
       aria-label="Toggle theme"
     >
-      {theme === "dark" ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+      {theme === "dark" ? (
+        <Sun className="w-[18px] h-[18px]" />
+      ) : (
+        <Moon className="w-[18px] h-[18px]" />
+      )}
     </button>
   );
 };

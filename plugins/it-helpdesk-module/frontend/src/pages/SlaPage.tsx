@@ -93,9 +93,8 @@ export function SlaPage() {
           ))}
         </tbody>
       </TableWrap>
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Ticket mới tự tính `sla_deadline = created_at + resolve_time_hours`. Quá hạn chưa
-        RESOLVED/CLOSED sẽ bị `wf_sla_escalation` gắn cờ escalated (cron 30 phút).
+      <p className="mfe-note">
+        Hạn SLA của yêu cầu mới được tính tự động theo thời gian xử lý cam kết. Các yêu cầu quá hạn chưa đóng sẽ được tự động cảnh báo leo thang mỗi 30 phút.
       </p>
     </div>
   );

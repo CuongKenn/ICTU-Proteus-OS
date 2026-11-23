@@ -59,39 +59,37 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="mfe-kpi-grid">
         <StatCard label="Văn bản đến" value={String(incoming.length)} sub={`${byStatus['received'] ?? 0} mới tiếp nhận`} />
         <StatCard label="Văn bản đi" value={String(outgoing.length)} sub={`${outgoing.filter((o) => o.status === 'draft').length} bản nháp`} />
-        <StatCard label="Chờ phê duyệt" value={String(pendingApproval)} sub="luồng ký pending" />
-        <StatCard label="Đã hoàn tất" value={String(byStatus['done'] ?? 0)} sub="văn bản đến done" />
+        <StatCard label="Chờ phê duyệt" value={String(pendingApproval)} sub="Hồ sơ chờ ký duyệt" />
+        <StatCard label="Đã hoàn tất" value={String(byStatus['done'] ?? 0)} sub="Văn bản đã xử lý" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Văn bản đến theo trạng thái</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Văn bản đến theo trạng thái</h4>
           {(Object.keys(INCOMING_LABEL) as Array<keyof typeof INCOMING_LABEL>).map((st) => (
-            <div key={st} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.5rem' }}>
-              <span style={{ width: 110, color: C.muted, fontSize: '.82rem' }}>{INCOMING_LABEL[st]}</span>
-              <div style={{ flex: 1, height: 8, background: 'var(--mfe-panel-2)', borderRadius: 999 }}>
+            <div key={st} className="mfe-bar-row">
+              <span style={{ width: 118, color: C.muted, fontSize: '.82rem' }}>{INCOMING_LABEL[st]}</span>
+              <div className="mfe-bar-track">
                 <div
-                  style={{
-                    width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    background: 'var(--mfe-accent)',
-                  }}
+                  className="mfe-bar-fill"
+                  style={{ width: `${(((byStatus[st] ?? 0) / maxCount) * 100).toFixed(0)}%` }}
                 />
               </div>
-              <span style={{ width: 28, textAlign: 'right', color: C.text }}>{byStatus[st] ?? 0}</span>
+              <span style={{ width: 32, textAlign: 'right', color: C.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                {byStatus[st] ?? 0}
+              </span>
             </div>
           ))}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `document_incoming.status` + workflow `wf_incoming_document`.
-          </div>
+          <p className="mfe-note">
+            Trạng thái cập nhật theo thời gian thực khi tiếp nhận và phân công văn bản.
+          </p>
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Văn bản đến cần xử lý</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Văn bản đến cần xử lý</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -110,9 +108,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Điều chuyển qua workflow `wf_reassign_document`, ký duyệt qua `wf_document_approval`.
-          </div>
+          <p className="mfe-note">
+            Điều chuyển người phụ trách và phê duyệt ký số được lưu vết đầy đủ trong nhật ký xử lý.
+          </p>
         </div>
       </div>
     </div>

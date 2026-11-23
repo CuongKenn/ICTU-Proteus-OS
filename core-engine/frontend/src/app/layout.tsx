@@ -2,18 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Root Layout — Next.js App Router
-// Light mode mặc định, dark mode qua toggle (html.dark class).
+// Enterprise Swiss Slate theme — Light mode default, Dark mode via html.dark class.
 
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ui/ThemeProvider";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { LanguageProvider } from "@/components/i18n/LanguageContext";
 import "../styles/globals.css";
 
-const inter = Inter({ subsets: ["latin", "vietnamese"], variable: "--font-inter" });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin", "vietnamese"], variable: "--font-space-grotesk" });
+const inter = Inter({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-inter",
+  display: "swap",
+});
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin", "vietnamese"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Proteus OS — Hệ điều hành Đa năng cho Tổ chức",
@@ -40,7 +55,6 @@ export default function RootLayout({
                 } else if (stored === 'light') {
                   document.documentElement.classList.remove('dark');
                 } else {
-                  // System preference
                   if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
                     document.documentElement.classList.add('dark');
                   }
@@ -50,7 +64,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${jakarta.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <AuthProvider>
           <ThemeProvider>
             <LanguageProvider>

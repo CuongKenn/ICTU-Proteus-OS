@@ -61,16 +61,16 @@ export function Dashboard() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <StatCard label="Đề xuất chờ duyệt" value={String(pendingReq.length)} sub={`${requests.length} đề xuất tổng`} />
-        <StatCard label="PO chờ duyệt" value={String(pendingPO.length)} sub={`${pos.length} PO tổng`} />
-        <StatCard label="Giá trị PO đã duyệt" value={formatVND(approvedValue)} sub="approved + delivered" />
-        <StatCard label="Hợp đồng sắp hết hạn" value={String(expiring.length)} sub="hết hạn trong 30 ngày" />
+      <div className="mfe-kpi-grid">
+        <StatCard label="Đề xuất chờ duyệt" value={String(pendingReq.length)} sub={`Tổng ${requests.length} đề xuất`} />
+        <StatCard label="PO chờ duyệt" value={String(pendingPO.length)} sub={`Tổng ${pos.length} đơn hàng`} />
+        <StatCard label="Giá trị PO đã duyệt" value={formatVND(approvedValue)} sub="Đã duyệt & đã bàn giao" />
+        <StatCard label="Hợp đồng sắp hết hạn" value={String(expiring.length)} sub="Hết hạn trong 30 ngày" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '.75rem' }}>
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Đề xuất chờ duyệt</h4>
+      <div className="mfe-panel-grid">
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Đề xuất chờ duyệt</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -92,11 +92,11 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          {pendingReq.length === 0 && <p style={{ color: C.muted }}>Không có đề xuất chờ duyệt.</p>}
+          {pendingReq.length === 0 && <p className="mfe-empty">Không có đề xuất chờ duyệt.</p>}
         </div>
 
-        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-          <h4 style={{ margin: '0 0 .75rem 0', color: C.text }}>Hợp đồng sắp hết hạn</h4>
+        <div className="mfe-panel">
+          <h4 className="mfe-panel-title">Hợp đồng sắp hết hạn</h4>
           <TableWrap>
             <thead>
               <tr>
@@ -115,10 +115,10 @@ export function Dashboard() {
               ))}
             </tbody>
           </TableWrap>
-          {expiring.length === 0 && <p style={{ color: C.muted }}>Không có hợp đồng nào sắp hết hạn.</p>}
-          <div style={{ color: C.muted, fontSize: '.78rem', marginTop: '.5rem' }}>
-            Nguồn: `procurement_contracts.end_date` + workflow `wf_contract_expiry_alert` (cron thứ 2).
-          </div>
+          {expiring.length === 0 && <p className="mfe-empty">Không có hợp đồng nào sắp hết hạn.</p>}
+          <p className="mfe-note">
+            Cảnh báo gia hạn hợp đồng được rà soát và gửi định kỳ vào thứ Hai hàng tuần.
+          </p>
         </div>
       </div>
     </div>

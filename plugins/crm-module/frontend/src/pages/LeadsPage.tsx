@@ -53,8 +53,8 @@ export function LeadsPage() {
         <Btn primary onClick={() => setShowCreate(true)}>+ Thêm lead</Btn>
       </div>
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          “Thêm lead” gọi workflow `wf_lead_capture` (ghi DB + nhắn kênh sales).
+        <p className="mfe-note">
+          Khi thêm khách hàng tiềm năng mới, hệ thống tự động ghi nhận và thông báo tới kênh phụ trách kinh doanh.
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '.75rem' }}>

@@ -130,8 +130,8 @@ export function ActionsPage() {
           }
         />
       )}
-      <p style={{ color: C.muted, fontSize: '.82rem' }}>
-        Việc cần làm CRUD trực tiếp `meeting_action_items`; nhắc việc định kỳ qua `wf_action_item_followup`.
+      <p className="mfe-note">
+        Đầu việc sau cuộc họp được cập nhật trực tiếp và gửi nhắc nhở định kỳ tới người phụ trách trước kỳ hạn.
       </p>
     </div>
   );

@@ -117,8 +117,8 @@ export function InvoicesPage() {
       </TableWrap>
       {filtered.length === 0 && <p style={{ color: C.muted }}>Không có hóa đơn phù hợp.</p>}
       {mode === 'live' && (
-        <p style={{ color: C.muted, fontSize: '.78rem' }}>
-          Nút “Thêm hóa đơn” gọi workflow n8n `wf_invoice_processing` qua dispatcher (202 → xử lý ngầm).
+        <p className="mfe-note">
+          Hóa đơn mới được tự động đối soát và đưa vào lịch nhắc thanh toán định kỳ.
         </p>
       )}
 
