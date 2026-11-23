@@ -33,6 +33,7 @@ async def test_rag_ingestion_success(mock_adapters):
             "urlId": "first-doc-xyz",
             "source_url": "http://outline.local/doc/first-doc-xyz",
             "text": "This is paragraph 1.\n\nThis is paragraph 2.",
+            "collectionId": "tenant-1",
         },
         {
             "id": "doc2",
@@ -40,6 +41,7 @@ async def test_rag_ingestion_success(mock_adapters):
             "urlId": "second-doc-abc",
             "source_url": "http://outline.local/doc/second-doc-abc",
             "text": "Short text.",
+            "collectionId": "tenant-1",
         },
     ]
     outline_adapter.list_documents.return_value = mock_docs
@@ -74,7 +76,12 @@ async def test_rag_ingestion_falls_back_to_upsert(mock_adapters):
     outline_adapter, qdrant_adapter = mock_adapters
     qdrant_adapter.replace_tenant_vectors = None
     outline_adapter.list_documents.return_value = [
-        {"id": "doc1", "title": "Doc", "text": "Short text."}
+        {
+            "id": "doc1",
+            "title": "Doc",
+            "text": "Short text.",
+            "collectionId": "tenant-1",
+        }
     ]
 
     use_case = RAGIngestionUseCase(outline_adapter, qdrant_adapter)

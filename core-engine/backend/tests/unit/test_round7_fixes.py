@@ -142,8 +142,9 @@ async def test_upgrade_plugin_commits_use_case_session_before_task():
 
     try:
         with patch(
-            "app.entrypoints.routers.plugins.asyncio.get_event_loop"
-        ) as mock_loop:
+            "app.entrypoints.routers.plugins._run_upgrade_plugin_background",
+            new_callable=AsyncMock,
+        ) as mock_bg:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:
                 resp = await ac.post(
@@ -152,7 +153,7 @@ async def test_upgrade_plugin_commits_use_case_session_before_task():
                 )
         assert resp.status_code == 202
         uc_session.commit.assert_awaited_once()
-        mock_loop.return_value.create_task.assert_called_once()
+        mock_bg.assert_called_once()
     finally:
         app.dependency_overrides.clear()
 
