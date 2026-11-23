@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 CuongKenn & ICTU Team
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proteus OS — Hệ điều hành Đa năng cho Tổ chức</title>
+  <meta name="description" content="Proteus OS là Hệ điều hành Chuyển đổi số Lõi mở (DX-OS Open-Core) cho tổ chức và doanh nghiệp. Kiến trúc 3 tầng H-P-D-I, Multi-Tenancy RLS và Agentic AI kiểm chứng Z3.">
+  <meta property="og:title" content="Proteus OS — DX-OS Open-Core cho Tổ chức">
+  <meta property="og:description" content="Hệ điều hành lõi cho Doanh nghiệp, Trường học, Y tế với Agentic AI, Plugin Marketplace và kiến trúc Multi-Tenancy.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a href="#hero" class="skip-link">Bỏ qua tới nội dung chính</a>
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<!-- NAVBAR -->
+<nav class="navbar" id="navbar" aria-label="Điều hướng chính">
+  <div class="navbar-inner">
+    <a href="#" class="navbar-brand" aria-label="Proteus OS - Trang chủ">
+      <img src="images/proteus_logo.png" alt="Proteus OS" width="32" height="32">
+      Proteus <span>OS</span>
+    </a>
+    <ul class="navbar-links">
+      <li><a href="#features">Kiến trúc H-P-D-I</a></li>
+      <li><a href="#ai">Agentic AI</a></li>
+      <li><a href="#marketplace">Marketplace</a></li>
+      <li><a href="#techstack">Công nghệ</a></li>
+      <li><a href="#docs">Tài liệu</a></li>
+      <li><a href="#roadmap">Tiến độ</a></li>
+    </ul>
+    <a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener" class="btn-nav-github">
+      <i class="fab fa-github" aria-hidden="true"></i> GitHub
+    </a>
+    <button class="hamburger" id="hamburger" aria-label="Mở menu" aria-expanded="false" aria-controls="mobile-menu"><i class="fas fa-bars" aria-hidden="true"></i></button>
+  </div>
+</nav>
+<ul class="mobile-menu" id="mobile-menu" aria-label="Menu di động">
+  <li><a href="#features" class="mobile-link">Kiến trúc H-P-D-I</a></li>
+  <li><a href="#ai" class="mobile-link">Agentic AI</a></li>
+  <li><a href="#marketplace" class="mobile-link">Marketplace</a></li>
+  <li><a href="#techstack" class="mobile-link">Công nghệ</a></li>
+  <li><a href="#docs" class="mobile-link">Tài liệu</a></li>
+  <li><a href="#roadmap" class="mobile-link">Tiến độ</a></li>
+  <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener"><i class="fab fa-github" aria-hidden="true"></i> GitHub Repository</a></li>
+</ul>
+
+<main id="main">
+
+<!-- HERO -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-text">
+        <div class="hero-pill">
+          <span class="hero-pill-dot" aria-hidden="true"></span>
+          <span>DX-OS Open-Core · Multi-Tenancy · Agentic AI</span>
+        </div>
+        <h1 class="hero-title">Hệ điều hành <span class="accent-text">Chuyển đổi số</span> cho mọi Tổ chức</h1>
+        <p class="hero-desc">
+          <em>"Linux là hệ điều hành cho máy tính. Proteus OS là hệ điều hành lõi cho mọi tổ chức."</em>
+          <br><br>
+          Xóa bỏ ốc đảo dữ liệu, tự động hóa quy trình nghiệp vụ và vận hành <strong>Trí tuệ nhân tạo có kiểm soát</strong> trên nền tảng 100% mã nguồn mở.
+        </p>
+        <div class="hero-actions">
+          <a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener" class="btn btn-primary">
+            <i class="fab fa-github" aria-hidden="true"></i> Xem trên GitHub
+          </a>
+          <a href="https://github.com/CuongKenn/ICTU_Proteus-os/tree/main/docs" target="_blank" rel="noopener" class="btn btn-secondary">
+            <i class="fas fa-book-open" aria-hidden="true"></i> Đọc Tài liệu
+          </a>
+        </div>
+        <div class="hero-badges">
+          <span class="hero-badge"><i class="fas fa-check" aria-hidden="true"></i> GNU AGPLv3</span>
+          <span class="hero-badge"><i class="fas fa-check" aria-hidden="true"></i> Docker Ready</span>
+          <span class="hero-badge"><i class="fas fa-check" aria-hidden="true"></i> 9 Phân hệ Nghiệp vụ</span>
+          <span class="hero-badge"><i class="fas fa-check" aria-hidden="true"></i> PostgreSQL RLS</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="mock-window mock-window--dark" aria-label="Bảng điều khiển khởi tạo không gian số Proteus OS">
+          <div class="mock-bar">
+            <span class="mock-dots"><span></span><span></span><span></span></span>
+            <span class="mock-url">proteus-cli — tenant provisioning</span>
+            <span style="color:#34D399;font-weight:600;">● Live</span>
+          </div>
+          <div class="mock-term">
+            <div class="mock-term-cmd"><span class="prompt">$</span>proteus tenant init --org acme-vietnam --plan enterprise</div>
+            <div class="mock-term-ok">[ok] Keycloak SSO realm &amp; RBAC roles synced</div>
+            <div class="mock-term-ok">[ok] PostgreSQL schema &amp; FORCE RLS active</div>
+            <div class="mock-term-ok">[ok] Mattermost workspace &amp; Outline KB mounted</div>
+            <div class="mock-term-ok">[ok] n8n workflows &amp; 17 Metabase BI dashboards ready</div>
+            <div class="mock-term-divider"></div>
+            <div class="mock-term-info">AI Orchestrator (Z3 Verified · HITL): <span style="color:#38BDF8;">online</span></div>
+            <div class="mock-term-info">Portal: <span style="color:#F8FAFC;">https://acme.proteus.local/launchpad</span></div>
+          </div>
+          <div class="mock-layer-strip">
+            <div class="mock-layer-pill"><small>Tầng 1 · Lõi số</small><span>Keycloak · RLS · Redis</span></div>
+            <div class="mock-layer-pill"><small>Tầng 2 · H-P-D-I</small><span>Chat · n8n · BI · AI</span></div>
+            <div class="mock-layer-pill"><small>Tầng 3 · Nghiệp vụ</small><span>9 Micro-Frontends</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item"><div class="stat-number">18+</div><div class="stat-label">Core REST APIs</div></div>
+      <div class="stat-item"><div class="stat-number">9</div><div class="stat-label">Phân hệ Nghiệp vụ</div></div>
+      <div class="stat-item"><div class="stat-number">17</div><div class="stat-label">Metabase Dashboards</div></div>
+      <div class="stat-item"><div class="stat-number">3</div><div class="stat-label">Chế độ AI Tự hành</div></div>
+      <div class="stat-item"><div class="stat-number">100%</div><div class="stat-label">Open-Source Docker</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAIN POINTS -->
+<section class="section reveal" id="problem">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Ba điểm nghẽn cốt lõi của Tổ chức</h2>
+      <p class="section-sub">Doanh nghiệp SME, cơ quan hành chính và trường đại học thường rơi vào hai thái cực: phần mềm phân mảnh hoặc hệ thống nguyên khối đóng kín.</p>
+    </div>
+    <div class="pain-grid">
+      <div class="surface-card pain-card">
+        <div class="icon-box icon-box--danger"><i class="fas fa-cubes" aria-hidden="true"></i></div>
+        <h3>Ốc đảo Thông tin</h3>
+        <p>Vận hành nhiều phần mềm rời rạc không liên thông, dẫn đến dữ liệu trùng lặp, thiếu chuẩn hóa và đứt gãy báo cáo quản trị.</p>
+      </div>
+      <div class="surface-card pain-card">
+        <div class="icon-box icon-box--warning"><i class="fas fa-gears" aria-hidden="true"></i></div>
+        <h3>Thiếu Tự động hóa</h3>
+        <p>Nhân sự nhập liệu lặp lại và chuyển giao thủ công giữa các phòng ban, làm tăng sai sót và kéo dài thời gian ra quyết định.</p>
+      </div>
+      <div class="surface-card pain-card">
+        <div class="icon-box"><i class="fas fa-microchip" aria-hidden="true"></i></div>
+        <h3>AI Thiếu Ngữ cảnh &amp; Kiểm soát</h3>
+        <p>Chatbot rời rạc chỉ hỏi-đáp trên file tải lên, không truy xuất được nguồn dữ liệu thật và không có cơ chế kiểm duyệt an toàn.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- H-P-D-I -->
+<section class="section section-alt reveal" id="features">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Khung tiến hóa <span class="accent-text">H-P-D-I</span> — 4 không gian tích hợp</h2>
+      <p class="section-sub">Chuyển giao năng lực điều hành tuần tự từ con người sang thuật toán tự động và trí tuệ nhân tạo có giám sát.</p>
+    </div>
+    <div class="hpdi-grid">
+      <div class="surface-card hpdi-card">
+        <div class="hpdi-head">
+          <div class="icon-box"><i class="fas fa-users" aria-hidden="true"></i></div>
+          <span class="hpdi-tag" style="background:var(--color-primary-soft);color:var(--color-primary);">[H] Human</span>
+        </div>
+        <h3>Môi trường làm việc số tích hợp</h3>
+        <p>Đăng nhập một lần qua Keycloak SSO để truy cập toàn bộ không gian làm việc. Giao tiếp tập trung trên Mattermost và quản trị tri thức trên Outline Wiki.</p>
+        <div class="hpdi-chips">
+          <span class="chip">Keycloak SSO</span>
+          <span class="chip">Mattermost</span>
+          <span class="chip">Outline Wiki</span>
+        </div>
+      </div>
+      <div class="surface-card hpdi-card">
+        <div class="hpdi-head">
+          <div class="icon-box icon-box--success"><i class="fas fa-diagram-project" aria-hidden="true"></i></div>
+          <span class="hpdi-tag" style="background:var(--color-success-soft);color:var(--color-success);">[P] Process</span>
+        </div>
+        <h3>Tự động hóa Quy trình Event-Driven</h3>
+        <p>Chuẩn hóa quy trình bằng biểu mẫu Micro-Frontend và Appsmith Low-code kết nối n8n Workflow. Rào chắn Poka-yoke ngăn sai sót ngay tại điểm nhập liệu.</p>
+        <div class="hpdi-chips">
+          <span class="chip">n8n Workflow</span>
+          <span class="chip">Appsmith Low-code</span>
+          <span class="chip">Poka-yoke Validation</span>
+        </div>
+      </div>
+      <div class="surface-card hpdi-card">
+        <div class="hpdi-head">
+          <div class="icon-box icon-box--warning"><i class="fas fa-database" aria-hidden="true"></i></div>
+          <span class="hpdi-tag" style="background:var(--color-warning-soft);color:var(--color-warning);">[D] Data</span>
+        </div>
+        <h3>Nguồn sự thật duy nhất (Unified DB)</h3>
+        <p>PostgreSQL kết hợp Row-Level Security bảo đảm cô lập dữ liệu đa thuê ước. Metabase cung cấp 17 bảng điều khiển trực quan theo thời gian thực.</p>
+        <div class="hpdi-chips">
+          <span class="chip">PostgreSQL RLS</span>
+          <span class="chip">Metabase BI</span>
+          <span class="chip">Qdrant Vector</span>
+        </div>
+      </div>
+      <div class="surface-card hpdi-card">
+        <div class="hpdi-head">
+          <div class="icon-box icon-box--violet"><i class="fas fa-brain" aria-hidden="true"></i></div>
+          <span class="hpdi-tag" style="background:var(--color-violet-soft);color:var(--color-violet);">[I] Intelligence</span>
+        </div>
+        <h3>Trí tuệ Nhân tạo Tự hành có Kiểm chứng</h3>
+        <p>AI giám sát dữ liệu vận hành 24/7, truy xuất tri thức RAG chính xác và thực thi lệnh ủy quyền thông qua chuẩn DX-DSL được kiểm chứng bằng Z3 SMT Solver.</p>
+        <div class="hpdi-chips">
+          <span class="chip">RAG Hybrid Search</span>
+          <span class="chip">DX-DSL &amp; Z3</span>
+          <span class="chip">Human-in-the-loop</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AI -->
+<section class="section reveal" id="ai">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">3 chế độ <span class="accent-text">AI Tự hành</span> phân quyền chặt chẽ</h2>
+      <p class="section-sub">Phân tách rõ ranh giới quyền hạn giữa truy vấn tri thức, giám sát cảnh báo và thực thi ghi dữ liệu.</p>
+    </div>
+    <div class="ai-modes-grid">
+      <div class="surface-card ai-mode-card">
+        <div class="icon-box"><i class="fas fa-magnifying-glass" aria-hidden="true"></i></div>
+        <h3>RAG Assistant</h3>
+        <p>Tìm kiếm ngữ nghĩa trên tài liệu nội bộ với Qdrant Hybrid Search (Dense + BM25). Trả lời có trích nguồn, hạn chế tối đa ảo giác.</p>
+        <div class="ai-badge no-approval"><i class="fas fa-check-circle" aria-hidden="true"></i> Chỉ đọc (Read-only)</div>
+      </div>
+      <div class="surface-card ai-mode-card">
+        <div class="icon-box icon-box--warning"><i class="fas fa-chart-line" aria-hidden="true"></i></div>
+        <h3>Proactive Monitor</h3>
+        <p>Quét dữ liệu giao dịch PostgreSQL định kỳ, phát hiện đơn trễ hạn SLA hoặc điểm nghẽn quy trình và gửi cảnh báo về Mattermost.</p>
+        <div class="ai-badge report-only"><i class="fas fa-bell" aria-hidden="true"></i> Chỉ báo cáo cảnh báo</div>
+      </div>
+      <div class="surface-card ai-mode-card">
+        <div class="icon-box icon-box--danger"><i class="fas fa-shield-halved" aria-hidden="true"></i></div>
+        <h3>Executive Agent</h3>
+        <p>Chuyển đổi yêu cầu ngôn ngữ tự nhiên sang lệnh DX-DSL, chạy dry-run kiểm chứng Z3 và kích hoạt quy trình n8n sau khi được phê duyệt.</p>
+        <div class="ai-badge require-approval"><i class="fas fa-lock" aria-hidden="true"></i> Bắt buộc phê duyệt</div>
+      </div>
+    </div>
+    <div class="hitl-banner">
+      <div class="hitl-banner-icon"><i class="fas fa-shield-halved" aria-hidden="true"></i></div>
+      <p><strong>Cơ chế Human-in-the-Loop bất biến:</strong> Trước khi AI thực hiện bất kỳ thao tác ghi hoặc thay đổi dữ liệu nào (Duyệt đơn, Chi tiêu, Vô hiệu tài khoản...), hệ thống bắt buộc gửi thông báo tương tác qua Mattermost để người có thẩm quyền xác nhận. AI không thể tự ý vượt qua bước phê duyệt.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MARKETPLACE -->
+<section class="section section-alt reveal" id="marketplace">
+  <div class="container">
+    <div class="marketplace-grid">
+      <div>
+        <div class="mock-window" aria-label="Xem trước giao diện Plugin Marketplace của Proteus OS">
+          <div class="mock-bar">
+            <span class="mock-dots"><span></span><span></span><span></span></span>
+            <span class="mock-url">app.proteus.local/marketplace</span>
+            <span style="font-weight:600;color:var(--color-primary);">9 phân hệ</span>
+          </div>
+          <div class="mock-mp-body">
+            <div class="mock-mp-head">
+              <h4>Cửa hàng Ứng dụng Doanh nghiệp</h4>
+              <span class="mock-mp-count">3 đã cài đặt · 6 sẵn sàng</span>
+            </div>
+            <div class="mock-mp-grid">
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">Quản trị Nhân sự (HR)</span><span class="mock-mp-ver">v1.2.0</span></div>
+                <div class="mock-mp-meta">7 bảng dữ liệu · 6 luồng n8n</div>
+                <span class="mock-pill mock-pill--ok"><i class="fas fa-check" aria-hidden="true"></i> Đang hoạt động</span>
+              </div>
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">Tài chính Kế toán</span><span class="mock-mp-ver">v1.1.0</span></div>
+                <div class="mock-mp-meta">5 bảng dữ liệu · 4 luồng n8n</div>
+                <span class="mock-pill mock-pill--ok"><i class="fas fa-check" aria-hidden="true"></i> Đang hoạt động</span>
+              </div>
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">Quản trị Khách hàng (CRM)</span><span class="mock-mp-ver">v1.2.0</span></div>
+                <div class="mock-mp-meta">6 bảng dữ liệu · 5 luồng n8n</div>
+                <span class="mock-pill mock-pill--ok"><i class="fas fa-check" aria-hidden="true"></i> Đang hoạt động</span>
+              </div>
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">Quản lý Tài sản</span><span class="mock-mp-ver">v1.0.4</span></div>
+                <div class="mock-mp-meta">5 bảng dữ liệu · 3 luồng n8n</div>
+                <span class="mock-pill mock-pill--ready">Cài đặt 1 chạm</span>
+              </div>
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">Văn thư &amp; Ký duyệt</span><span class="mock-mp-ver">v1.1.2</span></div>
+                <div class="mock-mp-meta">4 bảng dữ liệu · 4 luồng n8n</div>
+                <span class="mock-pill mock-pill--ready">Cài đặt 1 chạm</span>
+              </div>
+              <div class="mock-mp-card">
+                <div class="mock-mp-top"><span class="mock-mp-title">IT Helpdesk &amp; SLA</span><span class="mock-mp-ver">v1.0.3</span></div>
+                <div class="mock-mp-meta">4 bảng dữ liệu · 3 luồng n8n</div>
+                <span class="mock-pill mock-pill--ready">Cài đặt 1 chạm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 class="section-title">Mở rộng phân hệ nghiệp vụ <span class="accent-text">chỉ với 1 thao tác</span></h2>
+        <p class="section-sub">Kiến trúc Micro-Kernel kết hợp đặc tả <code>manifest.yaml</code> cho phép triển khai hoàn chỉnh 9 phân hệ chuyên ngành trong vòng 30 giây.</p>
+        <ul class="feature-list">
+          <li>
+            <div class="feature-icon icon-box" style="margin-bottom:0;"><i class="fas fa-bolt" aria-hidden="true"></i></div>
+            <div><h4>Tự động khởi tạo đồng bộ</h4><p>Tự động chạy schema PostgreSQL, bật RLS, nạp luồng n8n và khởi tạo báo cáo Metabase chỉ từ một file manifest.</p></div>
+          </li>
+          <li>
+            <div class="feature-icon icon-box icon-box--success" style="margin-bottom:0;"><i class="fas fa-rotate-left" aria-hidden="true"></i></div>
+            <div><h4>Auto-Rollback &amp; Cleanup Agent</h4><p>Cơ chế Compensating Transaction tự động dọn dẹp tài nguyên khi cài đặt gián đoạn, tránh để lại dữ liệu rác.</p></div>
+          </li>
+          <li>
+            <div class="feature-icon icon-box icon-box--warning" style="margin-bottom:0;"><i class="fas fa-arrows-left-right" aria-hidden="true"></i></div>
+            <div><h4>Giao tiếp liên phân hệ qua Redis Event Bus</h4><p>Kiến trúc hướng sự kiện decoupled: Nhân sự phát sự kiện, Tài chính tự động lắng nghe và xử lý đồng bộ.</p></div>
+          </li>
+          <li>
+            <div class="feature-icon icon-box icon-box--violet" style="margin-bottom:0;"><i class="fas fa-code-branch" aria-hidden="true"></i></div>
+            <div><h4>Quản lý phiên bản &amp; Migration</h4><p>Hỗ trợ nâng cấp phân hệ theo Semantic Versioning an toàn và không gián đoạn dịch vụ.</p></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WORKSPACE UI PREVIEW -->
+<section class="section reveal" id="ui">
+  <div class="container">
+    <div class="section-header-center">
+      <h2 class="section-title">Không gian làm việc <span class="accent-text">Doanh nghiệp Thống nhất</span></h2>
+      <p class="section-sub">Thiết kế Swiss Slate sắc nét, tối ưu khả năng đọc và tốc độ tác nghiệp với đầy đủ chế độ Sáng/Tối đồng bộ giữa Core Engine và 9 Micro-Frontend.</p>
+    </div>
+    <div class="launch-shot">
+      <div class="mock-window" aria-label="Xem trước giao diện không gian làm việc Proteus OS">
+        <div class="mock-bar">
+          <span class="mock-dots"><span></span><span></span><span></span></span>
+          <span class="mock-url">acme.proteus.local/launchpad</span>
+          <span style="font-size:0.72rem;font-weight:600;color:var(--color-text-primary);">Nguyễn Minh Anh · Tenant Admin</span>
+        </div>
+        <div class="mock-shell">
+          <aside class="mock-sidebar">
+            <div class="mock-side-group">Không gian làm việc</div>
+            <div class="mock-side-item mock-side-item--active"><i class="fas fa-grip" aria-hidden="true"></i> Tổng quan</div>
+            <div class="mock-side-item"><i class="fas fa-store" aria-hidden="true"></i> Ứng dụng</div>
+            <div class="mock-side-item"><i class="fas fa-robot" aria-hidden="true"></i> Proteus AI</div>
+            <div class="mock-side-group">Cộng tác &amp; Nghiệp vụ</div>
+            <div class="mock-side-item"><i class="fas fa-comments" aria-hidden="true"></i> Mattermost</div>
+            <div class="mock-side-item"><i class="fas fa-book" aria-hidden="true"></i> Outline Wiki</div>
+            <div class="mock-side-item"><i class="fas fa-chart-line" aria-hidden="true"></i> Metabase BI</div>
+            <div class="mock-side-group">Quản trị</div>
+            <div class="mock-side-item"><i class="fas fa-sliders" aria-hidden="true"></i> Cài đặt</div>
+          </aside>
+          <div class="mock-main">
+            <div class="mock-main-head">
+              <div>
+                <h4>Chào buổi sáng, Minh Anh</h4>
+                <p>Không gian số Công ty CP Công nghệ ACME · 9 phân hệ sẵn sàng</p>
+              </div>
+              <span class="mock-pill mock-pill--ok">SSO Active</span>
+            </div>
+            <div class="mock-tile-grid">
+              <div class="mock-tile">
+                <div class="mock-tile-ic"><i class="fas fa-users" aria-hidden="true"></i></div>
+                <div><b>Quản trị Nhân sự</b><span>Hồ sơ, chấm công &amp; tuyển dụng ATS</span></div>
+              </div>
+              <div class="mock-tile">
+                <div class="mock-tile-ic mock-tile-ic--ok"><i class="fas fa-wallet" aria-hidden="true"></i></div>
+                <div><b>Tài chính Kế toán</b><span>Thu chi, công nợ &amp; duyệt chi</span></div>
+              </div>
+              <div class="mock-tile">
+                <div class="mock-tile-ic mock-tile-ic--warn"><i class="fas fa-briefcase" aria-hidden="true"></i></div>
+                <div><b>Quản trị Khách hàng</b><span>Pipeline bán hàng &amp; hỗ trợ SLA</span></div>
+              </div>
+              <div class="mock-tile">
+                <div class="mock-tile-ic mock-tile-ic--vio"><i class="fas fa-file-signature" aria-hidden="true"></i></div>
+                <div><b>Văn thư &amp; Phê duyệt</b><span>Văn bản đến/đi &amp; trình ký số</span></div>
+              </div>
+              <div class="mock-tile">
+                <div class="mock-tile-ic"><i class="fas fa-boxes-stacked" aria-hidden="true"></i></div>
+                <div><b>Quản lý Tài sản</b><span>Cấp phát, khấu hao &amp; bảo trì</span></div>
+              </div>
+              <div class="mock-tile">
+                <div class="mock-tile-ic mock-tile-ic--ok"><i class="fas fa-diagram-project" aria-hidden="true"></i></div>
+                <div><b>Quản lý Dự án</b><span>Ngân sách, tiến độ &amp; cột mốc</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mock-ai">
+            <div class="mock-ai-title">
+              <span><i class="fas fa-sparkles" style="color:var(--color-primary);margin-right:0.35rem;" aria-hidden="true"></i>Proteus AI</span>
+              <span class="mock-pill mock-pill--ok">Z3 Verified</span>
+            </div>
+            <div class="mock-ai-q">Duyệt đề xuất mua sắm thiết bị #PR-2026-014 và gửi thông báo về phòng Tài chính.</div>
+            <div class="mock-ai-card">
+              <div class="mock-ai-card-head">
+                <span>Dry-Run Preview</span>
+                <span style="color:var(--color-warning);font-size:0.68rem;white-space:nowrap;">Chờ xác nhận</span>
+              </div>
+              <div class="mock-ai-code">procurement.requests.approve(id="PR-2026-014")</div>
+              <div class="mock-ai-actions">
+                <span class="mock-ai-btn mock-ai-btn--pri">Xác nhận</span>
+                <span class="mock-ai-btn mock-ai-btn--sec">Hủy bỏ</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-grid">
+      <div class="surface-card mini-card">
+        <div class="icon-box" style="width:34px;height:34px;font-size:0.9rem;margin-bottom:0.75rem;"><i class="fas fa-table-columns" aria-hidden="true"></i></div>
+        <h4>Đồng nhất App Shell</h4>
+        <p>Nhúng liền mạch các phân hệ nghiệp vụ, BI và giao tiếp trong một khung làm việc duy nhất.</p>
+      </div>
+      <div class="surface-card mini-card">
+        <div class="icon-box icon-box--success" style="width:34px;height:34px;font-size:0.9rem;margin-bottom:0.75rem;"><i class="fas fa-circle-half-stroke" aria-hidden="true"></i></div>
+        <h4>Chuẩn tương phản WCAG AA</h4>
+        <p>Hỗ trợ đầy đủ Light Mode văn phòng và Dark Mode dịu mắt, dễ đọc trên mọi thiết bị.</p>
+      </div>
+      <div class="surface-card mini-card">
+        <div class="icon-box icon-box--violet" style="width:34px;height:34px;font-size:0.9rem;margin-bottom:0.75rem;"><i class="fas fa-robot" aria-hidden="true"></i></div>
+        <h4>Trợ lý AI Thường trực</h4>
+        <p>Truy cập nhanh bằng phím tắt Ctrl+K ở mọi màn hình với quy trình xác nhận rõ ràng.</p>
+      </div>
+      <div class="surface-card mini-card">
+        <div class="icon-box icon-box--warning" style="width:34px;height:34px;font-size:0.9rem;margin-bottom:0.75rem;"><i class="fas fa-mobile-screen" aria-hidden="true"></i></div>
+        <h4>Đáp ứng Đa thiết bị</h4>
+        <p>Bố cục thích ứng cho cả máy tính văn phòng, máy tính bảng và điện thoại di động.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section class="section section-alt reveal" id="techstack">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Ngăn xếp Công nghệ <span class="accent-text">100% Nguồn mở</span></h2>
+      <p class="section-sub">Kế thừa các nền tảng Enterprise Open-Source hàng đầu kết hợp lớp điều phối Innovation Layer tự phát triển.</p>
+    </div>
+
+    <div class="tech-category-label"><i class="fas fa-code" aria-hidden="true"></i> Innovation Layer — Phần lõi tự phát triển</div>
+    <div class="tech-grid">
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo">N</div><h4>Next.js 14 BFF</h4></div>
+        <p>App Shell, Launchpad, Marketplace UI, BFF Proxy bảo vệ JWT phía server.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo">Py</div><h4>FastAPI Core Engine</h4></div>
+        <p>Hexagonal Architecture, Plugin Lifecycle Manager, Pydantic v2 validation.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo">MFE</div><h4>React Micro-Frontend</h4></div>
+        <p>9 phân hệ nghiệp vụ độc lập chạy dưới cùng origin chia sẻ session SSO.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo">Z3</div><h4>AI Orchestrator &amp; Z3</h4></div>
+        <p>DX-DSL Interpreter, kiểm chứng tĩnh Z3 SMT Solver, KV-Cache Vector IPC.</p>
+      </div>
+    </div>
+
+    <div class="tech-category-label"><i class="fas fa-cubes" aria-hidden="true"></i> Open-Source Ecosystem — Hạ tầng tích hợp</div>
+    <div class="tech-grid">
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-key" aria-hidden="true"></i></div><h4>Keycloak 26</h4></div>
+        <p>SSO OIDC, MFA, RBAC 3 tầng và cô lập Realm theo từng tổ chức.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-comments" aria-hidden="true"></i></div><h4>Mattermost</h4></div>
+        <p>Kênh trao đổi nội bộ và thông báo phê duyệt tương tác cho AI Agent.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-diagram-project" aria-hidden="true"></i></div><h4>n8n Workflow</h4></div>
+        <p>Động cơ tự động hóa quy trình, webhook trigger và lập lịch tác vụ ngầm.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-window-restore" aria-hidden="true"></i></div><h4>Appsmith</h4></div>
+        <p>Nền tảng Low-code UI giúp mở rộng biểu mẫu nghiệp vụ trực quan.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-chart-column" aria-hidden="true"></i></div><h4>Metabase OSS</h4></div>
+        <p>17 bảng điều khiển phân tích dữ liệu thời gian thực nhúng qua JWT.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-database" aria-hidden="true"></i></div><h4>PostgreSQL 16</h4></div>
+        <p>Cơ sở dữ liệu quan hệ lõi với FORCE Row-Level Security đa thuê ước.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-bolt" aria-hidden="true"></i></div><h4>Redis Event Bus</h4></div>
+        <p>Trục truyền phát sự kiện Pub/Sub độ trễ thấp giữa các phân hệ.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-magnifying-glass-chart" aria-hidden="true"></i></div><h4>Qdrant &amp; Ollama</h4></div>
+        <p>Tìm kiếm ngữ nghĩa Hybrid Search (Dense + BM25) và suy luận LLM nội bộ.</p>
+      </div>
+    </div>
+
+    <div class="tech-category-label"><i class="fas fa-server" aria-hidden="true"></i> DevSecOps &amp; Observability</div>
+    <div class="tech-grid">
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fab fa-docker" aria-hidden="true"></i></div><h4>Docker Compose</h4></div>
+        <p>Đóng gói container hoàn chỉnh, khởi chạy tự động qua script <code>setup.sh</code>.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-route" aria-hidden="true"></i></div><h4>Traefik Proxy</h4></div>
+        <p>Cửa ngõ biên mạng Zero-Trust, quản lý TLS và định tuyến path-based.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-chart-area" aria-hidden="true"></i></div><h4>Grafana + Loki</h4></div>
+        <p>Thu thập nhật ký tập trung, truy vết kiểm toán và giám sát dịch vụ 24/7.</p>
+      </div>
+      <div class="surface-card tech-card">
+        <div class="tech-card-head"><div class="tech-card-logo"><i class="fas fa-file-code" aria-hidden="true"></i></div><h4>OpenAPI 3.1</h4></div>
+        <p>Chuẩn hóa toàn bộ REST API với tài liệu Swagger sinh tự động từ mã nguồn.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DOCS -->
+<section class="section reveal" id="docs">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Hệ thống Tài liệu Kỹ thuật</h2>
+      <p class="section-sub">Toàn bộ đặc tả nghiệp vụ, kiến trúc, dữ liệu, bảo mật và hướng dẫn biên dịch được công bố công khai trên GitHub.</p>
+    </div>
+    <div class="docs-grid">
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/BRD.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-file-lines" aria-hidden="true"></i></div>
+        <h4>BRD — Đặc tả Nghiệp vụ</h4>
+        <p>Tầm nhìn, yêu cầu chức năng FR, phi chức năng NFR và kiến trúc H-P-D-I.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/architecture.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-sitemap" aria-hidden="true"></i></div>
+        <h4>SAD — Kiến trúc Hệ thống</h4>
+        <p>Hexagonal Architecture, BFF Pattern, SSO flow và các quyết định ADR.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/erd.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-database" aria-hidden="true"></i></div>
+        <h4>ERD — Lược đồ Dữ liệu</h4>
+        <p>Các bảng lõi Metadata, Multi-Tenancy RLS và chiến lược Migration.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/clarification.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-shield-halved" aria-hidden="true"></i></div>
+        <h4>Clarification — Phân quyền</h4>
+        <p>RBAC 3 tầng, đồng bộ Keycloak, nhúng Metabase và ma trận năng lực AI.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/dsl-spec.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-terminal" aria-hidden="true"></i></div>
+        <h4>DX-DSL Spec — Đặc tả AI</h4>
+        <p>Cấu trúc JSON chuẩn, danh sách hành động cho phép và luật kiểm chứng.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/api-swagger.yaml" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-plug" aria-hidden="true"></i></div>
+        <h4>API — OpenAPI 3.1 Spec</h4>
+        <p>Đặc tả 18+ Core Endpoints, schema Pydantic và chuẩn mã lỗi phản hồi.</p>
+        <span class="doc-link">Xem đặc tả <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/deployment.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-server" aria-hidden="true"></i></div>
+        <h4>Deployment Guide</h4>
+        <p>Định tuyến Traefik, bảo mật mạng Docker, Loki và sao lưu dữ liệu.</p>
+        <span class="doc-link">Đọc tài liệu <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+      <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/POF_COMPLIANCE.md" target="_blank" rel="noopener" class="surface-card surface-card-link doc-card">
+        <div class="icon-box icon-box--success" style="width:36px;height:36px;font-size:0.9rem;margin-bottom:0.85rem;"><i class="fas fa-award" aria-hidden="true"></i></div>
+        <h4>PoF Compliance (50/50)</h4>
+        <p>Báo cáo tự đánh giá đáp ứng 100% tiêu chí Phần mềm Nguồn mở 2026.</p>
+        <span class="doc-link">Xem báo cáo <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section class="section section-alt reveal" id="roadmap">
+  <div class="container">
+    <div class="roadmap-layout">
+      <div>
+        <h2 class="section-title">Tiến độ <span class="accent-text">Hoàn thiện</span></h2>
+        <p class="section-sub">Toàn bộ 4 giai đoạn cốt lõi đã hoàn tất kiểm thử tự động, sẵn sàng triển khai tại Trạm thực hành số DX-Lab.</p>
+        <div class="roadmap-legend">
+          <div class="legend-row"><span class="legend-dot legend-dot-done"></span><span>Đã hoàn thành &amp; kiểm thử PASS 100%</span></div>
+        </div>
+      </div>
+      <div class="roadmap-timeline">
+        <div class="surface-card roadmap-item">
+          <div class="roadmap-dot done"><i class="fas fa-check" aria-hidden="true"></i></div>
+          <div class="roadmap-content">
+            <div class="roadmap-phase">Phase 1 — Foundation</div>
+            <h3>Kiến trúc, Đặc tả &amp; Hạ tầng Docker</h3>
+            <div class="roadmap-tasks">
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Hệ thống tài liệu BRD, SAD, ERD, DSL &amp; API</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Enterprise Design System v4.0 (Swiss Slate)</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Chuẩn hóa Plugin Manifest v1 &amp; Linter</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Docker Compose + Traefik Zero-Trust</div>
+            </div>
+          </div>
+        </div>
+        <div class="surface-card roadmap-item">
+          <div class="roadmap-dot done"><i class="fas fa-check" aria-hidden="true"></i></div>
+          <div class="roadmap-content">
+            <div class="roadmap-phase">Phase 2 — Core Engine</div>
+            <h3>Nền tảng Lõi Headless PaaS &amp; App Shell</h3>
+            <div class="roadmap-tasks">
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> FastAPI Plugin Manager (install/upgrade/uninstall)</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Next.js Launchpad, Marketplace &amp; RBAC UI</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Keycloak SSO OIDC + BFF Session Rotation</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> PostgreSQL FORCE RLS Multi-Tenancy</div>
+            </div>
+          </div>
+        </div>
+        <div class="surface-card roadmap-item">
+          <div class="roadmap-dot done"><i class="fas fa-check" aria-hidden="true"></i></div>
+          <div class="roadmap-content">
+            <div class="roadmap-phase">Phase 3 — Agentic AI</div>
+            <h3>Trí tuệ Nhân tạo Tự hành &amp; Kiểm chứng</h3>
+            <div class="roadmap-tasks">
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> RAG Hybrid Search (Qdrant + Outline KB)</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Proactive Monitor &amp; cảnh báo Mattermost</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Executive Agent (DX-DSL + Z3 SMT Solver)</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Human-in-the-loop Approval &amp; Audit Trail</div>
+            </div>
+          </div>
+        </div>
+        <div class="surface-card roadmap-item">
+          <div class="roadmap-dot done"><i class="fas fa-check" aria-hidden="true"></i></div>
+          <div class="roadmap-content">
+            <div class="roadmap-phase">Phase 4 — Plugin Ecosystem</div>
+            <h3>Hệ sinh thái 9 Phân hệ Nghiệp vụ</h3>
+            <div class="roadmap-tasks">
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> 9 Micro-Frontend Modules (HR, Finance, CRM...)</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> 17 Metabase Dashboards &amp; 20+ n8n Workflows</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Redis Event Bus giao tiếp liên phân hệ</div>
+              <div class="roadmap-task"><i class="fas fa-circle-check" aria-hidden="true"></i> Auto-Rollback &amp; Cleanup Agent hoàn chỉnh</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUICK START -->
+<section class="section reveal" id="quickstart">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Triển khai từ Mã nguồn trong 3 bước</h2>
+      <p class="section-sub">Yêu cầu hệ thống: Docker Engine ≥ 24.0, Docker Compose ≥ 2.20, RAM ≥ 8GB.</p>
+    </div>
+    <div class="quick-grid">
+      <div class="surface-card quick-card">
+        <div class="quick-head"><div class="quick-num">1</div><h3>Tải mã nguồn</h3></div>
+        <pre class="code-block">git clone https://github.com/CuongKenn/ICTU_Proteus-os.git
+cd ICTU_Proteus-os</pre>
+      </div>
+      <div class="surface-card quick-card">
+        <div class="quick-head"><div class="quick-num">2</div><h3>Cấu hình biến môi trường</h3></div>
+        <pre class="code-block">cp deploy/.env.example deploy/.env
+# Tùy chỉnh domain, SMTP, LLM...</pre>
+      </div>
+      <div class="surface-card quick-card">
+        <div class="quick-head"><div class="quick-num">3</div><h3>Khởi chạy tự động</h3></div>
+        <pre class="code-block">cd deploy
+chmod +x setup.sh
+./setup.sh</pre>
+      </div>
+    </div>
+    <div class="info-box">
+      <p><strong>Sau ~2–3 phút khởi tạo:</strong> Launchpad tại <code>localhost:3000</code> · API Docs tại <code>localhost:8000/docs</code> · Keycloak Admin tại <code>localhost:8080</code></p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section-sm reveal">
+  <div class="container">
+    <div class="cta-box">
+      <h2>Sẵn sàng triển khai Hệ điều hành Tổ chức của bạn?</h2>
+      <p>Proteus OS phát hành 100% mã nguồn mở theo giấy phép GNU AGPLv3, không lệ thuộc nhà cung cấp, bảo toàn chủ quyền dữ liệu.</p>
+      <div class="cta-actions">
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener" class="btn btn-primary"><i class="fab fa-github" aria-hidden="true"></i> Xem mã nguồn trên GitHub</a>
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" class="btn btn-dark-outline"><i class="fas fa-code-branch" aria-hidden="true"></i> Hướng dẫn Đóng góp</a>
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os/tree/main/docs" target="_blank" rel="noopener" class="btn btn-dark-outline"><i class="fas fa-book" aria-hidden="true"></i> Đọc Tài liệu</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <div class="footer-brand"><img src="images/proteus_logo.png" alt="Proteus OS" width="32" height="32" loading="lazy"><span>Proteus OS</span></div>
+      <p class="footer-desc">Hệ điều hành Chuyển đổi số Lõi mở (DX-OS Open-Core) cho tổ chức và doanh nghiệp. Tích hợp Agentic AI, tự động hóa quy trình và Multi-Tenancy.</p>
+      <div class="footer-socials">
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener" class="footer-social" aria-label="GitHub"><i class="fab fa-github" aria-hidden="true"></i></a>
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os/issues" target="_blank" rel="noopener" class="footer-social" aria-label="Báo lỗi"><i class="fas fa-bug" aria-hidden="true"></i></a>
+        <a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" class="footer-social" aria-label="Đóng góp"><i class="fas fa-code-branch" aria-hidden="true"></i></a>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h5>Tài liệu</h5>
+      <ul class="footer-links">
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/BRD.md" target="_blank" rel="noopener">BRD — Đặc tả Nghiệp vụ</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/architecture.md" target="_blank" rel="noopener">SAD — Kiến trúc</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/erd.md" target="_blank" rel="noopener">ERD — Lược đồ DB</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/api-swagger.yaml" target="_blank" rel="noopener">API — OpenAPI Spec</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/dsl-spec.md" target="_blank" rel="noopener">DX-DSL Spec</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/docs/deployment.md" target="_blank" rel="noopener">Deployment Guide</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h5>Dự án</h5>
+      <ul class="footer-links">
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing Guide</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/LICENSE" target="_blank" rel="noopener">Giấy phép AGPLv3</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/issues" target="_blank" rel="noopener">Báo cáo Lỗi</a></li>
+        <li><a href="https://github.com/CuongKenn/ICTU_Proteus-os/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener">Code of Conduct</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h5>Hệ sinh thái</h5>
+      <ul class="footer-links">
+        <li><a href="https://nextjs.org" target="_blank" rel="noopener">Next.js 14</a></li>
+        <li><a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener">FastAPI</a></li>
+        <li><a href="https://www.keycloak.org" target="_blank" rel="noopener">Keycloak</a></li>
+        <li><a href="https://n8n.io" target="_blank" rel="noopener">n8n Workflow</a></li>
+        <li><a href="https://qdrant.tech" target="_blank" rel="noopener">Qdrant</a></li>
+        <li><a href="https://mattermost.com" target="_blank" rel="noopener">Mattermost</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2026 CuongKenn &amp; ICTU Team. Mã nguồn mở theo giấy phép GNU AGPLv3.</p>
+    <span class="license-badge"><i class="fas fa-balance-scale" aria-hidden="true"></i> GNU AGPLv3</span>
+  </div>
+</footer>
+
+<script>
+  const navbar = document.getElementById('navbar');
+  window.addEventListener('scroll', () => { navbar.classList.toggle('scrolled', window.scrollY > 16); }, { passive: true });
+
+  const hamburger = document.getElementById('hamburger');
+  const mobileMenu = document.getElementById('mobile-menu');
+  const setMenu = (open) => {
+    mobileMenu.classList.toggle('open', open);
+    document.body.classList.toggle('menu-open', open);
+    hamburger.setAttribute('aria-expanded', String(open));
+    hamburger.setAttribute('aria-label', open ? 'Đóng menu' : 'Mở menu');
+    hamburger.querySelector('i').className = open ? 'fas fa-times' : 'fas fa-bars';
+  };
+  hamburger.addEventListener('click', () => setMenu(!mobileMenu.classList.contains('open')));
+  document.querySelectorAll('.mobile-link').forEach(l => l.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => {
+    if (reduceMotion) { el.classList.add('visible'); } else { observer.observe(el); }
+  });
+
+  document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', e => {
+      const id = link.getAttribute('href');
+      if (id.length > 1) {
+        const t = document.querySelector(id);
+        if (t) { e.preventDefault(); setMenu(false); t.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); }
+      }
+    });
+  });
+</script>
+</body>
+</html>
