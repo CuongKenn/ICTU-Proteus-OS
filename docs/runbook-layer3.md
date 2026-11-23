@@ -115,3 +115,37 @@ Lệnh này sẽ tuần tự:
 docker compose up -d
 ```
 Hệ thống Proteus OS hoạt động bình thường với cơ sở dữ liệu và dữ liệu cũ nguyên vẹn.
+
+---
+
+## 5. Quy trình Diễn tập Sự cố Định kỳ (Incident Drills — #855)
+
+Để đảm bảo năng lực phản ứng và khả năng tự phục hồi của hệ thống, thực hiện diễn tập theo các kịch bản sau:
+
+### Kịch bản 1: Orion-LD / MongoDB Đột ngột Crash
+- **Mô phỏng:** `docker compose stop mongo orion-ld`
+- **Quan sát kỳ vọng:**
+  1. `context-sync-worker` log warning retry với exponential backoff, không crash tiến trình chính.
+  2. Các giao dịch ghi nghiệp vụ tại FastAPI backend tiếp tục ghi vào `context.context_outbox` bình thường (decoupled).
+- **Phục hồi:** `docker compose start mongo orion-ld`
+- **Kiểm tra sau phục hồi:** Worker tự động nhận diện kết nối lại và xử lý hết các bản ghi `PENDING` bị dồn ứ, outbox lag trở về 0.
+
+### Kịch bản 2: Đột biến Outbox Lag (>10,000 sự kiện)
+- **Mô phỏng:** Tải hàng loạt bản ghi qua seed test script.
+- **Quan sát kỳ vọng:**
+  1. Grafana dashboard `Layer 3 — Context Broker & Realtime Sync` kích hoạt cảnh báo `OutboxLagHigh`.
+  2. Worker áp dụng cơ chế `SKIP LOCKED` batch processing.
+- **Biện pháp xử lý:** Tăng tạm thời `CONTEXT_SYNC_BATCH_SIZE=500` và khởi chạy worker phụ:
+  ```bash
+  docker compose up -d --scale context-sync-worker=3
+  ```
+  Nhờ `SKIP LOCKED`, nhiều worker xử lý song song mà không tranh chấp hay nhân đôi bản ghi.
+
+### Kịch bản 3: Tái xử lý Dead Letter Queue (DLQ Replay)
+- **Mô phỏng:** Bản ghi payload sai cấu trúc gây lỗi vượt quá `CONTEXT_SYNC_MAX_RETRIES=5`.
+- **Thực thi:** Gọi API replay DLQ:
+  ```bash
+  curl -X POST http://localhost:8000/api/v1/context/outbox/replay-dlq?limit=100 \
+       -H "Authorization: Bearer <ADMIN_TOKEN>"
+  ```
+- **Xác nhận:** Trạng thái bản ghi chuyển về `PENDING`, `retry_count = 0` và được worker lấy ra xử lý lại.

@@ -1,0 +1,6 @@
+{
+  "ngsi_ld_transformation_items_per_sec": 283171.40648238146,
+  "spatial_calculations_ops_per_sec": 1135827.9901720933,
+  "outbox_serialization_ops_per_sec": 156806.8275792239,
+  "status": "PASS"
+}
