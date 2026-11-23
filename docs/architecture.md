@@ -303,3 +303,151 @@ Graph RAG nên được xem xét **nếu và chỉ nếu** xuất hiện các v�
 2. Corpus tài liệu tăng lên > 10,000 documents và chất lượng retrieval xuống rõ ràng.
 3. Có resource đủ để dùng LlamaIndex Knowledge Graph RAG (nhẹ hơn Microsoft GraphRAG, không cần community summarization).
 
+---
+
+### ADR-003: Lựa chọn Backend lưu trữ Context Broker (Orion-LD Backing Store)
+
+**Ngày quyết định:** 2026-11-22  
+**Trạng thái:** Đã chốt ✅ (Lớp 3 — Sprint 1)
+
+#### Vấn đề đặt ra
+FIWARE Orion-LD đóng vai trò là Context Broker trung tâm cho Lớp 3 (Quản lý Thực thể & Digital Twin) theo chuẩn quốc tế ETSI NGSI-LD. Orion-LD yêu cầu một Document Database làm backing store để lưu trữ các thực thể JSON-LD, GeoJSON, và thông tin tiến hóa thời gian (temporal evolution). Cần chọn giải pháp cân bằng giữa tiêu chuẩn FIWARE và NFR1 (tuân thủ Open Source License OSI-approved).
+
+#### So sánh các phương án
+
+| Tiêu chí | Phương án A: MongoDB 6.0/7.0 (Khuyến nghị FIWARE) | Phương án B: FerretDB + PostgreSQL (Apache-2.0) | Phương án C: Scorpio / Stellio (PostgreSQL) |
+|---|---|---|---|
+| **Giấy phép (License)** | SSPL (Server Side Public License — không thuộc OSI) | Apache-2.0 (100% OSI-approved) | BSD-3-Clause / Apache-2.0 |
+| **Độ tương thích Orion-LD** | 100% (Reference Implementation chính thức của FIWARE) | Tương thích giao thức MongoDB wire, một số aggregation/cursor nâng cao bị hạn chế | Độc lập, không chạy Orion-LD (thay thế broker) |
+| **Hỗ trợ Geo & Spatial** | 2dsphere index gốc mạnh mẽ | Dựa vào PostGIS backend | Hỗ trợ PostGIS |
+| **Mức chiếm dụng RAM** | ~300MB - 512MB RAM | Thêm một proxy container (~80MB) + PostgreSQL hiện tại | Đòi hỏi Java/Spring Boot (~1.5GB RAM) |
+| **Vận hành & Backup** | Đơn giản (`mongodump`, `mongorestore`) | Dùng chung PostgreSQL backup | Vận hành phức tạp hơn nhiều |
+
+#### Quyết định kiến trúc
+1. **Sử dụng MongoDB 6.0 làm backing store mặc định cho Orion-LD** trong môi trường Docker Compose tiêu chuẩn. Container MongoDB được cô lập hoàn toàn trong mạng nội bộ `proteus-net`, không expose port ra ngoài Internet, đảm bảo an toàn tuyệt đối và tuân thủ các điều khoản sử dụng nội bộ của SSPL.
+2. **Thiết kế cấu hình trừu tượng qua biến môi trường `MONGO_URL`**: Cho phép các tổ chức yêu cầu khắt khe về 100% giấy phép OSI kích hoạt **FerretDB** thay thế làm drop-in replacement mà không cần sửa đổi bất kỳ mã nguồn hay cấu trúc gọi API nào của Orion-LD.
+3. **Giới hạn tài nguyên:** Đặt giới hạn `mem_limit: 512m` cho container Mongo trong `deploy/docker-compose.yml` để bảo toàn RAM cho các dịch vụ khác.
+
+---
+
+### ADR-004: Chiến lược Hasura GraphQL và Phân tách Tenant (Schema Context + RLS)
+
+**Ngày quyết định:** 2026-11-22  
+**Trạng thái:** Đã chốt ✅ (Lớp 3 — Sprint 1)
+
+#### Vấn đề đặt ra
+Proteus OS áp dụng mô hình Multi-Tenancy cô lập cao: các bảng Core và bảng nghiệp vụ plugin sử dụng schema phân tách (`tenant_<uuid>`) hoặc bảng dùng chung có cột `tenant_id` bảo vệ bởi Row-Level Security (RLS). Khi tích hợp Hasura GraphQL Engine để cung cấp live queries và Digital Twin API, việc dynamic track hàng trăm schema-per-tenant sẽ làm Hasura metadata phình to, làm chậm thời gian khởi động và gây khó khăn khi quản lý vòng đời tenant.
+
+#### Quyết định kiến trúc
+1. **Schema `context` tập trung kết hợp RLS:**
+   - Toàn bộ thực thể Digital Twin, Outbox, và Trạng thái Thực thể dùng chung một schema chuyên dụng `context` (gồm các bảng `entity_state`, `context_outbox`, `sync_cursor`, `subscriptions`).
+   - Mọi bảng trong schema `context` bắt buộc có cột `tenant_id UUID NOT NULL` và được kích hoạt PostgreSQL **FORCE ROW LEVEL SECURITY**.
+2. **Hasura JWT Claims & Session Variables:**
+   - Hasura nhận JWT Token từ Keycloak (hoặc qua Webhook Mode). Keycloak Mapper sẽ đính kèm thông tin:
+     - `x-hasura-default-role`: Vai trò mặc định của user (`staff`, `tenant_admin`, `superadmin`).
+     - `x-hasura-allowed-roles`: Danh sách các vai trò được cấp phép.
+     - `x-hasura-tenant-id`: UUID của tenant đang đăng nhập.
+     - `x-hasura-user-id`: UUID của người dùng.
+3. **Cơ chế áp dụng RLS Policy hai chiều:**
+   - Khi truy vấn qua FastAPI backend: Sử dụng session setting `app.current_tenant_id`.
+   - Khi truy vấn qua Hasura: Sử dụng session setting `current_setting('hasura.user', true)::json->>'x-hasura-tenant-id'`.
+   - Policy: `tenant_id = COALESCE(NULLIF(current_setting('app.current_tenant_id', true), '')::uuid, (NULLIF(current_setting('hasura.user', true), '')::json->>'x-hasura-tenant-id')::uuid)`.
+4. **Phân tách trách nhiệm:**
+   - Hasura chỉ expose dữ liệu **Read/Subscribe** (Live Queries, Digital Twin view, metrics).
+   - Mọi thao tác Mutation ghi dữ liệu nghiệp vụ quan trọng **bắt buộc đi qua FastAPI Backend** để thực thi Business Invariants, kiểm tra RBAC và ghi audit log.
+   - Các bảng plugin nội bộ chứa dữ liệu nhạy cảm được bảo vệ thông qua Database Views lọc cột trước khi track vào Hasura.
+
+---
+
+### ADR-005: Transactional Outbox và Redis Streams cho Đồng bộ Ngữ cảnh Thực thể
+
+**Ngày quyết định:** 2026-11-22  
+**Trạng thái:** Đã chốt ✅ (Lớp 3 — Sprint 1)
+
+#### Vấn đề đặt ra
+Hệ thống cần đồng bộ dữ liệu thay đổi từ các phân hệ nghiệp vụ (PostgreSQL) sang Context Broker (Orion-LD) và Hasura GraphQL Realtime. Nếu dùng cơ chế gọi API đồng bộ trực tiếp (dual-write), khi xảy ra sự cố mạng hoặc service đích tạm thời gián đoạn, dữ liệu sẽ rơi vào trạng thái bất nhất (inconsistent state). Ngược lại, nếu chỉ dùng Redis Pub/Sub hiện tại (ADR-001), các tin nhắn sẽ bị mất khi consumer đang khởi động lại hoặc gặp sự cố.
+
+#### Quyết định kiến trúc
+1. **Mô hình Transactional Outbox Pattern:**
+   - Khi có thay đổi dữ liệu nghiệp vụ (INSERT/UPDATE/DELETE), một sự kiện outbox sẽ được ghi vào bảng `context.context_outbox` trong **cùng transaction cơ sở dữ liệu** với nghiệp vụ chính. Nếu nghiệp vụ thất bại (rollback), sự kiện outbox cũng tự động hủy.
+   - Bảng `context_outbox` lưu trữ: `id`, `tenant_id`, `entity_type`, `entity_id`, `op` (CREATE/UPDATE/DELETE), `payload` (JSONB), `status` (`PENDING`, `PROCESSING`, `PROCESSED`, `FAILED`), `retry_count`, `idempotency_key`, `created_at`.
+2. **Worker xử lý nền (`context-sync-worker`):**
+   - Chạy vòng lặp worker đọc các bản ghi `PENDING` theo cơ chế hàng đợi cạnh tranh an toàn:
+     ```sql
+     SELECT id, tenant_id, entity_type, entity_id, op, payload 
+     FROM context.context_outbox 
+     WHERE status = 'PENDING' 
+     ORDER BY created_at ASC 
+     LIMIT 50 
+     FOR UPDATE SKIP LOCKED;
+     ```
+   - Chuyển đổi payload sang định dạng chuẩn NGSI-LD và đồng bộ sang Orion-LD.
+   - Khi đồng bộ thành công, đánh dấu `PROCESSED` và phát sự kiện vào **Redis Streams** (`stream:context:events`).
+3. **Idempotency & Dead-Letter Queue (DLQ):**
+   - Khóa duy nhất idempotency: `idempotency_key = sha256(tenant_id + ':' + entity_id + ':' + str(version/timestamp))`.
+   - Áp dụng Exponential Backoff khi gặp lỗi (1s, 2s, 4s, 8s, 16s).
+   - Nếu thử lại quá 5 lần vẫn thất bại, sự kiện được chuyển sang trạng thái `FAILED` (Dead-Letter Queue) kèm thông báo cảnh báo giám sát, không làm nghẽn luồng xử lý các sự kiện khác.
+4. **Cam kết độ tin cậy:** Đạt chuẩn **At-least-once delivery** và xử lý **Idempotent** tại tất cả các điểm nhận tin.
+
+---
+
+## 4. Kiến trúc Chi tiết Lớp 3 (Context Broker, Digital Twin & Realtime Dataflow)
+
+Lớp 3 kết nối dữ liệu vận hành từ các phân hệ plugin thành mô hình **Bản sao số (Digital Twin)** thời gian thực, tuân thủ chuẩn mở quốc tế **ETSI NGSI-LD** và hỗ trợ truy vấn không gian qua **PostGIS**.
+
+### 4.1. Sơ đồ Luồng Đồng bộ Dữ liệu (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Người dùng / API Client
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL + PostGIS
+    participant Worker as Context Sync Worker
+    participant Orion as Orion-LD (Context Broker)
+    participant Redis as Redis Streams
+    participant Hasura as Hasura GraphQL Engine
+
+    Note over User,DB: Giai đoạn 1: Transactional Outbox (Đảm bảo tính nguyên tử)
+    User->>API: Thao tác nghiệp vụ (VD: Đặt phòng họp / Cấp tài sản)
+    activate API
+    API->>DB: BEGIN TRANSACTION
+    API->>DB: INSERT/UPDATE bảng nghiệp vụ (VD: meeting_bookings)
+    API->>DB: INSERT context.context_outbox (status = 'PENDING')
+    API->>DB: COMMIT TRANSACTION
+    API-->>User: 200 OK / 201 Created
+    deactivate API
+
+    Note over Worker,Orion: Giai đoạn 2: Worker đồng bộ & Chuyển đổi NGSI-LD
+    activate Worker
+    Worker->>DB: SELECT FOR UPDATE SKIP LOCKED FROM context_outbox
+    DB-->>Worker: Batch bản ghi PENDING
+    Worker->>Worker: Chuyển đổi payload sang NGSI-LD Properties & GeoProperties
+    Worker->>Orion: POST /ngsi-ld/v1/entities (hoặc PATCH /attrs nếu 409)
+    Orion-->>Worker: 201 Created / 204 No Content
+    Worker->>DB: UPSERT context.entity_state (cập nhật vị trí PostGIS)
+    Worker->>DB: UPDATE context_outbox SET status = 'PROCESSED'
+    Worker->>Redis: XADD stream:context:events (phát sự kiện realtime)
+    deactivate Worker
+
+    Note over Redis,Hasura: Giai đoạn 3: Phân phối Realtime & Live Queries
+    Redis-->>Hasura: Nhận sự kiện thay đổi trạng thái thực thể
+    Hasura-->>User: GraphQL Subscription / Live Query update
+```
+
+### 4.2. Cơ chế Chống Vòng lặp Đồng bộ (Anti-Sync Loop)
+
+```mermaid
+flowchart LR
+    A[Outbox Event] -->|1. Process Batch| B[Context Sync Worker]
+    B -->|2. Upsert NGSI-LD| C[Orion-LD Broker]
+    C -.->|3. Subscription Webhook| D[POST /api/v1/context/notifications]
+    D -->|4. Direct Update| E[(context.entity_state)]
+    D -->|5. XADD Stream| F[Redis Streams]
+    D x--x|CHẶN ĐỆ QUY| A
+```
+
+- Endpoint `/api/v1/context/notifications` chỉ cập nhật vào bảng cache `context.entity_state` và Redis stream, **tuyệt đối không ghi vào bảng outbox**, triệt tiêu hoàn toàn khả năng lặp vô hạn.
+
+
+

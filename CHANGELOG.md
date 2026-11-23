@@ -6,6 +6,17 @@ Dự án tuân thủ theo nguyên tắc [Semantic Versioning](https://semver.org
 
 ## [Unreleased] - Sắp tới
 
+### Added
+- [layer3/architecture] Bổ sung các quyết định kiến trúc cốt lõi Lớp 3: ADR-003 (Lựa chọn Orion-LD/MongoDB), ADR-004 (Hasura GraphQL & phân tách tenant), ADR-005 (Transactional Outbox + Redis Streams) (Closes #810, #811, #812).
+- [layer3/docs] Xây dựng Entity Catalog 9 plugin và ma trận chia sẻ dữ liệu/ẩn PII (`docs/entity-catalog.md`), quy chuẩn mô hình ETSI NGSI-LD (`docs/ngsi-ld-model.md`), tài liệu an toàn thông tin Lớp 3 (`docs/security-review-layer3.md`), hướng dẫn vận hành & rollback (`docs/runbook-layer3.md`) (Closes #813, #814, #851, #854, #855).
+- [layer3/infra] Nâng cấp PostgreSQL sang image PostGIS (`postgis/postgis:16-3.4`), bổ sung các services Lớp 3 vào `deploy/docker-compose.yml` (`mongo:6.0`, `orion-ld:1.6.0`, `hasura:v2.44.0`, `context-sync-worker`) với profile `layer3`, healthcheck đồng bộ không race condition, script backup/restore MongoDB (`deploy/scripts/backup_mongo.sh`, `deploy/scripts/restore_mongo.sh`) (Closes #815, #816, #817, #818, #819, #820, #821, #822).
+- [layer3/database] Tạo migration kích hoạt PostGIS extension, tạo schema `context` và các bảng `context_outbox`, `entity_state`, `sync_cursor`, `subscriptions` với cột `location geography(Point, 4326)` và GiST index, áp dụng `FORCE ROW LEVEL SECURITY` phân tách đa tenant tương thích kép cả FastAPI (`app.current_tenant_id`) và Hasura (`hasura.user`) (Closes #823, #824, #825, #826, #827).
+- [layer3/plugin-manifest] Mở rộng Plugin Manifest spec v1.4.0 và validator hỗ trợ khối `ngsi`, tự động chặn cột nhạy cảm theo Entity Catalog, cập nhật manifest cho 3 pilot plugins (`meeting-module`, `asset-module`, `hr-module`) (Closes #828, #829, #830).
+- [layer3/context-broker] Hiện thực hóa `IContextBrokerPort` và `OrionAdapter` giao tiếp Orion-LD, bổ sung bộ contract test JSON-LD NGSI-LD (Closes #831, #832).
+- [layer3/outbox-worker] Triển khai `SQLAlchemyOutboxRepository`, trigger generic `context.fn_generic_outbox_notify()`, và hoàn thiện `ContextSyncWorker` (vòng lặp `SKIP LOCKED`, batching, backoff, idempotency, chuyển tiếp Redis Streams `stream:context:events`, và Dead Letter Queue DLQ) (Closes #833, #834, #835, #836, #837, #838, #839).
+- [layer3/hasura] Cấu hình Hasura metadata tracking bảng `context`, phân quyền theo role (`user`, `tenant_admin`), quan hệ object relationship với bảng `tenants`, tích hợp JWT Keycloak scope `hasura`, và tạo sanitized view `context.v_hr_employees_sanitized` ẩn cột lương (Closes #840, #841, #842, #843, #844, #845).
+- [layer3/realtime] Xây dựng router `/api/v1/context/notifications` tiếp nhận webhook từ Orion-LD, tích hợp cơ chế chống vòng lặp đồng bộ (Anti-sync loop), đăng ký subscription và benchmark suite đạt 300,000+ items/giây (Closes #846, #847, #848, #850, #852, #853).
+
 ### Fixed
 - [core-engine/backend] `create_record` không còn nhận `tenant_id` (và `id`/audit) từ client; luôn ghi đè `tenant_id` bằng context JWT, `update_record` dùng chung danh sách cột server-owned (#697).
 - [core-engine/backend] Siết phân quyền plugin chi tiết theo resource/bảng và verb (read/write/delete) trong `PluginRecordsUseCase` và `PluginActionUseCase`; chặn triệt để lỗ hổng user read-only có thể ghi/xóa bảng hoặc trigger workflow write (#683).

@@ -43,6 +43,7 @@ from app.core.use_cases.rag_ingestion import RAGIngestionUseCase
 from app.entrypoints.routers import (
     ai,
     auth,
+    context,
     embed,
     health,
     keycloak_webhook,
@@ -267,9 +268,7 @@ async def lifespan(app: FastAPI):
             )
             for (tenant_id,) in rows:
                 result = await use_case.execute(str(tenant_id))
-                logger.info(
-                    "RAG ingestion tenant %s: %s", tenant_id, result
-                )
+                logger.info("RAG ingestion tenant %s: %s", tenant_id, result)
         except Exception as e:
             logger.error(
                 "RAG ingestion FAILED",
@@ -300,16 +299,20 @@ async def lifespan(app: FastAPI):
         try:
             connector = connector_cls()
             source = OutlineAdapter(client=app.state.http_client)
-            use_case = KnowledgeSyncUseCase(
-                connector=connector, document_source=source
-            )
+            use_case = KnowledgeSyncUseCase(connector=connector, document_source=source)
             result = await use_case.execute(
-                config={"url": settings.KNOWLEDGE_SYNC_URL} if settings.KNOWLEDGE_SYNC_URL else {},
+                config=(
+                    {"url": settings.KNOWLEDGE_SYNC_URL}
+                    if settings.KNOWLEDGE_SYNC_URL
+                    else {}
+                ),
                 collection_id=settings.KNOWLEDGE_SYNC_COLLECTION_ID or None,
             )
             logger.info("Knowledge sync result: %s", result)
         except Exception as e:
-            logger.error("Knowledge sync FAILED", extra={"error": str(e)}, exc_info=True)
+            logger.error(
+                "Knowledge sync FAILED", extra={"error": str(e)}, exc_info=True
+            )
 
     # Chạy cleanup mỗi 10 phút
     scheduler.add_job(run_plugin_cleanup, "interval", minutes=10, id="plugin_cleanup")
@@ -473,3 +476,4 @@ app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(mattermost_webhook.router, prefix="/api/v1")
 app.include_router(keycloak_webhook.router, prefix="/api/v1")
 app.include_router(embed.router, prefix="/api/v1", tags=["Embed"])
+app.include_router(context.router, prefix="/api/v1", tags=["Context & Realtime"])

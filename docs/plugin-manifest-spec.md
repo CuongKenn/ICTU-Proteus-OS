@@ -460,7 +460,48 @@ Plugin Manager so sánh `installed_version` trong `TENANT_PLUGIN` với `version
 
 | Phiên bản | Ngày | Thay đổi |
 |---|---|---|
+| 1.4.0 | 2026-11-23 | Bổ sung phần `ngsi` định nghĩa ánh xạ thực thể NGSI-LD (Lớp 3 — Context Broker & Digital Twin), chặn chia sẻ cột nhạy cảm theo Entity Catalog L3-004. |
 | 1.3.0 | 2026-09-11 | Thêm `workflows[].id` (định danh action cho generic dispatcher `POST /plugins/{code}/actions/{id}`; xem `docs/api-swagger.yaml`). |
 | 1.2.0 | 2026-09-11 | Hỗ trợ Hybrid UI (Thêm `ui.external_url` cho Micro-Frontend, thay thế `ui_apps` array). |
 | 1.1.0 | 2026-08-06 | Thêm `default_config`, `cron_expression` cho cron trigger, quy tắc `ui_apps.path`, giải thích `permissions[]` format, phân tách `tables` vs `seed_file`, thêm wrapper Event Schema, thêm Uninstall Lifecycle (§5), thêm mô tả §3 cho tất cả các phần, thêm `min_version` trong `dependencies`. |
 | 1.0.0 | 2026-08-06 | Phiên bản đầu tiên. 10 phần cơ bản: metadata, compatibility, database, workflows, dashboards, ui_apps, roles, event_subscriptions, event_publications, dependencies. |
+
+---
+
+## 8. Khai báo Ánh xạ NGSI-LD (`ngsi` - Lớp 3)
+
+Từ phiên bản 1.4.0 (Lớp 3 — Context Broker & Digital Twin), các plugin có thể khai báo chia sẻ trạng thái thực thể của mình dưới dạng chuẩn ETSI NGSI-LD qua khối `ngsi`.
+
+### 8.1. Cấu trúc Khối `ngsi`
+
+```yaml
+ngsi:
+  entities:
+    - table: rooms                      # Bảng cơ sở dữ liệu nội bộ của plugin
+      type: Room                        # Loại thực thể NGSI-LD
+      id_pattern: "urn:ngsi-ld:Room:{tenant}:{id}" # Quy tắc sinh Entity ID
+      attributes:
+        - column: name                  # Cột nguồn
+          target: name                  # Thuộc tính đích trong NGSI-LD
+          type: Property                # Kiểu thuộc tính: Property | Relationship | GeoProperty
+        - column: capacity
+          target: capacity
+          type: Property
+      relationships:
+        - column: department_id
+          target: managedBy
+          entity_type: Department
+          id_pattern: "urn:ngsi-ld:Department:{tenant}:{department_id}"
+      geo_attribute:                    # Tọa độ không gian (PostGIS/GeoProperty)
+        column_lat: latitude
+        column_lon: longitude
+        target: location
+```
+
+### 8.2. Quy tắc Bảo vệ Dữ liệu Nhạy cảm (PII Enforcement)
+
+Theo quy định tại **Entity Catalog (L3-004)**, bộ kiểm tra hợp lệ `ManifestValidator` sẽ **từ chối ngay lập tức** các manifest khai báo cột nhạy cảm trong `attributes` của `ngsi`:
+- Mật khẩu: `password`, `hashed_password`, `secret`
+- Lương & Tài chính: `salary`, `base_salary`, `bank_account`, `tax_id`
+- Định danh cá nhân: `ssn`, `identity_card`, `token`, `api_key`
+

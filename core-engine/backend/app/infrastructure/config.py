@@ -103,6 +103,21 @@ class Settings(BaseSettings):
     LLM_MODEL_NAME: str = "llama3"
     LLM_API_KEY: str = "dummy"
 
+    # ─── Layer 3 (Context Broker & Digital Twin) ──────────────
+    LAYER3_ENABLED: bool = False
+    ORION_URL: str = "http://localhost:1026"
+    MONGO_URL: str = "mongodb://localhost:27017"
+    HASURA_GRAPHQL_URL: str = "http://localhost:8080/v1/graphql"
+    HASURA_GRAPHQL_ADMIN_SECRET: str = ""
+    CONTEXT_SYNC_BATCH_SIZE: int = 100
+    CONTEXT_SYNC_POLL_INTERVAL: float = 1.0
+    CONTEXT_SYNC_MAX_RETRIES: int = 5
+    CONTEXT_SYNC_STREAM_NAME: str = "stream:context:events"
+
+    @property
+    def CONTEXT_SYNC_STREAM_KEY(self) -> str:
+        return self.CONTEXT_SYNC_STREAM_NAME
+
     @property
     def keycloak_jwks_url(self) -> str:
         return f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}/protocol/openid-connect/certs"

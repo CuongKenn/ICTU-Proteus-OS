@@ -343,3 +343,88 @@ Khi Plugin được nâng cấp (upgrade), hệ thống cần cập nhật schem
 - Plugin Manager so sánh `installed_version` (trong `TENANT_PLUGIN`) với `version` trong `manifest.yaml` mới tải về.
 - Các migration script được đặt tên theo dạng `V1.0.0__initial.sql`, `V1.1.0__add_department.sql` để chạy tuần tự.
 - Nếu migration thất bại, Compensating Transaction sẽ `ROLLBACK` toàn bộ và đặt trạng thái về `FAILED_DIRTY`.
+
+---
+
+## 6. Lớp 3: Ngữ cảnh Thực thể, Outbox & PostGIS (Schema `context`)
+
+Hệ thống bổ sung schema riêng biệt `context` phục vụ mô hình **Digital Twin**, **Transactional Outbox**, và **Truy vấn không gian (Spatial/PostGIS)** theo chuẩn ETSI NGSI-LD.
+
+### 6.1. Sơ đồ Thực thể Lớp 3 (Mermaid Diagram)
+
+```mermaid
+erDiagram
+    CONTEXT_OUTBOX {
+        uuid id PK
+        uuid tenant_id FK "Thuộc về Tenant"
+        string entity_type "Loại thực thể (VD: Room, Employee, Asset)"
+        string entity_id "Định danh thực thể URN hoặc mã nghiệp vụ"
+        string op "Hành động: UPSERT, DELETE, UPDATE"
+        jsonb payload "Nội dung thuộc tính NGSI-LD"
+        string status "PENDING, PROCESSED, FAILED, DLQ"
+        int retry_count "Số lần thử lại"
+        string idempotency_key "Khóa chống lặp (Unique)"
+        text error_message "Lý do thất bại nếu có"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ENTITY_STATE {
+        uuid tenant_id PK, FK
+        string entity_id PK "URN của thực thể"
+        string type "Loại thực thể (Room, Asset, ...)"
+        jsonb payload "Thuộc tính NGSI-LD đã chuẩn hóa"
+        geography location "Tọa độ địa lý (Point, 4326) PostGIS"
+        timestamp updated_at
+    }
+
+    SYNC_CURSOR {
+        string consumer_id PK "Định danh consumer (VD: worker-01, hasura-cdc)"
+        uuid tenant_id PK, FK
+        string last_event_id "ID sự kiện xử lý thành công cuối cùng"
+        timestamp last_synced_at
+    }
+
+    SUBSCRIPTIONS {
+        string subscription_id PK "Subscription ID bên Orion-LD"
+        uuid tenant_id FK
+        string entity_type "Loại thực thể theo dõi"
+        string endpoint "Callback webhook URL"
+        string status "ACTIVE, INACTIVE"
+        timestamp created_at
+    }
+
+    TENANT ||--o{ CONTEXT_OUTBOX : "owns"
+    TENANT ||--o{ ENTITY_STATE : "owns"
+    TENANT ||--o{ SYNC_CURSOR : "tracks"
+    TENANT ||--o{ SUBSCRIPTIONS : "subscribes"
+```
+
+### 6.2. PostGIS và GiST Index
+
+- Cột `location geography(Point, 4326)` trong bảng `context.entity_state` cho phép tính toán khoảng cách cầu thực tế (mét) và truy vấn bán kính `ST_DWithin` hoặc chứa trong đa giác `ST_Contains`.
+- Được tối ưu hoá bằng GiST Index:
+  ```sql
+  CREATE INDEX idx_entity_state_location ON context.entity_state USING GIST (location);
+  ```
+- Ví dụ truy vấn thực thể trong bán kính 500m của một vị trí:
+  ```sql
+  SELECT entity_id, type, payload
+  FROM context.entity_state
+  WHERE ST_DWithin(location, ST_MakePoint(105.804817, 21.028511)::geography, 500);
+  ```
+
+### 6.3. Row-Level Security (RLS) cho Hasura & FastAPI
+
+Mọi bảng trong schema `context` đều bắt buộc bật `FORCE ROW LEVEL SECURITY`. Điều kiện RLS hỗ trợ đồng thời cả backend Python (qua session variable `app.current_tenant_id`) và Hasura GraphQL Engine (qua session variable `hasura.user`):
+
+```sql
+CREATE POLICY tenant_isolation_policy_entity_state ON context.entity_state
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    );
+```
+Nếu không có phiên đăng nhập của tenant hợp lệ, điều kiện đánh giá thành `false` (Fail-closed).
+

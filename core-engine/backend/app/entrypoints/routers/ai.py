@@ -5,6 +5,7 @@
 # Tham chiếu: docs/api-swagger.yaml POST /ai/command, docs/dsl-spec.md
 
 import logging
+from typing import Any
 import uuid
 
 from fastapi import (

@@ -230,6 +230,44 @@ dependencies:
       reason: "Finance Module có thể subscribe event hr.employee.created để tạo tài khoản lương tự động"
       min_version: "1.0.0"
 
+ngsi:
+  entities:
+    - table: "hr_departments"
+      type: "Department"
+      id_pattern: "urn:ngsi-ld:Department:{tenant}:{id}"
+      attributes:
+        - column: "code"
+          target: "departmentCode"
+          type: "Property"
+        - column: "name"
+          target: "name"
+          type: "Property"
+      relationships: []
+    - table: "hr_employees"
+      type: "Employee"
+      id_pattern: "urn:ngsi-ld:Employee:{tenant}:{id}"
+      attributes:
+        - column: "employee_code"
+          target: "employeeCode"
+          type: "Property"
+        - column: "full_name"
+          target: "fullName"
+          type: "Property"
+        - column: "email"
+          target: "email"
+          type: "Property"
+        - column: "position"
+          target: "jobTitle"
+          type: "Property"
+        - column: "status"
+          target: "employmentStatus"
+          type: "Property"
+      relationships:
+        - column: "department_id"
+          target: "memberOf"
+          entity_type: "Department"
+          id_pattern: "urn:ngsi-ld:Department:{tenant}:{department_id}"
+
 # ════════════════════════════════════════════════
 # CHANGELOG
 # ════════════════════════════════════════════════
