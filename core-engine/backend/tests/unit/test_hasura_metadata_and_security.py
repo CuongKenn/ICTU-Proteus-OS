@@ -8,6 +8,7 @@ Tham chiếu: Issue #840 [L3-501], #841 [L3-502], #842 [L3-503], #843 [L3-504], 
 
 import json
 from pathlib import Path
+
 import pytest
 import yaml
 
@@ -116,3 +117,23 @@ def test_sanitized_views_omit_sensitive_columns():
     assert "base_salary" not in content
     assert "salary" not in content
     assert "bank_account" not in content
+
+
+def test_hasura_metadata_validator_script():
+    """Kiểm thử script CI validate_metadata.py đảm bảo metadata an toàn và không có anonymous (#843)."""
+    deploy_dir = Path(__file__).parents[4] / "deploy"
+    hasura_dir = deploy_dir / "hasura"
+    script_path = hasura_dir / "scripts" / "validate_metadata.py"
+    assert script_path.exists()
+
+    # Import and run validate function
+    import sys
+
+    sys.path.insert(0, str(hasura_dir / "scripts"))
+    try:
+        from validate_metadata import validate_hasura_metadata
+
+        is_valid = validate_hasura_metadata(hasura_dir)
+        assert is_valid is True
+    finally:
+        sys.path.pop(0)
