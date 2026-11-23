@@ -121,7 +121,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgis/postgis:16-3.4-alpine
         env:
           POSTGRES_USER: proteus_test
           POSTGRES_PASSWORD: proteus_test_password
@@ -215,7 +215,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgis/postgis:16-3.4-alpine
         env:
           POSTGRES_USER: proteus_test
           POSTGRES_PASSWORD: proteus_test_password
