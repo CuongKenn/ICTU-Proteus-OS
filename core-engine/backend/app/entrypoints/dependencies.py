@@ -109,7 +109,10 @@ async def get_mattermost_adapter(request: Request) -> MattermostAdapter:
 
 async def get_qdrant_adapter(request: Request) -> QdrantAdapter:
     """Inject QdrantAdapter (cached on app.state as singleton)."""
-    if not hasattr(request.app.state, "qdrant_adapter") or request.app.state.qdrant_adapter is None:
+    if (
+        not hasattr(request.app.state, "qdrant_adapter")
+        or request.app.state.qdrant_adapter is None
+    ):
         request.app.state.qdrant_adapter = QdrantAdapter(
             qdrant_client=getattr(request.app.state, "qdrant_client", None)
         )

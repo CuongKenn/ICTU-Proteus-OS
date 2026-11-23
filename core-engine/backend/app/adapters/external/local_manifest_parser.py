@@ -50,7 +50,9 @@ class LocalManifestParser(AbstractManifestParserPort):
         """
         manifest_path = self._plugins_dir / plugin_code_name / "manifest.yaml"
         if not manifest_path.exists() and not plugin_code_name.endswith("-module"):
-            candidate = self._plugins_dir / f"{plugin_code_name}-module" / "manifest.yaml"
+            candidate = (
+                self._plugins_dir / f"{plugin_code_name}-module" / "manifest.yaml"
+            )
             if candidate.exists():
                 manifest_path = candidate
         if not manifest_path.exists():

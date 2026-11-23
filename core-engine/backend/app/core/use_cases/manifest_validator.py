@@ -102,7 +102,7 @@ class RoleEntry(BaseModel):
     """Mô tả một Role trong manifest."""
 
     name: str
-    display_name: str
+    display_name: str | None = None
     description: str = ""
     permissions: list[str] = Field(default_factory=list)
 
@@ -143,6 +143,60 @@ class CredentialFieldEntry(BaseModel):
     default: str | int | bool | None = None
     options: list[str] | None = None
     credential_type_name: str | None = None
+
+
+# ─────────────────────────────────────────────────────────────
+# NGSI ENTRIES (Lớp 3 — Issue #828, #829)
+# ─────────────────────────────────────────────────────────────
+
+_PROHIBITED_NGSI_COLUMNS: frozenset[str] = frozenset(
+    {
+        "password",
+        "hashed_password",
+        "secret",
+        "salary",
+        "base_salary",
+        "tax_id",
+        "bank_account",
+        "ssn",
+        "identity_card",
+        "token",
+        "api_key",
+    }
+)
+
+
+class NGSIFieldEntry(BaseModel):
+    column: str
+    target: str
+    type: Literal["Property", "Relationship", "GeoProperty"] = "Property"
+
+
+class NGSIRelationshipEntry(BaseModel):
+    column: str
+    target: str
+    entity_type: str
+    id_pattern: str | None = None
+
+
+class NGSIGeoAttributeEntry(BaseModel):
+    column_lat: str | None = None
+    column_lon: str | None = None
+    column_geom: str | None = None
+    target: str = "location"
+
+
+class NGSIEntityEntry(BaseModel):
+    table: str
+    type: str
+    id_pattern: str | None = None
+    attributes: list[NGSIFieldEntry] = Field(default_factory=list)
+    relationships: list[NGSIRelationshipEntry] = Field(default_factory=list)
+    geo_attribute: NGSIGeoAttributeEntry | None = None
+
+
+class NGSIEntry(BaseModel):
+    entities: list[NGSIEntityEntry] = Field(default_factory=list)
 
 
 class ManifestEntity(BaseModel):
@@ -199,6 +253,9 @@ class ManifestEntity(BaseModel):
     # Dependencies
     dependencies_required: list[DependencySpec] = Field(default_factory=list)
     dependencies_optional: list[DependencySpec] = Field(default_factory=list)
+
+    # NGSI-LD (Lớp 3)
+    ngsi: NGSIEntry | None = None
 
     @field_validator("name")
     @classmethod
@@ -426,6 +483,106 @@ class ManifestValidator:
                 f"Phải là một trong: {', '.join(sorted(VALID_PLUGIN_CATEGORIES))}"
             )
 
+        # ─── 9. Validate NGSI-LD (Lớp 3 — Issue #829) ───
+        ngsi_raw = raw.get("ngsi")
+        ngsi_entry: NGSIEntry | None = None
+        if ngsi_raw is not None:
+            if not isinstance(ngsi_raw, dict):
+                errors.append("ngsi: phải là một object/dictionary")
+            else:
+                entities_raw = ngsi_raw.get("entities", [])
+                if not isinstance(entities_raw, list):
+                    errors.append("ngsi.entities: phải là danh sách (list)")
+                else:
+                    parsed_entities = []
+                    for e_idx, entity in enumerate(entities_raw):
+                        if not isinstance(entity, dict):
+                            errors.append(f"ngsi.entities[{e_idx}]: phải là object")
+                            continue
+                        tbl = entity.get("table")
+                        if not tbl:
+                            errors.append(
+                                f"ngsi.entities[{e_idx}]: thiếu trường 'table'"
+                            )
+                        elif tables and tbl not in tables:
+                            errors.append(
+                                f"ngsi.entities[{e_idx}]: table '{tbl}' không nằm trong database.tables của plugin"
+                            )
+
+                        etype = entity.get("type")
+                        if not etype:
+                            errors.append(
+                                f"ngsi.entities[{e_idx}]: thiếu trường 'type'"
+                            )
+
+                        # Validate attributes
+                        parsed_attrs = []
+                        attrs_raw = entity.get("attributes", [])
+                        if not isinstance(attrs_raw, list):
+                            errors.append(
+                                f"ngsi.entities[{e_idx}].attributes: phải là list"
+                            )
+                        else:
+                            for a_idx, attr in enumerate(attrs_raw):
+                                if not isinstance(attr, dict):
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}].attributes[{a_idx}]: phải là object"
+                                    )
+                                    continue
+                                col = attr.get("column")
+                                if not col:
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}].attributes[{a_idx}]: thiếu 'column'"
+                                    )
+                                elif col.lower() in _PROHIBITED_NGSI_COLUMNS:
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}]: column nhạy cảm '{col}' bị cấm chia sẻ qua NGSI-LD (L3-004)"
+                                    )
+                                if not attr.get("target"):
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}].attributes[{a_idx}]: thiếu 'target'"
+                                    )
+                                parsed_attrs.append(NGSIFieldEntry(**attr))
+
+                        # Validate relationships
+                        parsed_rels = []
+                        rels_raw = entity.get("relationships", [])
+                        if isinstance(rels_raw, list):
+                            for r_idx, rel in enumerate(rels_raw):
+                                if not isinstance(rel, dict):
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}].relationships[{r_idx}]: phải là object"
+                                    )
+                                    continue
+                                if (
+                                    not rel.get("column")
+                                    or not rel.get("target")
+                                    or not rel.get("entity_type")
+                                ):
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}].relationships[{r_idx}]: yêu cầu đủ 'column', 'target' và 'entity_type'"
+                                    )
+                                parsed_rels.append(NGSIRelationshipEntry(**rel))
+
+                        # Validate geo_attribute
+                        geo_entry = None
+                        if entity.get("geo_attribute"):
+                            geo_raw = entity["geo_attribute"]
+                            if isinstance(geo_raw, dict):
+                                geo_entry = NGSIGeoAttributeEntry(**geo_raw)
+
+                        parsed_entities.append(
+                            NGSIEntityEntry(
+                                table=tbl or "",
+                                type=etype or "",
+                                id_pattern=entity.get("id_pattern"),
+                                attributes=parsed_attrs,
+                                relationships=parsed_rels,
+                                geo_attribute=geo_entry,
+                            )
+                        )
+                    ngsi_entry = NGSIEntry(entities=parsed_entities)
+
         # ─── Raise tất cả lỗi nếu có ───
         if errors:
             raise DSLInvalidParametersError(
@@ -491,6 +648,8 @@ class ManifestValidator:
                         (raw.get("dependencies", {}) or {}).get("optional", []) or []
                     )
                 ],
+                # NGSI-LD
+                ngsi=ngsi_entry,
             )
         except Exception as exc:
             raise DSLInvalidParametersError(

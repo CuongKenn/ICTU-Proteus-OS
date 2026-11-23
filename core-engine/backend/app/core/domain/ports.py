@@ -422,3 +422,72 @@ class AbstractKnowledgeConnectorPort(ABC):
 
     async def aclose(self) -> None:
         pass
+
+
+# ─────────────────────────────────────────────────────────────
+# CONTEXT BROKER PORT (NGSI-LD)
+# ─────────────────────────────────────────────────────────────
+
+
+class IContextBrokerPort(ABC):
+    """Port cho Context Broker (NGSI-LD compliant, e.g. Orion-LD, Scorpio).
+
+    Tham chiếu: ADR-003, Issue #831 [L3-304], ETSI GS CIM 009.
+    """
+
+    @abstractmethod
+    async def upsert_entity(
+        self,
+        entity_id: str,
+        entity_type: str,
+        payload: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> bool:
+        """Upsert (tạo mới hoặc cập nhật) một thực thể NGSI-LD."""
+        pass
+
+    @abstractmethod
+    async def get_entity(
+        self,
+        entity_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Lấy thông tin thực thể NGSI-LD theo ID."""
+        pass
+
+    @abstractmethod
+    async def delete_entity(
+        self,
+        entity_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> bool:
+        """Xoá một thực thể NGSI-LD."""
+        pass
+
+    @abstractmethod
+    async def create_subscription(
+        self,
+        subscription_payload: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> str:
+        """Đăng ký subscription theo dõi thay đổi thực thể, trả về subscription ID."""
+        pass
+
+    @abstractmethod
+    async def delete_subscription(
+        self,
+        subscription_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> bool:
+        """Huỷ subscription theo ID."""
+        pass
+
+    @abstractmethod
+    async def aclose(self) -> None:
+        """Đóng kết nối HTTP client."""
+        pass

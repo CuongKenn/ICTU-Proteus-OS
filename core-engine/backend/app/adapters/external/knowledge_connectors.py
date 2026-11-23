@@ -59,7 +59,9 @@ def _validate_public_http_url(url: str) -> None:
         raise ConnectorError("http_feed từ chối địa chỉ nội bộ (SSRF protection).")
 
     try:
-        infos = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        infos = socket.getaddrinfo(
+            hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
+        )
     except socket.gaierror as e:
         raise ConnectorError(f"Không phân giải được hostname '{hostname}': {e}") from e
 

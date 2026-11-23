@@ -15,6 +15,7 @@
 -- ─────────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- Full-text search support
+CREATE EXTENSION IF NOT EXISTS "postgis";  -- Spatial queries and geometry support (Lớp 3)
 
 -- Role dùng trong RLS policy của bảng plugin và kết nối app (Issue #690).
 DO $$ BEGIN
@@ -49,6 +50,13 @@ CREATE SCHEMA IF NOT EXISTS n8n;
 -- Outline requires a dedicated database to avoid Sequelize schema bugs
 -- We handle CREATE DATABASE outside of this script if needed, or assume it's created.
 CREATE SCHEMA IF NOT EXISTS mattermost;
+CREATE SCHEMA IF NOT EXISTS context;
+
+GRANT USAGE ON SCHEMA context TO app_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA context TO app_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA context TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA context GRANT ALL ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA context GRANT ALL ON SEQUENCES TO app_user;
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: TENANTS
@@ -419,3 +427,158 @@ CREATE POLICY tenant_isolation_policy_tenant_integrations ON tenant_integrations
         current_setting('app.current_tenant_id', true) = '__system__'
         OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
     );
+
+-- ─────────────────────────────────────────────────────────────
+-- LỚP 3 — CONTEXT BROKER, DIGITAL TWIN & REALTIME TABLES
+-- ─────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS context.context_outbox (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    entity_type     VARCHAR(128) NOT NULL,
+    entity_id       VARCHAR(255) NOT NULL,
+    op              VARCHAR(32) NOT NULL,
+    payload         JSONB NOT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    retry_count     INT NOT NULL DEFAULT 0,
+    idempotency_key VARCHAR(255) UNIQUE,
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_worker ON context.context_outbox (status, created_at) WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS idx_outbox_tenant_entity ON context.context_outbox (tenant_id, entity_type, entity_id);
+
+ALTER TABLE context.context_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context.context_outbox FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_policy_context_outbox ON context.context_outbox
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    );
+
+CREATE TABLE IF NOT EXISTS context.entity_state (
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    entity_id       VARCHAR(255) NOT NULL,
+    type            VARCHAR(128) NOT NULL,
+    payload         JSONB NOT NULL,
+    location        GEOGRAPHY(Point, 4326),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_state_location ON context.entity_state USING GIST (location);
+CREATE INDEX IF NOT EXISTS idx_entity_state_type ON context.entity_state (tenant_id, type);
+
+ALTER TABLE context.entity_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context.entity_state FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_policy_entity_state ON context.entity_state
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    );
+
+CREATE TABLE IF NOT EXISTS context.sync_cursor (
+    consumer_id     VARCHAR(128) NOT NULL,
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    last_event_id   VARCHAR(255) NOT NULL,
+    last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (consumer_id, tenant_id)
+);
+
+ALTER TABLE context.sync_cursor ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context.sync_cursor FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_policy_sync_cursor ON context.sync_cursor
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    );
+
+CREATE TABLE IF NOT EXISTS context.subscriptions (
+    subscription_id VARCHAR(255) PRIMARY KEY,
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    entity_type     VARCHAR(128) NOT NULL,
+    endpoint        VARCHAR(512) NOT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE context.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context.subscriptions FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_policy_subscriptions ON context.subscriptions
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+        OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
+    );
+
+-- Trigger function generic ghi nhận outbox tự động khi thực thể thay đổi
+CREATE OR REPLACE FUNCTION context.fn_generic_outbox_notify()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_tenant_id uuid;
+  v_entity_id varchar;
+  v_payload jsonb;
+  v_entity_type varchar;
+  v_op varchar;
+BEGIN
+  v_entity_type := TG_ARGV[0];
+  IF (TG_OP = 'DELETE') THEN
+    v_op := 'DELETE';
+    v_entity_id := OLD.id::varchar;
+    v_payload := to_jsonb(OLD);
+    BEGIN
+      v_tenant_id := OLD.tenant_id;
+    EXCEPTION WHEN OTHERS THEN
+      v_tenant_id := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
+    END;
+  ELSE
+    v_op := 'UPSERT';
+    v_entity_id := NEW.id::varchar;
+    v_payload := to_jsonb(NEW);
+    BEGIN
+      v_tenant_id := NEW.tenant_id;
+    EXCEPTION WHEN OTHERS THEN
+      v_tenant_id := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
+    END;
+  END IF;
+
+  IF v_tenant_id IS NOT NULL THEN
+    INSERT INTO context.context_outbox (
+      tenant_id, entity_type, entity_id, op, payload, status, created_at, updated_at
+    ) VALUES (
+      v_tenant_id, v_entity_type, v_entity_id, v_op, v_payload, 'PENDING', clock_timestamp(), clock_timestamp()
+    );
+  END IF;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;

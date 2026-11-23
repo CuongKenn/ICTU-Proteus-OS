@@ -131,7 +131,9 @@ class PluginSynthesizer:
         plugin_name = (
             "hospital-module" if "bệnh viện" in prompt.lower() else "demo-module"
         )
-        display_name = "Bệnh viện" if plugin_name == "hospital-module" else "Demo Module"
+        display_name = (
+            "Bệnh viện" if plugin_name == "hospital-module" else "Demo Module"
+        )
 
         manifest_yaml = (
             f"name: {plugin_name}\n"

@@ -98,6 +98,12 @@ services:
   plugins-mfe:
     labels:
       - "traefik.http.routers.plugins-mfe.entrypoints=websecure"
+
+  hasura:
+    labels:
+      - "traefik.http.routers.hasura.entrypoints=websecure"
+      - "traefik.http.routers.hasura.tls=true"
+      - "traefik.http.routers.hasura.tls.certresolver=letsencrypt"
       - "traefik.http.routers.plugins-mfe.tls=true"
       - "traefik.http.routers.plugins-mfe.tls.certresolver=letsencrypt"
       # Router same-origin (subpath trên domain gốc) cũng lên websecure + TLS.

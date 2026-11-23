@@ -332,7 +332,9 @@ class RedisEventBusPublisher(AbstractEventBusPort):
                 try:
                     await handler(envelope)
                 except Exception:
-                    logger.error("Error processing PubSub message in handler", exc_info=True)
+                    logger.error(
+                        "Error processing PubSub message in handler", exc_info=True
+                    )
 
         while True:
             pubsub = None

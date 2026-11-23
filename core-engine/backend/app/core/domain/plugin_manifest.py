@@ -131,6 +131,44 @@ class ManifestChangelogEntry(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
+# NGSI-LD SCHEMA (Lớp 3 — Issue #828)
+# ─────────────────────────────────────────────────────────────
+
+
+class ManifestNGSIAttribute(BaseModel):
+    column: str
+    target: str
+    type: Literal["Property", "Relationship", "GeoProperty"] = "Property"
+
+
+class ManifestNGSIRelationship(BaseModel):
+    column: str
+    target: str
+    entity_type: str
+    id_pattern: str | None = None
+
+
+class ManifestNGSIGeoAttribute(BaseModel):
+    column_lat: str | None = None
+    column_lon: str | None = None
+    column_geom: str | None = None
+    target: str = "location"
+
+
+class ManifestNGSIEntity(BaseModel):
+    table: str
+    type: str
+    id_pattern: str | None = None
+    attributes: list[ManifestNGSIAttribute] = Field(default_factory=list)
+    relationships: list[ManifestNGSIRelationship] = Field(default_factory=list)
+    geo_attribute: ManifestNGSIGeoAttribute | None = None
+
+
+class ManifestNGSI(BaseModel):
+    entities: list[ManifestNGSIEntity] = Field(default_factory=list)
+
+
+# ─────────────────────────────────────────────────────────────
 # ROOT ENTITY
 # ─────────────────────────────────────────────────────────────
 
@@ -207,6 +245,9 @@ class PluginManifest(BaseModel):
 
     # ─── Migrations ───────────────────────────────────────────
     migrations: list[str] = Field(default_factory=list)
+
+    # ─── NGSI-LD (Lớp 3 — Context Broker & Digital Twin) ──────
+    ngsi: ManifestNGSI | None = None
 
     def get_credentials_schema_as_dict(self) -> list[dict[str, Any]]:
         """Trả về credentials_schema dưới dạng list[dict] để lưu vào DB (JSONB)."""

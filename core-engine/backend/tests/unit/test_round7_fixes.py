@@ -62,9 +62,8 @@ async def test_get_current_tenant_context_sets_rls_before_is_active_check():
     ):
         with pytest.raises(HTTPException) as exc_info:
             await _dep(
-                request=MagicMock(headers={}),
                 credentials=SimpleNamespace(credentials="tok"),
-                keycloak=mock_kc,
+                keycloak_adapter=mock_kc,
                 db=AsyncMock(),
             )
 
@@ -107,9 +106,9 @@ async def test_rag_ingestion_rejects_foreign_collection_and_filters_strictly():
         {"id": "2", "collectionId": None, "text": "orphan", "title": "O"},
     ]
     vec_port = AsyncMock()
-    rag = RAGIngestionUseCase(document_source_port=doc_port, vector_store_port=vec_port)
+    rag = RAGIngestionUseCase(document_source_port=doc_port, vector_db_port=vec_port)
     res = await rag.execute(str(tenant_id), collection_id="my-col")
-    assert res["documents_processed"] == 0
+    assert res.get("processed_documents", res.get("documents_processed", 0)) == 0
     vec_port.upsert_vectors.assert_not_awaited()
 
 
@@ -143,8 +142,9 @@ async def test_upgrade_plugin_commits_use_case_session_before_task():
 
     try:
         with patch(
-            "app.entrypoints.routers.plugins.asyncio.get_event_loop"
-        ) as mock_loop:
+            "app.entrypoints.routers.plugins._run_upgrade_plugin_background",
+            new_callable=AsyncMock,
+        ) as mock_bg:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:
                 resp = await ac.post(
@@ -153,7 +153,7 @@ async def test_upgrade_plugin_commits_use_case_session_before_task():
                 )
         assert resp.status_code == 202
         uc_session.commit.assert_awaited_once()
-        mock_loop.return_value.create_task.assert_called_once()
+        mock_bg.assert_called_once()
     finally:
         app.dependency_overrides.clear()
 

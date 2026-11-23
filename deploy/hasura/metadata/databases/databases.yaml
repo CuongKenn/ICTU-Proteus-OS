@@ -1,0 +1,94 @@
+- name: default
+  kind: postgres
+  configuration:
+    connection_info:
+      database_url:
+        from_env: HASURA_GRAPHQL_DATABASE_URL
+      pool_settings:
+        max_connections: 50
+        idle_timeout: 180
+        retries: 3
+  tables:
+    - table:
+        schema: context
+        name: entity_state
+      select_permissions:
+        - role: user
+          permission:
+            columns:
+              - entity_id
+              - type
+              - payload
+              - location
+              - updated_at
+            filter:
+              tenant_id:
+                _eq: X-Hasura-Tenant-Id
+        - role: tenant_admin
+          permission:
+            columns:
+              - tenant_id
+              - entity_id
+              - type
+              - payload
+              - location
+              - updated_at
+            filter:
+              tenant_id:
+                _eq: X-Hasura-Tenant-Id
+      object_relationships:
+        - name: tenant
+          using:
+            manual_configuration:
+              remote_table:
+                schema: public
+                name: tenants
+              column_mapping:
+                tenant_id: id
+    - table:
+        schema: context
+        name: context_outbox
+      select_permissions:
+        - role: tenant_admin
+          permission:
+            columns:
+              - id
+              - entity_type
+              - entity_id
+              - op
+              - payload
+              - status
+              - retry_count
+              - created_at
+              - updated_at
+            filter:
+              tenant_id:
+                _eq: X-Hasura-Tenant-Id
+    - table:
+        schema: context
+        name: sync_cursor
+      select_permissions:
+        - role: tenant_admin
+          permission:
+            columns:
+              - consumer_id
+              - last_event_id
+              - last_synced_at
+            filter:
+              tenant_id:
+                _eq: X-Hasura-Tenant-Id
+    - table:
+        schema: context
+        name: subscriptions
+      select_permissions:
+        - role: tenant_admin
+          permission:
+            columns:
+              - subscription_id
+              - entity_type
+              - endpoint
+              - status
+              - created_at
+            filter:
+              tenant_id:
+                _eq: X-Hasura-Tenant-Id

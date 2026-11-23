@@ -564,7 +564,9 @@ class PluginInstallUseCase:
 
             # Notify Mattermost (Best effort)
             try:
-                p_label = manifest.display_name if manifest is not None else plugin_code_name
+                p_label = (
+                    manifest.display_name if manifest is not None else plugin_code_name
+                )
                 msg = f"❌ Lỗi cài đặt Plugin **{p_label}**: {e}"
                 channel_id = (
                     tenant.notify_channel_id or settings.MATTERMOST_SYSTEM_CHANNEL_ID
@@ -976,13 +978,21 @@ class PluginInstallUseCase:
                         params = node.get("parameters")
                         if (
                             isinstance(params, dict)
-                            and params.get("resource", "message") in ("message", "post", None)
+                            and params.get("resource", "message")
+                            in ("message", "post", None)
                             and (
                                 not params.get("channelId")
-                                or params.get("channelId") in ("hr-announcements-channel-id", "YOUR_CHANNEL_ID")
-                                or str(params.get("channelId", "")).startswith("={{$json.channel_id")
-                                or str(params.get("channelId", "")).startswith("={{$json.alert_channel_id")
-                                or str(params.get("channelId", "")).startswith("={{$('Split Vendors').item.json.channel_id")
+                                or params.get("channelId")
+                                in ("hr-announcements-channel-id", "YOUR_CHANNEL_ID")
+                                or str(params.get("channelId", "")).startswith(
+                                    "={{$json.channel_id"
+                                )
+                                or str(params.get("channelId", "")).startswith(
+                                    "={{$json.alert_channel_id"
+                                )
+                                or str(params.get("channelId", "")).startswith(
+                                    "={{$('Split Vendors').item.json.channel_id"
+                                )
                             )
                             and alerts_channel_id
                         ):
@@ -1071,9 +1081,9 @@ class PluginInstallUseCase:
                 with open(db_path, encoding="utf-8-sig") as f:
                     try:
                         content_str = f.read()
-                        content_str = content_str.replace("{{TENANT_SCHEMA}}", tenant_schema).replace(
-                            "{{TENANT_ID}}", str(context.tenant_id)
-                        )
+                        content_str = content_str.replace(
+                            "{{TENANT_SCHEMA}}", tenant_schema
+                        ).replace("{{TENANT_ID}}", str(context.tenant_id))
                         db_json = json.loads(content_str)
                     except Exception:
                         with open(db_path, encoding="utf-8-sig") as f2:
@@ -1166,7 +1176,9 @@ class PluginInstallUseCase:
                         "tenant_id": context.tenant_id,
                         "plugin_code_name": plugin_code_name,
                         "name": role.name,
-                        "display_name": role.display_name or role.description or role.name,
+                        "display_name": role.display_name
+                        or role.description
+                        or role.name,
                         "description": role.description,
                         "permissions": list(role.permissions),
                     }

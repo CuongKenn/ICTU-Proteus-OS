@@ -50,10 +50,10 @@ services:
       - "traefik.http.middlewares.iframe-allow.headers.customresponseheaders.Content-Security-Policy=frame-ancestors 'self' http://${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX} https://${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}"
 
   # ────────────────────────────────────────────────────────────
-  # POSTGRESQL — Primary Database
+  # POSTGRESQL — Primary Database (PostGIS enabled)
   # ────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16.4
+    image: postgis/postgis:16-3.4
     container_name: proteus-postgres
     restart: unless-stopped
     mem_limit: 1g
@@ -700,6 +700,113 @@ services:
       - "traefik.http.routers.plugins-mfe-sameorigin.service=plugins-mfe"
       - "traefik.http.routers.plugins-mfe-sameorigin.middlewares=iframe-allow"
 
+  # ────────────────────────────────────────────────────────────
+  # LAYER 3 — CONTEXT BROKER & DIGITAL TWIN
+  # ────────────────────────────────────────────────────────────
+  mongo:
+    profiles: ["layer3"]
+    image: mongo:6.0
+    container_name: proteus-mongo
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - proteus-net
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "proteus.log=true"
+
+  orion-ld:
+    profiles: ["layer3"]
+    image: fiware/orion-ld:1.6.0
+    container_name: proteus-orion-ld
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: -dbhost mongo:27017 -logLevel INFO -forwarding
+    networks:
+      - proteus-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:1026/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "proteus.log=true"
+
+  hasura:
+    profiles: ["layer3"]
+    image: hasura/graphql-engine:v2.44.0
+    container_name: proteus-hasura
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgresql://${POSTGRES_USER:-proteus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-proteus}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "${HASURA_GRAPHQL_ENABLE_CONSOLE:-false}"
+      HASURA_GRAPHQL_DEV_MODE: "${HASURA_GRAPHQL_DEV_MODE:-false}"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url": "${KEYCLOAK_URL:-http://keycloak:8080}/realms/${KEYCLOAK_REALM:-proteus}/protocol/openid-connect/certs", "claims_format": "relative"}'
+    networks:
+      - proteus-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "proteus.log=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.hasura.rule=Host(`graphql.${DOMAIN}`)"
+      - "traefik.http.routers.hasura.entrypoints=web"
+      - "traefik.http.services.hasura.loadbalancer.server.port=8080"
+
+  context-sync-worker:
+    profiles: ["layer3"]
+    build:
+      context: ../core-engine/backend
+      dockerfile: Dockerfile
+    container_name: proteus-context-sync-worker
+    restart: unless-stopped
+    command: python -m app.workers.context_sync_worker
+    mem_limit: 512m
+    cpus: 0.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orion-ld:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-proteus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-proteus}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379
+      ORION_URL: http://orion-ld:1026
+      LAYER3_ENABLED: "true"
+      CONTEXT_SYNC_BATCH_SIZE: ${CONTEXT_SYNC_BATCH_SIZE:-100}
+      CONTEXT_SYNC_POLL_INTERVAL: ${CONTEXT_SYNC_POLL_INTERVAL:-1.0}
+      CONTEXT_SYNC_MAX_RETRIES: ${CONTEXT_SYNC_MAX_RETRIES:-5}
+      CONTEXT_SYNC_STREAM_NAME: ${CONTEXT_SYNC_STREAM_NAME:-stream:context:events}
+    networks:
+      - proteus-net
+    labels:
+      - "proteus.log=true"
+
 networks:
   proteus-net:
     name: proteus-net
@@ -724,3 +831,4 @@ volumes:
   mattermost-bleve-indexes:
   ollama-data:
   vllm-data:
+  mongo-data:
