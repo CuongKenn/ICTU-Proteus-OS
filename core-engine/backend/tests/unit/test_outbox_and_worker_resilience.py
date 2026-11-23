@@ -6,10 +6,11 @@
 Tham chiếu: Issue #834, #835, #836, #837, #839.
 """
 
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
-import uuid
+
 import pytest
 
 from app.adapters.external.orion_adapter import OrionAdapter
@@ -214,3 +215,87 @@ async def test_worker_crash_and_dlq_on_repeated_failures():
     mock_session.commit.assert_called_once()
     # Redis should NOT have received a published event
     mock_redis.xadd.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_replay_dlq():
+    """Kiểm thử phương thức replay_dlq đưa các bản ghi lỗi về PENDING (#836)."""
+    tid = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [(uuid.uuid4(),), (uuid.uuid4(),)]
+    mock_session.execute.return_value = mock_cursor
+
+    repo = SQLAlchemyOutboxRepository(mock_session)
+    replayed = await repo.replay_dlq(tid, max_records=50)
+
+    assert replayed == 2
+    mock_session.execute.assert_called_once()
+    args, kwargs = mock_session.execute.call_args
+    assert "status = 'DLQ'" in str(args[0])
+    assert "status = 'PENDING'" in str(args[0])
+    params = args[1]
+    assert params["tenant_id"] == tid
+    assert params["limit"] == 50
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_crash_recovery_idempotency():
+    """Kiểm thử worker crash giữa chừng và chạy lại đảm bảo at-least-once & idempotency (#839)."""
+    tid = uuid.uuid4()
+    record_id = uuid.uuid4()
+    record = OutboxRecord(
+        id=record_id,
+        tenant_id=tid,
+        entity_type="Asset",
+        entity_id="laptop-99",
+        op="UPSERT",
+        payload={"model": "ThinkPad T14", "assigned_to": "emp-01"},
+        status="PENDING",
+        retry_count=1,
+        idempotency_key="idemp-key-123",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = AsyncMock()
+    mock_orion = AsyncMock(spec=OrionAdapter)
+    mock_redis = AsyncMock()
+
+    rows = [
+        (
+            record.id,
+            record.tenant_id,
+            record.entity_type,
+            record.entity_id,
+            record.op,
+            record.payload,
+            record.status,
+            record.retry_count,
+            record.idempotency_key,
+            record.created_at,
+            record.updated_at,
+        ),
+    ]
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = rows
+    mock_session.execute.return_value = mock_cursor
+
+    @asynccontextmanager
+    async def mock_session_factory():
+        yield mock_session
+
+    worker = ContextSyncWorker(
+        session_factory=mock_session_factory,
+        orion_adapter=mock_orion,
+        redis_client=mock_redis,
+    )
+
+    # First run succeeds after previous crash
+    count = await worker.process_batch()
+    assert count == 1
+    mock_orion.upsert_entity.assert_called_once()
+    mock_redis.xadd.assert_called_once()
+    # Stream trim configured (#837)
+    xadd_kwargs = mock_redis.xadd.call_args.kwargs
+    assert xadd_kwargs.get("maxlen") == 10000

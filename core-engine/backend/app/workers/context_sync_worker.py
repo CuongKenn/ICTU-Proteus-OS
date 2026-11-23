@@ -183,7 +183,12 @@ class ContextSyncWorker:
                             "op": "DELETE",
                             "timestamp": record.created_at.isoformat(),
                         }
-                        await redis_client.xadd(self.stream_name, event_data)
+                        await redis_client.xadd(
+                            self.stream_name,
+                            event_data,
+                            maxlen=10000,
+                            approximate=True,
+                        )
                     else:
                         # UPSERT: Chuyển đổi sang NGSI-LD
                         ngsi_attrs, lon, lat = transform_to_ngsi_ld(record.payload)
@@ -212,7 +217,12 @@ class ContextSyncWorker:
                             "payload": json.dumps(ngsi_attrs),
                             "timestamp": record.created_at.isoformat(),
                         }
-                        await redis_client.xadd(self.stream_name, event_data)
+                        await redis_client.xadd(
+                            self.stream_name,
+                            event_data,
+                            maxlen=10000,
+                            approximate=True,
+                        )
 
                     processed_ids.append(record.id)
                 except Exception as exc:
