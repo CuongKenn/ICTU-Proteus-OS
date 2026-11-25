@@ -117,7 +117,15 @@ const DslPreviewPanel: React.FC<{
   onApprove: () => void;
   onCancel: () => void;
 }> = ({ preview, onApprove, onCancel }) => {
-  const deadline = new Date(preview.approval_deadline);
+  const hasValidDeadline =
+    Boolean(preview.approval_deadline) &&
+    !Number.isNaN(new Date(preview.approval_deadline as string).getTime());
+  const deadlineText = hasValidDeadline
+    ? new Date(preview.approval_deadline as string).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "30 phút";
   const isWrite = preview.effect === "write";
 
   return (
@@ -196,11 +204,7 @@ const DslPreviewPanel: React.FC<{
 
         <div className="flex items-center gap-1.5 text-[11px] text-muted mb-3 tabular-nums">
           <Clock className="w-3 h-3" />
-          Hết hạn:{" "}
-          {deadline.toLocaleTimeString("vi-VN", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {hasValidDeadline ? `Hết hạn: ${deadlineText}` : `Thời hạn phê duyệt: ${deadlineText}`}
         </div>
       </div>
 
@@ -485,7 +489,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
           aria-label={isExpanded ? "Thu nhỏ Proteus AI" : "Mở Proteus AI"}
           aria-expanded={isExpanded}
           title={isExpanded ? "Thu nhỏ" : "Mở Proteus AI (Ctrl+K)"}
-          onClick={isExpanded ? resetAndClose : openWidget}
+          onClick={isExpanded ? minimizeWidget : openWidget}
           className={clsx(
             "w-12 h-12 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-150 shadow-elevated",
             isExpanded
@@ -503,11 +507,16 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 
+interface AIChatErrorBoundaryProps {
+  children: React.ReactNode;
+  mode?: "floating" | "inline";
+}
+
 class AIChatErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  AIChatErrorBoundaryProps,
   { hasError: boolean }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: AIChatErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
   }
@@ -522,8 +531,16 @@ class AIChatErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
+      const isInline = this.props.mode === "inline";
       return (
-        <div className="fixed bottom-5 right-5 z-[90] w-[300px] rounded-xl flex flex-col items-center justify-center gap-2 p-5 bg-paper-white border border-error/40 shadow-elevated">
+        <div
+          className={clsx(
+            "rounded-xl flex flex-col items-center justify-center gap-2 p-5 bg-paper-white border border-error/40 shadow-elevated",
+            isInline
+              ? "w-full max-w-md mx-auto my-8"
+              : "fixed bottom-5 right-5 z-[90] w-[300px]"
+          )}
+        >
           <AlertTriangle className="w-7 h-7 mb-1 text-error" />
           <div className="text-sm font-semibold text-center font-heading text-ink">
             AI Chat gặp lỗi
@@ -546,13 +563,13 @@ class AIChatErrorBoundary extends React.Component<
 }
 
 export const AIChatWidget: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) => (
-  <AIChatErrorBoundary>
+  <AIChatErrorBoundary mode={mode}>
     <AIChatWidgetInner mode={mode} />
   </AIChatErrorBoundary>
 );
 
 export const AIChatPanel: React.FC<AIChatWidgetProps> = ({ mode = "inline" }) => (
-  <AIChatErrorBoundary>
+  <AIChatErrorBoundary mode={mode}>
     <AIChatWidgetInner mode={mode} />
   </AIChatErrorBoundary>
 );

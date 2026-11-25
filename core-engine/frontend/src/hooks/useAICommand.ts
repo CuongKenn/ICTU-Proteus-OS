@@ -6,7 +6,7 @@
 // Giao tiếp qua BFF /api/ai/command (không gọi FastAPI trực tiếp)
 // Tham chiếu: docs/architecture.md §2.1 (BFF Pattern), docs/dsl-spec.md
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useDraftRestore } from "@/hooks/useDraftRestore";
 import { useNotificationStore } from "@/store/notificationStore";
 
@@ -56,7 +56,7 @@ export interface DslPreview {
     affected_count: number;
     preview: Array<Record<string, unknown>>;
   };
-  approval_deadline: string;
+  approval_deadline?: string | null;
 }
 
 interface AICommandBFFResponse {
@@ -91,15 +91,15 @@ export function useAICommand(): UseAICommandReturn {
   const DRAFT_KEY = "ai_command_draft_input";
 
   const [widgetState, setWidgetState] = useState<WidgetState>("collapsed");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: uuid(),
-      role: "assistant",
-      content: "Xin chào! Tôi là Proteus AI. Tôi có thể giúp bạn truy vấn dữ liệu hoặc thực hiện các tác vụ quản trị. Hãy nhập lệnh bằng tiếng Việt tự nhiên.",
-      timestamp: new Date(),
-    },
-  ]);
-  const [inputValue, setInputValueState] = useState<string>(() => restoreDraft<string>("ai_command_draft_input") || "");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValueState] = useState<string>("");
+
+  useEffect(() => {
+    const draft = restoreDraft<string>(DRAFT_KEY);
+    if (draft) {
+      setInputValueState(draft);
+    }
+  }, [restoreDraft]);
 
   const setInputValue = useCallback((value: string) => {
     setInputValueState(value);
@@ -111,33 +111,39 @@ export function useAICommand(): UseAICommandReturn {
   }, [saveDraft, clearDraft]);
   const [dslPreview, setDslPreview] = useState<DslPreview | null>(null);
   const [sessionId, setSessionId] = useState<string>(() => uuid());
+  const pollInFlightRef = useRef(false);
 
   const { addToast } = useNotificationStore();
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
 
   const openWidget = useCallback(() => {
-    setWidgetState("expanded");
-  }, []);
+    setWidgetState((prev) =>
+      prev === "collapsed" ? (dslPreview ? "awaiting_approval" : "expanded") : prev
+    );
+  }, [dslPreview]);
 
   const minimizeWidget = useCallback(() => {
     setWidgetState("collapsed");
   }, []);
 
   const resetAndClose = useCallback(() => {
+    const cmdId = dslPreview?.command_id;
+    if (cmdId) {
+      fetch(`/api/proxy/v1/ai/commands/${cmdId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {
+        // Best-effort cancel
+      });
+    }
     setWidgetState("collapsed");
     setDslPreview(null);
+    setInputValueState("");
     clearDraft(DRAFT_KEY);
-    setMessages([
-      {
-        id: uuid(),
-        role: "assistant",
-        content: "Xin chào! Tôi là Proteus AI. Tôi có thể giúp bạn truy vấn dữ liệu hoặc thực hiện các tác vụ quản trị. Hãy nhập lệnh bằng tiếng Việt tự nhiên.",
-        timestamp: new Date(),
-      },
-    ]);
+    setMessages([]);
     setSessionId(uuid());
-  }, [clearDraft]);
+  }, [dslPreview, clearDraft]);
 
   const appendMessage = useCallback((role: MessageRole, content: string) => {
     setMessages((prev) => [
@@ -145,6 +151,83 @@ export function useAICommand(): UseAICommandReturn {
       { id: uuid(), role, content, timestamp: new Date() },
     ]);
   }, []);
+
+  // Poll trạng thái phê duyệt khi đang có lệnh chờ phê duyệt (#866)
+  useEffect(() => {
+    const commandId = dslPreview?.command_id;
+    if (!commandId) return;
+    if (widgetState !== "awaiting_approval" && widgetState !== "collapsed") return;
+
+    let cancelled = false;
+    pollInFlightRef.current = false;
+
+    const pollApprovalStatus = async () => {
+      if (pollInFlightRef.current || cancelled) return;
+      pollInFlightRef.current = true;
+      try {
+        const res = await fetch(`/api/proxy/v1/ai/commands/${commandId}/status`, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok || cancelled) return;
+        const statusData = await res.json().catch(() => null);
+        if (!statusData || cancelled) return;
+
+        const statusUpper = String(statusData.status || "").toUpperCase();
+        if (statusUpper === "COMPLETED" || statusUpper === "EXECUTED") {
+          let replyText = typeof statusData.message === "string" ? statusData.message : "";
+          if (!replyText) {
+            if (typeof statusData.result === "string") {
+              replyText = statusData.result;
+            } else if (statusData.result && typeof statusData.result === "object") {
+              const resObj = statusData.result as Record<string, unknown>;
+              replyText =
+                (typeof resObj.message === "string" && resObj.message) ||
+                (typeof resObj.text === "string" && resObj.text) ||
+                "✅ Lệnh đã được phê duyệt và thực thi thành công.";
+            } else {
+              replyText = "✅ Lệnh đã được phê duyệt và thực thi thành công.";
+            }
+          }
+          setDslPreview(null);
+          appendMessage("assistant", replyText);
+          setWidgetState((prev) => (prev === "collapsed" ? "collapsed" : "expanded"));
+        } else if (
+          statusUpper === "REJECTED" ||
+          statusUpper === "FAILED" ||
+          statusUpper === "EXPIRED" ||
+          statusUpper === "TIMEOUT" ||
+          statusUpper === "CANCELLED"
+        ) {
+          const defaultStatusMessages: Record<string, string> = {
+            REJECTED: "🚫 Yêu cầu đã bị từ chối phê duyệt trên Mattermost.",
+            CANCELLED: "🚫 Lệnh đã được huỷ bỏ.",
+            EXPIRED: "⏰ Yêu cầu phê duyệt đã hết hạn.",
+            TIMEOUT: "⏰ Yêu cầu phê duyệt đã hết hạn.",
+            FAILED: "❌ Thực thi lệnh sau khi phê duyệt thất bại.",
+          };
+          const statusMsg =
+            (typeof statusData.message === "string" && statusData.message.trim()) ||
+            defaultStatusMessages[statusUpper] ||
+            "Lệnh không thể hoàn tất.";
+          setDslPreview(null);
+          appendMessage("assistant", statusMsg);
+          setWidgetState((prev) => (prev === "collapsed" ? "collapsed" : "expanded"));
+        }
+      } catch {
+        // Ignore transient network errors while polling
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+
+    const intervalId = setInterval(pollApprovalStatus, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      pollInFlightRef.current = false;
+    };
+  }, [widgetState, dslPreview?.command_id, appendMessage]);
 
   /**
    * sendCommand — Gửi lệnh tới BFF /api/ai/command
