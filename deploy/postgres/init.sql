@@ -3,12 +3,7 @@
 --
 -- Proteus OS — PostgreSQL Core Schema Initialization
 -- File này chạy tự động khi container PostgreSQL khởi động lần đầu.
--- Tham chiếu: docs/erd.md
---
--- LƯU Ý:
---   - File này chỉ tạo schema Core (Platform-level).
---   - Plugin schema (hr_, finance_, ...) được tạo bởi Plugin Manager khi cài đặt.
---   - Row-Level Security (RLS) Policy được áp dụng sau bởi Plugin Manager.
+-- Đồng bộ 100% với ORM (`app/infrastructure/models.py`) và Alembic head `q1l2m3n4o5p6`.
 
 -- ─────────────────────────────────────────────────────────────
 -- EXTENSIONS
@@ -44,11 +39,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
 -- ─────────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS keycloak;
 CREATE SCHEMA IF NOT EXISTS n8n;
--- Metabase requires a dedicated database to avoid liquibase clashes with Core tables
--- We handle CREATE DATABASE outside of this script if needed, or assume it's created.
--- We will just remove the schema metabase here.
--- Outline requires a dedicated database to avoid Sequelize schema bugs
--- We handle CREATE DATABASE outside of this script if needed, or assume it's created.
 CREATE SCHEMA IF NOT EXISTS mattermost;
 CREATE SCHEMA IF NOT EXISTS context;
 
@@ -60,165 +50,155 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA context GRANT ALL ON SEQUENCES TO app_user;
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: TENANTS
--- Đại diện cho một Tổ chức/Khách hàng trong hệ thống
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tenants (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name            VARCHAR(255) NOT NULL,
-    slug            VARCHAR(100) NOT NULL UNIQUE,  -- VD: "ictu", "viettel"
-    domain          VARCHAR(255),
-    keycloak_realm  VARCHAR(100) NOT NULL,         -- Tên Realm trong Keycloak
-    plan            VARCHAR(50)  NOT NULL DEFAULT 'starter',  -- starter | pro | enterprise
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name              VARCHAR(255) NOT NULL,
+    slug              VARCHAR(255) NOT NULL,
+    domain            VARCHAR(255),
+    keycloak_realm    VARCHAR(255) NOT NULL,
+    plan              VARCHAR(50)  NOT NULL DEFAULT 'free',
+    is_active         BOOLEAN NOT NULL DEFAULT TRUE,
     notify_channel_id VARCHAR(255),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ  -- Soft delete
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at        TIMESTAMPTZ
 );
 
-COMMENT ON TABLE tenants IS 'Bảng lưu thông tin Tenant (Tổ chức). Mỗi Tenant có 1 Keycloak Realm riêng.';
-COMMENT ON COLUMN tenants.slug IS 'Định danh ngắn gọn, dùng trong URL. Ví dụ: app.proteus.io/t/ictu';
-COMMENT ON COLUMN tenants.deleted_at IS 'Soft delete — NULL = còn hoạt động, NOT NULL = đã bị xóa.';
+CREATE INDEX IF NOT EXISTS ix_tenants_id ON tenants(id);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_tenants_slug ON tenants(slug);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_tenants_domain ON tenants(domain);
+CREATE INDEX IF NOT EXISTS ix_tenants_deleted_at ON tenants(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: USERS
--- Mirror của Keycloak User. Lưu metadata bổ sung.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
-    id              UUID PRIMARY KEY,              -- Đồng bộ với Keycloak User ID (sub)
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-    keycloak_id     UUID NOT NULL UNIQUE,          -- ID thực tế bên Keycloak
-    email           VARCHAR(255) NOT NULL,
-    full_name       VARCHAR(255),
-    avatar_url      TEXT,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    last_login_at   TIMESTAMPTZ,
-    joined_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ,                   -- Soft delete
-    UNIQUE(tenant_id, email)
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    keycloak_id        UUID NOT NULL,
+    email              VARCHAR(255) NOT NULL,
+    full_name          VARCHAR(255) NOT NULL,
+    avatar_url         VARCHAR(1024),
+    mattermost_user_id VARCHAR(255),
+    is_active          BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at      TIMESTAMPTZ,
+    joined_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ,
+    CONSTRAINT users_tenant_id_email_key UNIQUE (tenant_id, email)
 );
 
-COMMENT ON TABLE users IS 'Mirror của Keycloak User. ID đồng bộ với sub claim trong JWT.';
-CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS ix_users_id ON users(id);
+CREATE INDEX IF NOT EXISTS ix_users_tenant_id ON users(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_users_keycloak_id ON users(keycloak_id);
+CREATE INDEX IF NOT EXISTS ix_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: PLUGINS
--- Danh mục Plugin trên Marketplace (Platform-level, không theo Tenant)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS plugins (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code_name       VARCHAR(100) NOT NULL UNIQUE,  -- VD: "hr-module", "finance-module"
-    display_name    VARCHAR(255) NOT NULL,
-    description     TEXT,
-    version         VARCHAR(50)  NOT NULL,
-    author          VARCHAR(255),
-    license         VARCHAR(50)  NOT NULL DEFAULT 'AGPL-3.0',
-    icon_url        TEXT,
-    manifest_url    TEXT NOT NULL,                 -- URL tải manifest.yaml
-    is_official     BOOLEAN NOT NULL DEFAULT FALSE,
-    download_count  INTEGER NOT NULL DEFAULT 0,
-    category        VARCHAR(100) NOT NULL DEFAULT 'Utilities',
-    tags            TEXT[] DEFAULT '{}',
-    screenshots     JSONB DEFAULT '[]',
-    long_description TEXT,
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code_name          VARCHAR(255) NOT NULL,
+    display_name       VARCHAR(255) NOT NULL,
+    description        TEXT,
+    version            VARCHAR(50)  NOT NULL,
+    author             VARCHAR(255) NOT NULL,
+    license            VARCHAR(50)  NOT NULL DEFAULT 'AGPL-3.0',
+    icon_url           VARCHAR(1024),
+    manifest_url       VARCHAR(1024) NOT NULL,
+    is_official        BOOLEAN NOT NULL DEFAULT FALSE,
+    download_count     INTEGER NOT NULL DEFAULT 0,
+    category           VARCHAR(100) NOT NULL DEFAULT 'Utilities',
+    tags               VARCHAR[] DEFAULT '{}',
+    screenshots        JSONB DEFAULT '[]',
+    long_description   TEXT,
     credentials_schema JSONB DEFAULT '[]',
-    homepage_url    VARCHAR(1024),
-    published_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ                    -- Soft delete
+    homepage_url       VARCHAR(1024),
+    published_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ
 );
 
-COMMENT ON TABLE plugins IS 'Danh mục Plugin trên Marketplace. Mỗi Plugin có 1 manifest.yaml.';
-COMMENT ON COLUMN plugins.code_name IS 'Định danh duy nhất dạng kebab-case. Dùng làm prefix cho bảng DB của Plugin.';
-
--- Index tối ưu cho query Marketplace (ORDER BY is_official DESC, download_count DESC)
-CREATE INDEX IF NOT EXISTS idx_plugins_marketplace
-    ON plugins(is_official DESC, download_count DESC)
-    WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_plugins_id ON plugins(id);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_plugins_code_name ON plugins(code_name);
+CREATE INDEX IF NOT EXISTS ix_plugins_category ON plugins(category);
+CREATE INDEX IF NOT EXISTS ix_plugins_deleted_at ON plugins(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
--- BẢNG: TENANT_PLUGIN
--- Trạng thái cài đặt Plugin theo từng Tenant
+-- BẢNG: TENANT_PLUGINS
 -- ─────────────────────────────────────────────────────────────
-CREATE TYPE plugin_status AS ENUM (
-    'INSTALLING',
-    'ACTIVE',
-    'FAILED_DIRTY',
-    'DISABLED',
-    'UNINSTALLING',
-    'DELETED',
-    'UPGRADING'
-);
-
 CREATE TABLE IF NOT EXISTS tenant_plugins (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-    plugin_id           UUID NOT NULL REFERENCES plugins(id) ON DELETE RESTRICT,
-    status              plugin_status NOT NULL DEFAULT 'INSTALLING',
-    installed_version   VARCHAR(50),
-    config_override     JSONB DEFAULT '{}',         -- Ghi đè default_config của Plugin
-    install_error_log   TEXT,                       -- Stacktrace nếu status = FAILED_DIRTY
-    installed_by_user_id UUID REFERENCES users(id),
-    install_steps_log   JSONB DEFAULT '[]',
-    credential_ids      JSONB DEFAULT '[]',
-    install_task_id     UUID,
-    upgrade_task_id     UUID,                       -- Task nâng cấp đang chạy (poll status)
-    installed_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at          TIMESTAMPTZ,
-    UNIQUE (tenant_id, plugin_id)
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    plugin_id            UUID NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+    status               VARCHAR(50) NOT NULL DEFAULT 'INSTALLING',
+    installed_version    VARCHAR(50) NOT NULL,
+    config_override      JSONB DEFAULT '{}',
+    install_error_log    TEXT,
+    installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    install_steps_log    JSONB DEFAULT '[]',
+    credential_ids       JSONB DEFAULT '[]',
+    install_task_id      UUID,
+    upgrade_task_id      UUID,
+    installed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at           TIMESTAMPTZ,
+    CONSTRAINT uq_tenant_plugin UNIQUE (tenant_id, plugin_id)
 );
 
-COMMENT ON TABLE tenant_plugins IS 'Quan hệ M-N giữa Tenant và Plugin. Ghi nhận trạng thái cài đặt và cấu hình.';
-CREATE INDEX IF NOT EXISTS idx_tenant_plugins_status ON tenant_plugins(status);
+CREATE INDEX IF NOT EXISTS ix_tenant_plugins_id ON tenant_plugins(id);
+CREATE INDEX IF NOT EXISTS ix_tenant_plugins_tenant_id ON tenant_plugins(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_tenant_plugins_plugin_id ON tenant_plugins(plugin_id);
+CREATE INDEX IF NOT EXISTS ix_tenant_plugins_deleted_at ON tenant_plugins(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: PLUGIN_SCHEMA_MIGRATIONS
--- Track migration DB đã chạy theo từng (tenant, plugin, version) + checksum.
--- Upgrade chỉ chạy file chưa applied; file đã applied mà checksum đổi → từ chối
--- (chống sửa migration cũ gây lệch schema giữa tenant).
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS plugin_schema_migrations (
     tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     plugin_id   UUID NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
-    version     VARCHAR(50) NOT NULL,               -- VD: "1.0.1" (từ tên file)
+    version     VARCHAR(50) NOT NULL,
     filename    VARCHAR(255) NOT NULL,
-    checksum    CHAR(64) NOT NULL,                  -- sha256 nội dung file
+    checksum    VARCHAR(64) NOT NULL,
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT pk_plugin_schema_migrations PRIMARY KEY (tenant_id, plugin_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_plugin_schema_migrations_tenant_plugin
     ON plugin_schema_migrations (tenant_id, plugin_id);
+CREATE INDEX IF NOT EXISTS ix_plugin_schema_migrations_tenant_id
+    ON plugin_schema_migrations (tenant_id);
+CREATE INDEX IF NOT EXISTS ix_plugin_schema_migrations_plugin_id
+    ON plugin_schema_migrations (plugin_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: ROLES
--- Plugin-level roles. Tạo bởi Plugin Manager khi cài đặt.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS roles (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id       UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id        UUID REFERENCES tenants(id) ON DELETE CASCADE,
     plugin_code_name VARCHAR(255),
-    name            VARCHAR(255) NOT NULL,          -- VD: "hr_manager"
-    display_name    VARCHAR(255),
-    description     TEXT,
-    is_system_role  BOOLEAN NOT NULL DEFAULT FALSE,
-    permissions     JSONB NOT NULL DEFAULT '[]',    -- ["hr:employees:read", ...]
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ,
-    UNIQUE(tenant_id, name)
+    name             VARCHAR(255) NOT NULL,
+    display_name     VARCHAR(255) NOT NULL,
+    description      TEXT,
+    is_system_role   BOOLEAN NOT NULL DEFAULT FALSE,
+    permissions      JSONB DEFAULT '[]',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at       TIMESTAMPTZ
 );
 
-COMMENT ON TABLE roles IS 'Plugin-level roles với fine-grained permissions. Keycloak chỉ lưu tên role.';
-CREATE INDEX IF NOT EXISTS idx_roles_tenant_id ON roles(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_roles_id ON roles(id);
+CREATE INDEX IF NOT EXISTS ix_roles_tenant_id ON roles(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_roles_plugin_code_name ON roles(plugin_code_name);
+CREATE INDEX IF NOT EXISTS ix_roles_deleted_at ON roles(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: USER_ROLES
--- Quan hệ nhiều-nhiều giữa User và Role
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_roles (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -229,85 +209,114 @@ CREATE TABLE IF NOT EXISTS user_roles (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at          TIMESTAMPTZ,
-    UNIQUE (user_id, role_id)
+    CONSTRAINT user_roles_user_role_key UNIQUE (user_id, role_id)
 );
 
-COMMENT ON TABLE user_roles IS 'Phân quyền cụ thể của người dùng trong Tenant.';
-CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX IF NOT EXISTS ix_user_roles_id ON user_roles(id);
+CREATE INDEX IF NOT EXISTS ix_user_roles_user_id ON user_roles(user_id);
+CREATE INDEX IF NOT EXISTS ix_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX IF NOT EXISTS ix_user_roles_deleted_at ON user_roles(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
--- BẢNG: AUDIT_LOG
--- Nhật ký tất cả hành động trong hệ thống
+-- BẢNG: AUDIT_LOGS
 -- ─────────────────────────────────────────────────────────────
-CREATE TYPE actor_type AS ENUM ('HUMAN', 'AI_AGENT', 'SYSTEM');
-
 CREATE TABLE IF NOT EXISTS audit_logs (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-    actor_id        UUID,                           -- user_id hoặc NULL nếu SYSTEM
+    tenant_id       UUID REFERENCES tenants(id) ON DELETE CASCADE,
     user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
-    actor_type      actor_type NOT NULL,
-    action          VARCHAR(255) NOT NULL,          -- VD: "plugin.install", "user.deactivate"
-    resource_type   VARCHAR(100),                   -- VD: "Plugin", "User"
+    actor_type      VARCHAR(50) NOT NULL,
+    action          VARCHAR(255) NOT NULL,
+    resource_type   VARCHAR(50) NOT NULL,
     resource_id     UUID,
-    command_id      UUID,                           -- FK → ai_commands.id (nếu do AI thực hiện)
-    details         JSONB DEFAULT '{}',
-    metadata        JSONB DEFAULT '{}',
-    ip_address      INET,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    payload         JSONB,
+    result          JSONB,
+    details         JSONB,
+    status          VARCHAR(50) NOT NULL DEFAULT 'success',
+    ip_address      VARCHAR(45),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
 );
 
-COMMENT ON TABLE audit_logs IS 'Immutable audit trail. Không có deleted_at — không được xóa.';
-COMMENT ON COLUMN audit_logs.command_id IS 'Nếu do AI Agent thực hiện, trỏ đến bản ghi AI_COMMAND tương ứng.';
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id ON audit_logs(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_audit_logs_id ON audit_logs(id);
+CREATE INDEX IF NOT EXISTS ix_audit_logs_tenant_id ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS ix_audit_logs_deleted_at ON audit_logs(deleted_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: AI_COMMANDS
--- Lịch sử DX-DSL Command từ AI Orchestrator
 -- ─────────────────────────────────────────────────────────────
-CREATE TYPE ai_command_status AS ENUM (
-    'PENDING_APPROVAL',
-    'APPROVED',
-    'REJECTED',
-    'EXECUTING',
-    'COMPLETED',
-    'FAILED',
-    'TIMEOUT'
-);
-
 CREATE TABLE IF NOT EXISTS ai_commands (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-    issued_by_user_id   UUID NOT NULL REFERENCES users(id),
-    session_id          UUID NOT NULL,
-    dsl_payload         JSONB NOT NULL,             -- Toàn bộ DX-DSL JSON
-    action              VARCHAR(255) NOT NULL,
-    raw_input           TEXT,
-    parsed_dsl          JSONB,       -- VD: "hr.leave_requests.batch_approve"
-    effect              VARCHAR(20)  NOT NULL,       -- read | write | critical
-    status              ai_command_status NOT NULL DEFAULT 'PENDING_APPROVAL',
-    dry_run_result      JSONB,
-    approval_deadline   TIMESTAMPTZ,
-    approved_by         UUID REFERENCES users(id),  -- Người phê duyệt 1
-    second_approver     UUID REFERENCES users(id),  -- Người phê duyệt 2 (nếu critical)
-    mattermost_msg_id   VARCHAR(255),               -- ID tin nhắn Mattermost gửi xin phê duyệt
-    execution_result    JSONB,
-    executed_at         TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id             UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    issued_by_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dsl_version           VARCHAR(50) NOT NULL DEFAULT '1.0',
+    raw_input             TEXT,
+    parsed_dsl            JSONB,
+    action                VARCHAR(255) NOT NULL,
+    effect                VARCHAR(50) NOT NULL,
+    parameters            JSONB,
+    dry_run_result        JSONB,
+    status                VARCHAR(50) NOT NULL DEFAULT 'PENDING_APPROVAL',
+    approved_by_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+    second_approver_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+    mattermost_message_id VARCHAR(255),
+    approval_deadline     TIMESTAMPTZ,
+    execution_result      JSONB,
+    approved_at           TIMESTAMPTZ,
+    executed_at           TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at            TIMESTAMPTZ
 );
 
-COMMENT ON TABLE ai_commands IS 'Lịch sử DX-DSL Command. Tách riêng khỏi audit_log để query phê duyệt hiệu quả.';
-CREATE INDEX IF NOT EXISTS idx_ai_commands_tenant_id ON ai_commands(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_ai_commands_status ON ai_commands(status);
-CREATE INDEX IF NOT EXISTS idx_ai_commands_deadline ON ai_commands(approval_deadline)
-    WHERE status = 'PENDING_APPROVAL';
+CREATE INDEX IF NOT EXISTS ix_ai_commands_id ON ai_commands(id);
+CREATE INDEX IF NOT EXISTS ix_ai_commands_tenant_id ON ai_commands(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ai_commands_issued_by_user_id ON ai_commands(issued_by_user_id);
+CREATE INDEX IF NOT EXISTS ix_ai_commands_status ON ai_commands(status);
+CREATE INDEX IF NOT EXISTS ix_ai_commands_deleted_at ON ai_commands(deleted_at);
+
+-- ─────────────────────────────────────────────────────────────
+-- BẢNG: AI_SESSIONS & AI_MESSAGES (Conversation Memory)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ai_sessions (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       VARCHAR(255),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_ai_sessions_id ON ai_sessions(id);
+CREATE INDEX IF NOT EXISTS ix_ai_sessions_tenant_id ON ai_sessions(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ai_sessions_user_id ON ai_sessions(user_id);
+CREATE INDEX IF NOT EXISTS ix_ai_sessions_deleted_at ON ai_sessions(deleted_at);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id  UUID NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role        VARCHAR(20) NOT NULL,
+    content     TEXT NOT NULL,
+    command_id  UUID,
+    citations   JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_ai_messages_id ON ai_messages(id);
+CREATE INDEX IF NOT EXISTS ix_ai_messages_session_id ON ai_messages(session_id);
+CREATE INDEX IF NOT EXISTS ix_ai_messages_tenant_id ON ai_messages(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ai_messages_deleted_at ON ai_messages(deleted_at);
 
 -- ───────────────────────────────────────────────────────────────
--- TRIGGER: auto-update updated_at (và last_updated_at)
+-- TRIGGER: auto-update updated_at
 -- ───────────────────────────────────────────────────────────────
--- Hàm cho các bảng dùng cột "updated_at" (tenants, users, plugins)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -332,10 +341,17 @@ CREATE TRIGGER set_tenant_plugins_updated_at
     BEFORE UPDATE ON tenant_plugins
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER set_ai_sessions_updated_at
+    BEFORE UPDATE ON ai_sessions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER set_ai_messages_updated_at
+    BEFORE UPDATE ON ai_messages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ─────────────────────────────────────────────────────────────
 -- ROW-LEVEL SECURITY (RLS) CHO CORE TABLES
 -- ─────────────────────────────────────────────────────────────
--- Bật RLS cho tất cả các bảng có tenant_id
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users FORCE ROW LEVEL SECURITY;
 ALTER TABLE tenant_plugins ENABLE ROW LEVEL SECURITY;
@@ -346,8 +362,11 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
 ALTER TABLE ai_commands ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_commands FORCE ROW LEVEL SECURITY;
+ALTER TABLE ai_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_sessions FORCE ROW LEVEL SECURITY;
+ALTER TABLE ai_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_messages FORCE ROW LEVEL SECURITY;
 
--- Tạo Policy áp dụng cho toàn bộ thao tác dựa trên biến session (an toàn NULLIF & hỗ trợ __system__ #728)
 CREATE POLICY tenant_isolation_policy_users ON users
     FOR ALL TO PUBLIC USING (
         current_setting('app.current_tenant_id', true) = '__system__'
@@ -398,9 +417,28 @@ CREATE POLICY tenant_isolation_policy_ai_commands ON ai_commands
         OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
     );
 
+CREATE POLICY tenant_isolation_policy_ai_sessions ON ai_sessions
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
+
+CREATE POLICY tenant_isolation_policy_ai_messages ON ai_messages
+    FOR ALL TO PUBLIC USING (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    )
+    WITH CHECK (
+        current_setting('app.current_tenant_id', true) = '__system__'
+        OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid
+    );
+
 -- ─────────────────────────────────────────────────────────────
 -- BẢNG: TENANT_INTEGRATIONS
--- Cấu hình tích hợp các dịch vụ bên ngoài (VD: GitHub, Slack, vv)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tenant_integrations (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -413,7 +451,9 @@ CREATE TABLE IF NOT EXISTS tenant_integrations (
     deleted_at      TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_tenant_integrations_tenant_id ON tenant_integrations(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_tenant_integrations_id ON tenant_integrations(id);
+CREATE INDEX IF NOT EXISTS ix_tenant_integrations_tenant_id ON tenant_integrations(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_tenant_integrations_deleted_at ON tenant_integrations(deleted_at);
 
 ALTER TABLE tenant_integrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_integrations FORCE ROW LEVEL SECURITY;
@@ -540,7 +580,7 @@ CREATE POLICY tenant_isolation_policy_subscriptions ON context.subscriptions
         OR tenant_id = NULLIF(current_setting('hasura.user', true)::jsonb ->> 'x-hasura-tenant-id', '')::uuid
     );
 
--- Trigger function generic ghi nhận outbox tự động khi thực thể thay đổi
+-- Trigger function generic ghi nhận outbox tự động khi thực thể thay đổi (#881)
 CREATE OR REPLACE FUNCTION context.fn_generic_outbox_notify()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -591,6 +631,9 @@ BEGIN
   ];
 
   IF v_tenant_id IS NOT NULL THEN
+    IF NULLIF(current_setting('app.current_tenant_id', true), '') IS NULL THEN
+      PERFORM set_config('app.current_tenant_id', v_tenant_id::text, true);
+    END IF;
     INSERT INTO context.context_outbox (
       tenant_id, entity_type, entity_id, op, payload, status, created_at, updated_at
     ) VALUES (
@@ -600,4 +643,16 @@ BEGIN
 
   RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = context, public, pg_temp;
+
+-- ─────────────────────────────────────────────────────────────
+-- ALEMBIC VERSION STAMP (#879)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+
+INSERT INTO alembic_version (version_num)
+VALUES ('q1l2m3n4o5p6')
+ON CONFLICT (version_num) DO NOTHING;

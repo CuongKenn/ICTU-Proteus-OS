@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     PrimaryKeyConstraint,
     String,
@@ -446,6 +447,11 @@ class PluginSchemaMigrationModel(Base):
     __table_args__ = (
         PrimaryKeyConstraint(
             "tenant_id", "plugin_id", "version", name="pk_plugin_schema_migrations"
+        ),
+        Index(
+            "idx_plugin_schema_migrations_tenant_plugin",
+            "tenant_id",
+            "plugin_id",
         ),
     )
 

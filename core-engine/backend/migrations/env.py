@@ -27,10 +27,86 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+_IGNORED_SCHEMAS: frozenset[str] = frozenset(
+    {
+        "tiger",
+        "tiger_data",
+        "topology",
+        "context",
+        "keycloak",
+        "n8n",
+        "mattermost",
+    }
+)
+
+_IGNORED_EXTENSION_TABLES: frozenset[str] = frozenset(
+    {
+        "alembic_version",
+        "spatial_ref_sys",
+        "geography_columns",
+        "geometry_columns",
+        "raster_columns",
+        "raster_overviews",
+        "layer",
+        "topology",
+        "addr",
+        "addrfeat",
+        "bg",
+        "county",
+        "county_lookup",
+        "countysub_lookup",
+        "cousub",
+        "direction_lookup",
+        "edges",
+        "faces",
+        "featnames",
+        "geocode_settings",
+        "geocode_settings_default",
+        "loader_lookuptables",
+        "loader_platform",
+        "loader_variables",
+        "pagc_gaz",
+        "pagc_lex",
+        "pagc_rules",
+        "place",
+        "place_lookup",
+        "secondary_unit_lookup",
+        "state",
+        "state_lookup",
+        "street_type_lookup",
+        "tabblock",
+        "tabblock20",
+        "tract",
+        "zcta5",
+        "zip_lookup",
+        "zip_lookup_all",
+        "zip_lookup_base",
+        "zip_state",
+        "zip_state_loc",
+    }
+)
+
+
+def include_object(object_, name, type_, reflected, compare_to) -> bool:
+    """Ignore PostGIS / Tiger Geocoder / Topology system tables & non-public schemas."""
+    obj_schema = getattr(object_, "schema", None)
+    if obj_schema is not None and obj_schema != "public":
+        return False
+    if obj_schema in _IGNORED_SCHEMAS:
+        return False
+
+    if type_ == "table" and name in _IGNORED_EXTENSION_TABLES:
+        return False
+
+    parent_table = getattr(object_, "table", None)
+    parent_schema = getattr(parent_table, "schema", None)
+    parent_name = getattr(parent_table, "name", None)
+    if parent_schema is not None and parent_schema != "public":
+        return False
+    if parent_name in _IGNORED_EXTENSION_TABLES:
+        return False
+
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -51,6 +127,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -58,7 +135,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()
