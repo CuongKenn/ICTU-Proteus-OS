@@ -11,6 +11,9 @@ from typing import Any
 import jsonschema
 
 from app.adapters.repositories.base import AbstractPluginRepository
+from app.core.domain.exceptions import (
+    DSLInvalidParametersError as DomainDSLInvalidParametersError,
+)
 from app.core.formal_verification import Z3FormalVerifier, Z3VerificationError
 
 
@@ -128,11 +131,15 @@ class DSLValidator:
 
         # Rule 3: Plugin installed + ACTIVE
         if plugin_code != "core":
-            # Auto append -module to match DB code_name if missing
+            from app.core.use_cases.action_catalog import resolve_plugin_code
+
+            # Resolve prefix (VD: 'it' -> 'it-helpdesk-module', 'lab' -> 'lab-*-module')
             db_plugin_code = (
                 plugin_code
                 if plugin_code.endswith("-module")
-                else f"{plugin_code}-module"
+                else resolve_plugin_code(
+                    plugin_code, manifest_parser=self.manifest_parser
+                )
             )
 
             status = await self.plugin_repo.get_tenant_plugin_status_by_code(
@@ -204,7 +211,7 @@ class DSLValidator:
             verifier = Z3FormalVerifier(tenant_id=self.tenant_id, user_id=self.user_id)
             verifier.verify_dsl(dsl_payload)
             self.last_z3_proof = verifier.last_proof
-        except Z3VerificationError as e:
+        except (Z3VerificationError, DomainDSLInvalidParametersError) as e:
             self.last_z3_proof = getattr(e, "proof", None)
             err = DSLInvalidParametersError(str(e))
             err.z3_proof = self.last_z3_proof  # type: ignore[attr-defined]
@@ -217,14 +224,14 @@ class DSLValidator:
     ) -> None:
         """Validate action 2-part {prefix}.{workflow_id} (dynamic catalog).
 
-        - Plugin {prefix}-module phải ACTIVE.
+        - Plugin {prefix}-module (hoặc multi-word {prefix}-*-module) phải ACTIVE.
         - Workflow webhook phải tồn tại trong manifest.
         - User phải có ít nhất 1 permission thuộc nhóm {prefix}:*
           (cùng convention với PluginActionUseCase).
         """
         from app.core.use_cases.action_catalog import split_plugin_action
 
-        split = split_plugin_action(action)
+        split = split_plugin_action(action, manifest_parser=self.manifest_parser)
         if split is None or self.manifest_parser is None:
             raise DSLInvalidActionError(f"Invalid action format: {action}.")
         db_plugin_code, workflow_id = split
@@ -315,7 +322,7 @@ class DSLValidator:
             verifier = Z3FormalVerifier(tenant_id=self.tenant_id, user_id=self.user_id)
             verifier.verify_dsl(dsl_payload)
             self.last_z3_proof = verifier.last_proof
-        except Z3VerificationError as e:
+        except (Z3VerificationError, DomainDSLInvalidParametersError) as e:
             self.last_z3_proof = getattr(e, "proof", None)
             err = DSLInvalidParametersError(str(e))
             err.z3_proof = self.last_z3_proof  # type: ignore[attr-defined]

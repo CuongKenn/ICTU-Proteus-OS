@@ -282,18 +282,39 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
   );
 
   const [dslPreview, setDslPreview] = useState<DslPreview | null>(null);
+  const dslPreviewRef = useRef<DslPreview | null>(null);
+  dslPreviewRef.current = dslPreview;
+
   const [sessionId, setSessionId] = useState<string>(
     () => options?.externalSessionId || uuid()
   );
+  const activeSessionIdRef = useRef<string>(sessionId);
+  activeSessionIdRef.current = sessionId;
+
   const pollInFlightRef = useRef(false);
 
   const { addToast } = useNotificationStore();
 
   useEffect(() => {
     if (options?.externalSessionId && options.externalSessionId !== sessionId) {
+      const pendingCmdId = dslPreviewRef.current?.command_id;
+      if (pendingCmdId) {
+        fetch(`/api/proxy/v1/ai/commands/${pendingCmdId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => {
+          // Best-effort cancel when switching sessions
+        });
+      }
+      dslPreviewRef.current = null;
+      setDslPreview(null);
+      setStreamStatus(null);
+      setMessages(options.externalMessages ?? []);
+      setWidgetState((prev) => (prev === "collapsed" ? "collapsed" : "expanded"));
+      activeSessionIdRef.current = options.externalSessionId;
       setSessionId(options.externalSessionId);
     }
-  }, [options?.externalSessionId, sessionId]);
+  }, [options?.externalSessionId, options?.externalMessages, sessionId]);
 
   useEffect(() => {
     if (options?.externalMessages) {
@@ -400,7 +421,11 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
         if (!statusData || cancelled) return;
 
         const statusUpper = String(statusData.status || "").toUpperCase();
-        if (statusUpper === "COMPLETED" || statusUpper === "EXECUTED") {
+        if (
+          statusUpper === "COMPLETED" ||
+          statusUpper === "EXECUTED" ||
+          statusUpper === "APPROVED"
+        ) {
           let replyText = typeof statusData.message === "string" ? statusData.message : "";
           if (!replyText) {
             if (typeof statusData.result === "string") {
@@ -468,7 +493,13 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
   ]);
 
   const applyFinalResponse = useCallback(
-    (data: AICommandBFFResponse, rawPrompt: string) => {
+    (data: AICommandBFFResponse, rawPrompt: string, originSessionId?: string) => {
+      const targetSid = originSessionId || sessionId;
+      if (originSessionId && activeSessionIdRef.current !== originSessionId) {
+        options?.onTurnCompleted?.(targetSid);
+        return;
+      }
+
       const statusLower = String(data.status || "").toLowerCase();
       const resultObj =
         data.result && typeof data.result === "object"
@@ -535,7 +566,8 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
   const consumeEventStream = useCallback(
     async (
       bodyStream: ReadableStream<Uint8Array>,
-      rawPrompt: string
+      rawPrompt: string,
+      originSessionId?: string
     ): Promise<AICommandBFFResponse | null> => {
       const reader = bodyStream.getReader();
       const decoder = new TextDecoder();
@@ -546,6 +578,9 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          if (originSessionId && activeSessionIdRef.current !== originSessionId) {
+            break;
+          }
           buffer += decoder.decode(value, { stream: true });
           const { events, remainder } = parseSseEvents(buffer);
           buffer = remainder;
@@ -605,7 +640,7 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
       }
 
       if (finalPayload) {
-        applyFinalResponse(finalPayload, rawPrompt);
+        applyFinalResponse(finalPayload, rawPrompt, originSessionId);
       }
       return finalPayload;
     },
@@ -623,6 +658,7 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
       const trimmed = candidate.trim();
       if (!trimmed || widgetState === "thinking") return;
 
+      const requestSessionId = sessionId;
       appendMessage("user", trimmed);
       setInputValue("");
       clearDraft(DRAFT_KEY);
@@ -637,7 +673,7 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
 
       const requestBody = JSON.stringify({
         natural_language_input: trimmed,
-        session_id: sessionId,
+        session_id: requestSessionId,
       });
 
       try {
@@ -660,14 +696,18 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
               streamContentType.includes("text/event-stream") &&
               streamRes.body
             ) {
-              const streamedResult = await consumeEventStream(streamRes.body, trimmed);
+              const streamedResult = await consumeEventStream(
+                streamRes.body,
+                trimmed,
+                requestSessionId
+              );
               if (streamedResult) {
                 return;
               }
             } else if (streamRes.ok && typeof streamRes.json === "function") {
               const jsonFallback = (await streamRes.json()) as AICommandBFFResponse;
               if (jsonFallback && typeof jsonFallback === "object" && jsonFallback.status) {
-                applyFinalResponse(jsonFallback, trimmed);
+                applyFinalResponse(jsonFallback, trimmed, requestSessionId);
                 return;
               }
             }
@@ -686,7 +726,11 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
         const cmdContentType =
           response?.headers?.get?.("content-type")?.toLowerCase() ?? "";
         if (response.ok && cmdContentType.includes("text/event-stream") && response.body) {
-          const streamed = await consumeEventStream(response.body, trimmed);
+          const streamed = await consumeEventStream(
+            response.body,
+            trimmed,
+            requestSessionId
+          );
           if (streamed) return;
         }
 
@@ -704,7 +748,7 @@ export function useAICommand(options?: UseAICommandOptions): UseAICommandReturn 
           data = await response.json();
         }
 
-        applyFinalResponse(data, trimmed);
+        applyFinalResponse(data, trimmed, requestSessionId);
       } catch {
         setStreamStatus(null);
         if (process.env.NEXT_PUBLIC_ENABLE_MOCKS === "true") {

@@ -362,6 +362,16 @@ class AbstractAICommandRepository(ABC):
         ...
 
     @abstractmethod
+    async def update_execution_result(
+        self,
+        cmd_id: uuid.UUID,
+        result: dict | None,
+        status: AICommandStatus = AICommandStatus.COMPLETED,
+    ) -> None:
+        """Cập nhật kết quả thực thi, trạng thái và thời điểm hoàn thành của lệnh."""
+        ...
+
+    @abstractmethod
     async def create_command(self, command_data: dict) -> uuid.UUID:
         """Tạo một command mới và trả về ID."""
         ...

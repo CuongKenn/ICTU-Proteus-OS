@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { renderHook, act } from '@testing-library/react';
-import { useAICommand } from './useAICommand';
+import { ChatMessage, useAICommand } from './useAICommand';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock fetch
@@ -92,5 +92,105 @@ describe('useAICommand', () => {
     expect(lastMsg.role).toBe('assistant');
     expect(lastMsg.z3_verification?.status).toBe('UNSAT');
     expect(lastMsg.z3_verification?.violated_constraint).toBe('source_room != target_room');
+  });
+
+  it('transitions out of awaiting_approval when polling returns APPROVED (#882)', async () => {
+    vi.useFakeTimers();
+    try {
+      (global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: 'pending_approval',
+            dsl_preview: {
+              command_id: 'cmd-882',
+              action: 'procurement.order.create',
+              effect: 'write',
+              approval_message: 'Cần duyệt đơn mua hàng',
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            command_id: 'cmd-882',
+            status: 'APPROVED',
+            action: 'procurement.order.create',
+            effect: 'write',
+          }),
+        });
+
+      const { result } = renderHook(() => useAICommand());
+
+      await act(async () => {
+        await result.current.sendCommand('Tạo đề xuất mua 5 màn hình Lab');
+      });
+
+      expect(result.current.widgetState).toBe('awaiting_approval');
+      expect(result.current.dslPreview?.command_id).toBe('cmd-882');
+
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.widgetState).toBe('expanded');
+      expect(result.current.dslPreview).toBeNull();
+      const lastMsg = result.current.messages[result.current.messages.length - 1];
+      expect(lastMsg.content).toContain('phê duyệt');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels pending approval and clears stale dslPreview when externalSessionId changes (#882)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'pending_approval',
+          dsl_preview: {
+            command_id: 'cmd-stale-1',
+            action: 'hr.employee.update',
+            effect: 'write',
+            approval_message: 'Duyệt thay đổi',
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ cancelled: true }),
+      });
+
+    const { result, rerender } = renderHook(
+      ({ extId, extMsgs }: { extId: string; extMsgs?: ChatMessage[] }) =>
+        useAICommand({ externalSessionId: extId, externalMessages: extMsgs }),
+      {
+        initialProps: {
+          extId: 'session-a',
+          extMsgs: undefined as ChatMessage[] | undefined,
+        },
+      }
+    );
+
+    await act(async () => {
+      await result.current.sendCommand('Cập nhật hồ sơ');
+    });
+    expect(result.current.widgetState).toBe('awaiting_approval');
+    expect(result.current.dslPreview?.command_id).toBe('cmd-stale-1');
+
+    act(() => {
+      rerender({ extId: 'session-b', extMsgs: [] });
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/proxy/v1/ai/commands/cmd-stale-1/cancel',
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(result.current.sessionId).toBe('session-b');
+    expect(result.current.dslPreview).toBeNull();
+    expect(result.current.widgetState).toBe('expanded');
+    expect(result.current.messages).toHaveLength(0);
   });
 });
