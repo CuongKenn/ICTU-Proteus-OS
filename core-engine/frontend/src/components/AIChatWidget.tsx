@@ -1,8 +1,8 @@
 // Copyright (c) 2026 CuongKenn & ICTU Team
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// AIChatWidget — Enterprise AI Assistant (Floating & Full-Page Inline)
-// Theme-aware (Light & Dark), Human-in-the-loop DSL approval preview.
+// AIChatWidget — Enterprise Glass-box AI Assistant (Floating & Full-Page Inline)
+// Theme-aware (Light & Dark), Z3 Formal Proof Governance, 4-Step Pipeline & HITL DSL preview.
 
 "use client";
 
@@ -18,16 +18,196 @@ import {
   ChevronDown,
   Clock,
   Terminal,
+  ShieldCheck,
+  ShieldAlert,
+  Sparkles,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { useAICommand, ChatMessage, DslPreview } from "@/hooks/useAICommand";
+import {
+  useAICommand,
+  ChatMessage,
+  DslPreview,
+  Z3Verification,
+  UseAICommandOptions,
+} from "@/hooks/useAICommand";
 import { logger } from "@/lib/logger";
+
+// ─── Prompt Starters (4 năng lực cốt lõi) ────────────────────────────────────
+
+export interface PromptStarterItem {
+  id: string;
+  label: string;
+  tag: string;
+  prompt: string;
+}
+
+export const PROMPT_STARTERS: PromptStarterItem[] = [
+  {
+    id: "starter-rag",
+    label: "Tra cứu quy định nghỉ phép năm",
+    tag: "RAG Tri thức",
+    prompt: "Tra cứu quy định nghỉ phép năm",
+  },
+  {
+    id: "starter-read",
+    label: "Thống kê nhân sự theo phòng ban",
+    tag: "Truy vấn read",
+    prompt: "Thống kê nhân sự theo phòng ban",
+  },
+  {
+    id: "starter-write",
+    label: "Tạo đề xuất mua 5 màn hình Lab giá 35 triệu",
+    tag: "Write + HITL",
+    prompt: "Tạo đề xuất mua 5 màn hình Lab giá 35 triệu",
+  },
+  {
+    id: "starter-z3-unsat",
+    label: "Chuyển thiết bị từ Phòng C1-202 sang Phòng C1-202",
+    tag: "Poka-yoke Z3",
+    prompt: "Chuyển thiết bị từ Phòng C1-202 sang Phòng C1-202",
+  },
+];
+
+// ─── Glass-box Governance Sub-components ──────────────────────────────────────
+
+const PIPELINE_STEPS = [
+  { num: "①", label: "NL → DX-DSL" },
+  { num: "②", label: "RBAC & RLS" },
+  { num: "③", label: "Z3 SMT Proof" },
+  { num: "④", label: "Dry-Run / HITL" },
+] as const;
+
+const GlassboxPipelineBar: React.FC<{
+  z3Status?: "SAT" | "UNSAT";
+  awaitingHitl?: boolean;
+}> = ({ z3Status, awaitingHitl }) => {
+  const isBlockedAtZ3 = z3Status === "UNSAT";
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1 py-1.5 px-2.5 rounded-lg bg-paper-white/80 border border-line text-[10.5px] font-medium"
+      aria-label="Chuỗi kiểm định Glass-box AI 4 bước"
+    >
+      {PIPELINE_STEPS.map((step, idx) => {
+        const isZ3Step = idx === 2;
+        const isHitlStep = idx === 3;
+
+        let stepStyle = "text-emerald-700 dark:text-emerald-400";
+        if (isBlockedAtZ3 && isZ3Step) {
+          stepStyle = "text-rose-700 dark:text-rose-400 font-semibold";
+        } else if (isBlockedAtZ3 && isHitlStep) {
+          stepStyle = "text-dim line-through";
+        } else if (awaitingHitl && isHitlStep) {
+          stepStyle = "text-amber-700 dark:text-amber-400 font-semibold";
+        }
+
+        return (
+          <React.Fragment key={step.label}>
+            <span className={clsx("inline-flex items-center gap-1", stepStyle)}>
+              <span>{step.num}</span>
+              <span>{step.label}</span>
+            </span>
+            {idx < PIPELINE_STEPS.length - 1 && (
+              <span className="text-ghost select-none px-0.5">·</span>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
+
+const Z3VerificationBadge: React.FC<{
+  z3?: Z3Verification;
+  fallbackSat?: boolean;
+  effect?: "read" | "write" | "critical";
+}> = ({ z3, fallbackSat = false, effect }) => {
+  if (!z3 && !fallbackSat) return null;
+
+  if (z3?.status === "UNSAT") {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-lg border p-2.5 text-xs"
+        style={{
+          background: "var(--rose-fill)",
+          borderColor: "rgba(190, 18, 60, 0.35)",
+          color: "var(--rose)",
+        }}
+      >
+        <div className="flex items-center gap-1.5 font-bold tracking-tight">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          <span>⛔ POKA-YOKE Z3 BLOCKED (UNSAT)</span>
+        </div>
+        {z3.violated_constraint && (
+          <div className="mt-1.5 px-2 py-1.5 rounded bg-paper-white/90 border border-rose-500/25 font-mono text-[11px] text-ink break-words">
+            <span className="text-muted mr-1">∀ Vi phạm bất biến:</span>
+            <code>{z3.violated_constraint}</code>
+          </div>
+        )}
+        {z3.invariants_checked && z3.invariants_checked.length > 0 && (
+          <div className="mt-1 text-[10.5px] opacity-90">
+            Ràng buộc đã quét: {z3.invariants_checked.join(", ")}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const solveTimeSuffix =
+    z3?.solve_time_ms !== undefined ? ` (${z3.solve_time_ms}ms)` : "";
+  const invariantsTooltip =
+    z3?.invariants_checked && z3.invariants_checked.length > 0
+      ? `Bất biến đã kiểm chứng: ${z3.invariants_checked.join(", ")}`
+      : "Đã kiểm chứng tính đúng đắn hình thức qua Z3 Theorem Prover";
+  const isDualApproval = Boolean(z3?.escalated_to_critical || effect === "critical");
+
+  return (
+    <div className="mt-2 flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          title={invariantsTooltip}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border"
+          style={{
+            background: "var(--emerald-fill)",
+            borderColor: "rgba(5, 150, 105, 0.3)",
+            color: "var(--emerald)",
+          }}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+          <span>{`🛡️ Z3 Formal Proof: SAT${solveTimeSuffix}`}</span>
+        </span>
+
+        {isDualApproval && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold border"
+            style={{
+              background: "var(--rose-fill)",
+              borderColor: "rgba(190, 18, 60, 0.28)",
+              color: "var(--rose)",
+            }}
+          >
+            Phê duyệt kép 2 cấp
+          </span>
+        )}
+      </div>
+
+      {z3?.invariants_checked && z3.invariants_checked.length > 0 && (
+        <div className="text-[10.5px] text-muted font-mono truncate" title={invariantsTooltip}>
+          ✓ Bất biến: {z3.invariants_checked.join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const ThinkingIndicator: React.FC = () => (
+const ThinkingIndicator: React.FC<{ statusText?: string | null }> = ({ statusText }) => (
   <div className="flex items-center gap-1.5 px-3 py-2.5">
-    <span className="text-xs mr-1.5 font-medium text-dim">Đang phân tích</span>
+    <span className="text-xs mr-1.5 font-medium text-dim">
+      {statusText || "Đang phân tích"}
+    </span>
     {[0, 1, 2].map((i) => (
       <span
         key={i}
@@ -78,6 +258,8 @@ function renderMessageContent(content: string, isUser: boolean): React.ReactNode
 
 const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
   const isUser = message.role === "user";
+  const showGovernance = !isUser && Boolean(message.show_pipeline || message.z3_verification);
+
   return (
     <div className={clsx("flex gap-2.5 mb-3", isUser ? "flex-row-reverse" : "flex-row")}>
       {!isUser && (
@@ -91,14 +273,35 @@ const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
 
       <div
         className={clsx(
-          "max-w-[82%] rounded-xl px-3.5 py-2.5 text-[13.5px] leading-relaxed",
+          "max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13.5px] leading-relaxed",
           isUser
             ? "text-white rounded-tr-sm"
             : "bg-paper-subtle border border-line text-ink rounded-tl-sm"
         )}
         style={isUser ? { background: "var(--accent-solid)" } : undefined}
       >
+        {showGovernance && (
+          <div className="mb-2">
+            <GlassboxPipelineBar
+              z3Status={message.z3_verification?.status ?? "SAT"}
+              awaitingHitl={
+                (message.effect === "write" || message.effect === "critical") &&
+                message.z3_verification?.status !== "UNSAT"
+              }
+            />
+          </div>
+        )}
+
         {renderMessageContent(message.content, isUser)}
+
+        {showGovernance && (
+          <Z3VerificationBadge
+            z3={message.z3_verification}
+            fallbackSat={!message.z3_verification}
+            effect={message.effect}
+          />
+        )}
+
         <div
           className={clsx(
             "text-[10.5px] mt-1 tabular-nums",
@@ -155,9 +358,19 @@ const DslPreviewPanel: React.FC<{
         </span>
       </div>
 
-      {/* Action & Preview */}
+      {/* Pipeline 4 bước & Huy hiệu Z3 */}
       <div className="px-3.5 pt-3">
-        <div className="flex items-center gap-1.5 mb-2">
+        <GlassboxPipelineBar
+          z3Status={preview.z3_verification?.status ?? "SAT"}
+          awaitingHitl={preview.z3_verification?.status !== "UNSAT"}
+        />
+        <Z3VerificationBadge
+          z3={preview.z3_verification}
+          fallbackSat={!preview.z3_verification}
+          effect={preview.effect}
+        />
+
+        <div className="flex items-center gap-1.5 mt-2.5 mb-2">
           <Terminal className="w-3.5 h-3.5 text-accent shrink-0" />
           <span className="text-xs font-mono font-medium text-ink">{preview.action}</span>
         </div>
@@ -236,16 +449,23 @@ const DslPreviewPanel: React.FC<{
 
 // ─── Main Widget Component ────────────────────────────────────────────────────
 
-export interface AIChatWidgetProps {
+export interface AIChatWidgetProps extends UseAICommandOptions {
   mode?: "floating" | "inline";
 }
 
-const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) => {
+const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({
+  mode = "floating",
+  enableStream,
+  externalSessionId,
+  externalMessages,
+  onTurnCompleted,
+}) => {
   const {
     widgetState,
     messages,
     inputValue,
     dslPreview,
+    streamStatus,
     setInputValue,
     openWidget,
     minimizeWidget,
@@ -253,7 +473,12 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
     sendCommand,
     openMattermostApproval,
     cancelApproval,
-  } = useAICommand();
+  } = useAICommand({
+    enableStream,
+    externalSessionId,
+    externalMessages,
+    onTurnCompleted,
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -305,6 +530,11 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
   const isInputDisabled = widgetState === "thinking" || widgetState === "awaiting_approval";
   const canSend = inputValue.trim().length > 0 && !isInputDisabled;
 
+  const handleStarterClick = (prompt: string) => {
+    if (isInputDisabled) return;
+    sendCommand(prompt);
+  };
+
   return (
     <div
       id={isInline ? "ai-chat-inline-root" : "ai-chat-widget-root"}
@@ -325,7 +555,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
           isInline
             ? "w-full h-full flex-1 rounded-xl shadow-card"
             : clsx(
-                "w-[380px] max-w-[calc(100vw-2.5rem)] rounded-xl shadow-modal",
+                "w-[395px] max-w-[calc(100vw-2.5rem)] rounded-xl shadow-modal",
                 "transition-all duration-200 ease-out origin-bottom-right",
                 isExpanded
                   ? "opacity-100 scale-100 translate-y-0"
@@ -333,7 +563,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
               )
         )}
         style={{
-          height: isInline ? "100%" : isExpanded ? "500px" : "0px",
+          height: isInline ? "100%" : isExpanded ? "530px" : "0px",
         }}
       >
         {/* Header */}
@@ -346,8 +576,13 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
               <Bot className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-sm font-semibold text-ink leading-tight font-heading">
-                Proteus AI
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-ink leading-tight font-heading">
+                  Proteus AI
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-paper-subtle border border-line text-muted">
+                  Z3 Glass-box
+                </span>
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
@@ -407,7 +642,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
           className="flex-1 overflow-y-auto px-4 pt-4 pb-2 bg-paper/40"
         >
           {messages.length === 0 && widgetState !== "thinking" && !dslPreview && (
-            <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8">
+            <div className="min-h-full flex flex-col items-center justify-center text-center px-2 py-5">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 border border-line"
                 style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
@@ -415,9 +650,34 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
                 <Bot className="w-5 h-5" />
               </div>
               <p className="text-sm font-semibold text-ink">Trợ lý Điều hành Proteus AI</p>
-              <p className="text-xs text-muted mt-1 max-w-[260px] leading-relaxed">
-                Hỏi đáp tài liệu nội bộ hoặc ra lệnh nghiệp vụ bằng tiếng Việt. Các thao tác ghi dữ liệu luôn yêu cầu phê duyệt.
+              <p className="text-xs text-muted mt-1 max-w-[300px] leading-relaxed">
+                Mọi yêu cầu đều được kiểm chứng qua 4 lớp: NL → DX-DSL · RBAC/RLS · Z3 SMT Proof · Dry-Run/HITL.
               </p>
+
+              {/* 4 Prompt Starters (1-chạm) */}
+              <div
+                className={clsx(
+                  "w-full mt-4 grid gap-2 text-left",
+                  isInline ? "grid-cols-1 sm:grid-cols-2 max-w-2xl" : "grid-cols-1"
+                )}
+              >
+                {PROMPT_STARTERS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleStarterClick(item.prompt)}
+                    className="group flex flex-col gap-1 p-2.5 rounded-xl bg-paper-white hover:bg-paper-subtle border border-line hover:border-accent/40 transition-all text-left cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-accent uppercase tracking-wider">
+                      <Sparkles className="w-3 h-3 shrink-0" />
+                      {item.tag}
+                    </span>
+                    <span className="text-xs font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+                      {item.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -427,7 +687,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
 
           {widgetState === "thinking" && (
             <div aria-hidden="true">
-              <ThinkingIndicator />
+              <ThinkingIndicator statusText={streamStatus} />
             </div>
           )}
 
@@ -441,6 +701,23 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Compact Quick Action Strip when conversation is active */}
+        {messages.length > 0 && !isInputDisabled && (
+          <div className="px-3.5 py-1.5 flex items-center gap-1.5 overflow-x-auto border-t border-line bg-paper-subtle/50 shrink-0">
+            {PROMPT_STARTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleStarterClick(item.prompt)}
+                title={item.label}
+                className="shrink-0 text-[11px] px-2.5 py-1 rounded-full bg-paper-white border border-line hover:border-accent/50 text-ink-soft hover:text-accent transition-colors cursor-pointer"
+              >
+                {item.tag}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="px-3.5 py-2.5 flex items-center gap-2 shrink-0 border-t border-line bg-paper-white">
@@ -464,7 +741,7 @@ const AIChatWidgetInner: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) =
             id="ai-chat-send-btn"
             type="button"
             aria-label="Gửi lệnh"
-            onClick={sendCommand}
+            onClick={() => sendCommand()}
             disabled={!canSend}
             className={clsx(
               "w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors",
@@ -562,14 +839,14 @@ class AIChatErrorBoundary extends React.Component<
   }
 }
 
-export const AIChatWidget: React.FC<AIChatWidgetProps> = ({ mode = "floating" }) => (
-  <AIChatErrorBoundary mode={mode}>
-    <AIChatWidgetInner mode={mode} />
+export const AIChatWidget: React.FC<AIChatWidgetProps> = (props) => (
+  <AIChatErrorBoundary mode={props.mode ?? "floating"}>
+    <AIChatWidgetInner {...props} mode={props.mode ?? "floating"} />
   </AIChatErrorBoundary>
 );
 
-export const AIChatPanel: React.FC<AIChatWidgetProps> = ({ mode = "inline" }) => (
-  <AIChatErrorBoundary mode={mode}>
-    <AIChatWidgetInner mode={mode} />
+export const AIChatPanel: React.FC<AIChatWidgetProps> = (props) => (
+  <AIChatErrorBoundary mode={props.mode ?? "inline"}>
+    <AIChatWidgetInner {...props} mode={props.mode ?? "inline"} />
   </AIChatErrorBoundary>
 );

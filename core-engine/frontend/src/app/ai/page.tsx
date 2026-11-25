@@ -3,18 +3,16 @@
 
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
-import { AIChatPanel } from "@/components/AIChatWidget";
+import { AIWorkspaceClient } from "@/components/ai/AIWorkspaceClient";
 
 export const metadata: Metadata = {
-  title: "Proteus AI — Proteus OS",
+  title: "Proteus AI — Trung tâm Điều hành Glass-box AI",
 };
 
 export default function ProteusAIPage() {
   return (
     <AppShell>
-      <div className="w-full h-[calc(100vh-80px)] p-4 md:p-6 flex flex-col max-w-5xl mx-auto">
-        <AIChatPanel mode="inline" />
-      </div>
+      <AIWorkspaceClient />
     </AppShell>
   );
 }

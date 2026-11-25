@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // MFE Gateway shell — Enterprise Swiss Slate theme (light/dark), synchronized with core-engine.
+// Supports seamless embed mode (?embed=1) hiding redundant topbar while preserving sub-tabs & postMessage theme sync.
 import React, { useCallback, useEffect, useState } from 'react';
 import { registry } from './plugins/registry';
 import { applyTheme, resolveInitialTheme, toggleTheme, type Theme } from './theme';
@@ -19,6 +20,35 @@ function parsePath(): { pluginId: string; subPath: string } {
   if (parts.length === 0) return { pluginId: '', subPath: '' };
   const [pluginId, ...rest] = parts;
   return { pluginId, subPath: rest.length ? `/${rest.join('/')}` : '' };
+}
+
+function detectEmbedMode(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('embed') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedThemeOrigin(origin: string): boolean {
+  if (!origin || origin === window.location.origin) return true;
+  try {
+    const incomingHost = new URL(origin).hostname;
+    const currentHost = window.location.hostname;
+    if (incomingHost === currentHost) return true;
+    if (
+      (incomingHost === 'localhost' || incomingHost === '127.0.0.1') &&
+      (currentHost === 'localhost' || currentHost === '127.0.0.1')
+    ) {
+      return true;
+    }
+    if (incomingHost.endsWith('.proteus.local') || incomingHost === 'proteus.local') {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 /* Crisp inline SVG icons (zero emojis) */
@@ -51,6 +81,7 @@ const IconArrowUpRight = () => (
 
 const App = () => {
   const [route, setRoute] = useState(parsePath);
+  const [isEmbedded] = useState<boolean>(detectEmbedMode);
   const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
   const [busy, setBusy] = useState(0);
 
@@ -71,7 +102,7 @@ const App = () => {
       }
     };
     const onMessage = (e: MessageEvent) => {
-      if (e.origin && e.origin !== window.location.origin) return;
+      if (!isTrustedThemeOrigin(e.origin)) return;
       const d = e.data as { type?: string; theme?: unknown } | null;
       if (d?.type === 'proteus-theme' && (d.theme === 'dark' || d.theme === 'light')) {
         setThemeState(d.theme);
@@ -91,11 +122,19 @@ const App = () => {
     return () => window.removeEventListener('popstate', onNav);
   }, []);
 
-  const navigate = useCallback((to: string) => {
-    const target = to.startsWith(BASE) ? to : `${BASE}${to.startsWith('/') ? '' : '/'}${to}`;
-    window.history.pushState(null, '', target);
-    setRoute(parsePath());
-  }, []);
+  const navigate = useCallback(
+    (to: string) => {
+      const baseTarget = to.startsWith(BASE)
+        ? to
+        : `${BASE}${to.startsWith('/') ? '' : '/'}${to}`;
+      const targetWithQuery = isEmbedded
+        ? `${baseTarget}${baseTarget.includes('?') ? '&' : '?'}embed=1`
+        : baseTarget;
+      window.history.pushState(null, '', targetWithQuery);
+      setRoute(parsePath());
+    },
+    [isEmbedded],
+  );
 
   const navigateSub = useCallback(
     (sub: string) => {
@@ -115,77 +154,79 @@ const App = () => {
         {busy > 0 && <div className="mfe-busy-bar" />}
       </div>
 
-      {/* Executive Shell Topbar */}
-      <header className="mfe-topbar">
-        {route.pluginId ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-            <button type="button" onClick={() => navigate('/')} className="mfe-back-btn">
-              <IconArrowLeft />
-              <span>Tất cả phân hệ</span>
-            </button>
-            {entry && (
-              <>
-                <span style={{ color: 'var(--mfe-line-hi)' }}>/</span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    color: 'var(--mfe-text)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {entry.displayName}
-                </span>
-              </>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            <div
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 7,
-                background: 'var(--mfe-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: 'var(--mfe-font-heading)',
-                fontWeight: 700,
-                fontSize: '0.78rem',
-              }}
-            >
-              P
+      {/* Executive Shell Topbar — ẩn khi nhúng mượt ?embed=1 bên trong Core Engine */}
+      {!isEmbedded && (
+        <header className="mfe-topbar">
+          {route.pluginId ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+              <button type="button" onClick={() => navigate('/')} className="mfe-back-btn">
+                <IconArrowLeft />
+                <span>Tất cả phân hệ</span>
+              </button>
+              {entry && (
+                <>
+                  <span style={{ color: 'var(--mfe-line-hi)' }}>/</span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      color: 'var(--mfe-text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {entry.displayName}
+                  </span>
+                </>
+              )}
             </div>
-            <span
-              style={{
-                fontFamily: 'var(--mfe-font-heading)',
-                fontWeight: 700,
-                fontSize: '0.94rem',
-                letterSpacing: '-0.015em',
-              }}
-            >
-              Proteus <span style={{ color: 'var(--mfe-accent)' }}>Modules</span>
-            </span>
-          </div>
-        )}
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 7,
+                  background: 'var(--mfe-primary)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontFamily: 'var(--mfe-font-heading)',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                }}
+              >
+                P
+              </div>
+              <span
+                style={{
+                  fontFamily: 'var(--mfe-font-heading)',
+                  fontWeight: 700,
+                  fontSize: '0.94rem',
+                  letterSpacing: '-0.015em',
+                }}
+              >
+                Proteus <span style={{ color: 'var(--mfe-accent)' }}>Modules</span>
+              </span>
+            </div>
+          )}
 
-        <span style={{ flex: 1 }} />
+          <span style={{ flex: 1 }} />
 
-        <button
-          type="button"
-          className="mfe-theme-toggle"
-          onClick={onToggleTheme}
-          aria-label="Đổi chế độ sáng/tối"
-          title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}
-        >
-          {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          <span>{theme === 'dark' ? 'Sáng' : 'Tối'}</span>
-        </button>
-      </header>
+          <button
+            type="button"
+            className="mfe-theme-toggle"
+            onClick={onToggleTheme}
+            aria-label="Đổi chế độ sáng/tối"
+            title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}
+          >
+            {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            <span>{theme === 'dark' ? 'Sáng' : 'Tối'}</span>
+          </button>
+        </header>
+      )}
 
       {!route.pluginId && <Catalog navigate={navigate} />}
       {route.pluginId && !entry && <NotFound pluginId={route.pluginId} navigate={navigate} />}
