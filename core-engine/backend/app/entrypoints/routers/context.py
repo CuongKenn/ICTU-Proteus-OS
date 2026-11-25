@@ -749,6 +749,9 @@ def _build_ictu_campus_demo_entities(tenant_id: str) -> list[dict[str, Any]]:
     ]
 
 
+_build_campus_seed_entities = _build_ictu_campus_demo_entities
+
+
 @router.get("/entities", status_code=status.HTTP_200_OK)
 async def list_context_entities(
     type: str | None = Query(
@@ -935,33 +938,64 @@ async def get_context_entity(
     db: AsyncSession = Depends(get_db_readonly),
     tenant_context=Depends(get_current_tenant_context),
 ):
-    """Lấy trạng thái thực thể (Digital Twin) theo ID và cô lập theo tenant (#861)."""
+    """Lấy trạng thái thực thể (Digital Twin) theo ID và cô lập theo tenant (#861, #881)."""
+    tenant_id_str = str(tenant_context.tenant_id)
+    await set_session_tenant(db, tenant_id_str)
+
     query = text("""
-        SELECT tenant_id, entity_id, type, payload, location, updated_at
+        SELECT
+            tenant_id,
+            entity_id,
+            type,
+            payload,
+            CASE
+                WHEN location IS NOT NULL THEN ST_AsGeoJSON(location::geometry)
+                ELSE NULL
+            END AS geojson,
+            updated_at
         FROM context.entity_state
         WHERE entity_id = :id AND tenant_id = :tenant_id;
         """)
-    res = await db.execute(
-        query, {"id": entity_id, "tenant_id": tenant_context.tenant_id}
-    )
-    row = res.fetchone()
+    row = None
+    try:
+        res = await db.execute(
+            query, {"id": entity_id, "tenant_id": tenant_context.tenant_id}
+        )
+        row = res.fetchone()
+    except Exception as exc:
+        logger.warning(
+            "Spatial query on context.entity_state unavailable for %s: %s",
+            entity_id,
+            exc,
+        )
+
     if not row:
+        for seed_entity in _build_campus_seed_entities(tenant_id_str):
+            if seed_entity["entity_id"] == entity_id:
+                return {**seed_entity, "source": "campus_seed_preview"}
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Entity {entity_id} not found in entity_state",
         )
 
-    payload = row[3]
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-
-    return {
-        "tenant_id": str(row[0]),
-        "entity_id": row[1],
-        "type": row[2],
-        "payload": payload,
-        "updated_at": row[5].isoformat() if row[5] else None,
-    }
+    raw_payload = row[3]
+    if isinstance(raw_payload, str):
+        raw_payload = json.loads(raw_payload)
+    updated_val = row[5]
+    updated_iso = (
+        updated_val.isoformat()
+        if hasattr(updated_val, "isoformat")
+        else (str(updated_val) if updated_val else None)
+    )
+    serialized = _serialize_entity_record(
+        tenant_id=str(row[0]),
+        entity_id=str(row[1]),
+        entity_type=str(row[2]),
+        payload=raw_payload if isinstance(raw_payload, dict) else {},
+        location_raw=row[4],
+        updated_at=updated_iso,
+    )
+    return {**serialized, "source": "entity_state"}
 
 
 class CreateSubscriptionRequest(BaseModel):
@@ -1082,19 +1116,48 @@ async def delete_orion_subscription(
     request: Request,
     tenant_context=Depends(require_permission("context.manage")),
 ):
-    """Hủy đăng ký subscription trên Orion-LD và cập nhật CSDL (#846, #848, #861)."""
+    """Hủy đăng ký subscription trên Orion-LD và cập nhật CSDL (#846, #848, #861, #881)."""
     tenant_id = str(tenant_context.tenant_id)
-    http_client = getattr(request.app.state, "http_client", None)
-    adapter = OrionAdapter(client=http_client)
-    try:
-        await adapter.delete_subscription(subscription_id, tenant_id=tenant_id)
-    except Exception as e:
-        logger.warning("Could not delete subscription on Orion: %s", e)
-    finally:
-        await adapter.aclose()
+    tenant_uuid = uuid.UUID(tenant_id)
 
     async with AsyncSessionLocal() as session:
-        await set_session_tenant(session, tenant_context.tenant_id)
+        await set_session_tenant(session, tenant_id)
+        exists_res = await session.execute(
+            text("""
+                SELECT subscription_id
+                FROM context.subscriptions
+                WHERE subscription_id = :sub_id
+                  AND tenant_id = :tenant_id
+                  AND status != 'DELETED';
+                """),
+            {"sub_id": subscription_id, "tenant_id": tenant_uuid},
+        )
+        if not exists_res.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Subscription {subscription_id} not found for this tenant.",
+            )
+
+        http_client = getattr(request.app.state, "http_client", None)
+        adapter = OrionAdapter(client=http_client)
+        try:
+            await adapter.delete_subscription(subscription_id, tenant_id=tenant_id)
+        except Exception as e:
+            err_status = getattr(e, "status_code", None)
+            if err_status == 404 or "404" in str(e) or "not found" in str(e).lower():
+                logger.info(
+                    "Subscription %s already absent on Orion-LD (404); marking DELETED.",
+                    subscription_id,
+                )
+            else:
+                logger.error("Could not delete subscription on Orion: %s", e)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Context Broker subscription deletion error: {e}",
+                ) from e
+        finally:
+            await adapter.aclose()
+
         query = text("""
             UPDATE context.subscriptions
             SET status = 'DELETED'
@@ -1102,7 +1165,7 @@ async def delete_orion_subscription(
             """)
         await session.execute(
             query,
-            {"sub_id": subscription_id, "tenant_id": uuid.UUID(tenant_id)},
+            {"sub_id": subscription_id, "tenant_id": tenant_uuid},
         )
         await session.commit()
 
