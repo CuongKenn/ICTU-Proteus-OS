@@ -46,6 +46,66 @@ export function resolveInitialTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.classList.toggle('dark', theme === 'dark');
+  document.documentElement.style.backgroundColor =
+    theme === 'dark' ? '#0B1120' : '#F8FAFC';
+  document.documentElement.style.colorScheme = theme;
+}
+
+export function syncThemeUrlParam(theme: Theme): void {
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('theme') !== theme) {
+      url.searchParams.set('theme', theme);
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}${url.hash}`
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isTrustedThemeOrigin(origin: string): boolean {
+  if (!origin || origin === window.location.origin) return true;
+  try {
+    const incomingHost = new URL(origin).hostname;
+    const currentHost = window.location.hostname;
+    if (incomingHost === currentHost) return true;
+    if (
+      `plugins.${incomingHost}` === currentHost ||
+      incomingHost === `plugins.${currentHost}`
+    ) {
+      return true;
+    }
+    if (
+      (incomingHost === 'localhost' || incomingHost === '127.0.0.1') &&
+      (currentHost === 'localhost' || currentHost === '127.0.0.1')
+    ) {
+      return true;
+    }
+    if (
+      incomingHost.endsWith('.proteus.local') ||
+      incomingHost === 'proteus.local'
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export function isThemeMessage(
+  data: unknown
+): data is { type: string; theme: Theme } {
+  if (!data || typeof data !== 'object') return false;
+  const msg = data as { type?: unknown; theme?: unknown };
+  return (
+    (msg.type === 'proteus-theme' || msg.type === 'PROTEUS_THEME_CHANGE') &&
+    isTheme(msg.theme)
+  );
 }
 
 /** Đổi theme + phát cho app chính (postMessage) để đồng bộ 2 chiều. */
@@ -53,6 +113,14 @@ export function setTheme(theme: Theme): void {
   applyTheme(theme);
   try {
     localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const currentSearch = new URLSearchParams(window.location.search);
+    if (currentSearch.get('embed') === '1' || currentSearch.has('theme')) {
+      syncThemeUrlParam(theme);
+    }
   } catch {
     /* ignore */
   }
@@ -71,18 +139,31 @@ export function toggleTheme(current: Theme): Theme {
 
 /** Khởi tạo theme + lắng nghe thay đổi từ ngoài (storage/message). */
 export function initTheme(): Theme {
+  const queryTheme = fromQuery();
   const initial = resolveInitialTheme();
   applyTheme(initial);
+  if (queryTheme) {
+    try {
+      localStorage.setItem(STORAGE_KEY, queryTheme);
+    } catch {
+      /* ignore */
+    }
+  }
 
   window.addEventListener('storage', (e) => {
     if (e.key === STORAGE_KEY && isTheme(e.newValue)) applyTheme(e.newValue);
   });
 
   window.addEventListener('message', (e) => {
-    if (e.origin && e.origin !== window.location.origin) return;
-    const data = e.data as { type?: string; theme?: unknown } | null;
-    if (data && data.type === 'proteus-theme' && isTheme(data.theme)) {
-      applyTheme(data.theme);
+    if (!isTrustedThemeOrigin(e.origin)) return;
+    if (isThemeMessage(e.data)) {
+      applyTheme(e.data.theme);
+      try {
+        localStorage.setItem(STORAGE_KEY, e.data.theme);
+      } catch {
+        /* ignore */
+      }
+      syncThemeUrlParam(e.data.theme);
     }
   });
 

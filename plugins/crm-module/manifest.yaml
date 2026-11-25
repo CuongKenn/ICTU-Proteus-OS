@@ -5,7 +5,7 @@
 
 name: "crm-module"
 display_name: "Quản lý Khách hàng - CRM"
-version: "1.0.0"
+version: "1.1.0"
 description: |
   Quản lý toàn bộ vòng đời quan hệ khách hàng: từ tiếp nhận lead, nuôi dưỡng cơ hội bán hàng, quản lý hợp đồng đến chăm sóc sau bán và xử lý phản ánh.
 author: "ICTU Team"
@@ -142,9 +142,9 @@ roles:
       - "crm:reports:read"
 
 event_subscriptions:
-  - source_plugin: "finance-module"
+  - source_plugin: "procurement-module"
     event_types:
-      - "finance.contract.signed"
+      - "procurement.contract.signed"
     handler_workflow: "workflows/customer_satisfaction.json"
   - source_plugin: "hr-module"
     event_types:

@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS finance_expense_requests (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS finance_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    channel_id VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code ON finance_accounts(code);
 CREATE INDEX IF NOT EXISTS idx_finance_transactions_date ON finance_transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_finance_invoices_status ON finance_invoices(status);

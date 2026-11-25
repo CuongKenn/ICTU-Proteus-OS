@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS it_knowledge_base (
 );
 INSERT INTO it_categories (id, name, description) VALUES
     ('11111111-1111-1111-1111-111111111111', 'Phần cứng', 'Sự cố máy tính, máy in, mạng'),
-    ('22222222-2222-2222-2222-222222222222', 'Tài khoản & Phân quyền', 'Cấp phát, khóa tài khoản, reset mật khẩu'),
+    ('22222222-2222-2222-2222-222222222222', 'Tài khoản & Phân quyền', 'Cấp phát, khóa tài khoản, đặt lại mật khẩu'),
     ('33333333-3333-3333-3333-333333333333', 'Phần mềm', 'Cài đặt phần mềm, lỗi ứng dụng')
 ON CONFLICT (id) DO NOTHING;
 

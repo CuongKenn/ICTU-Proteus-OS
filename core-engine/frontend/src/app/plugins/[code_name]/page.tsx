@@ -14,17 +14,45 @@ interface PluginPageProps {
   };
 }
 
-function resolvePluginBaseUrl(rawUrl: string | null | undefined, codeName: string): string {
-  const mfeBase = (process.env.NEXT_PUBLIC_PLUGINS_MFE_URL || "/plugins-mfe").replace(
-    /\/+$/,
-    ""
-  );
-  if (!rawUrl) {
+function resolvePluginBaseUrl(
+  rawUrl: string | null | undefined,
+  codeName: string
+): string {
+  const configuredMfe = (process.env.NEXT_PUBLIC_PLUGINS_MFE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const mfeBase = configuredMfe || "/plugins-mfe";
+
+  if (!rawUrl || !rawUrl.trim()) {
     return `${mfeBase}/${codeName}`;
   }
-  return rawUrl
+
+  const expanded = rawUrl
+    .trim()
     .replace(/\$\{PLUGINS_MFE_URL\}/g, mfeBase)
     .replace(/\/+$/, "");
+
+  try {
+    const parsed = new URL(
+      expanded,
+      typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"
+    );
+    if (parsed.hostname.toLowerCase().startsWith("plugins.")) {
+      let subPath = parsed.pathname.replace(/\/+$/, "");
+      if (subPath === "/plugins-mfe") {
+        subPath = "";
+      } else if (subPath.startsWith("/plugins-mfe/")) {
+        subPath = subPath.slice("/plugins-mfe".length);
+      }
+      const normalizedSubPath =
+        subPath && subPath !== "/" ? subPath : `/${codeName}`;
+      return `${mfeBase}${normalizedSubPath}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    // Fall through and return expanded as-is
+  }
+
+  return expanded;
 }
 
 function isInternalMfeUrl(url: string): boolean {
@@ -55,6 +83,9 @@ function isInternalMfeUrl(url: string): boolean {
     if (parsed.pathname.startsWith("/plugins-mfe")) {
       return true;
     }
+    if (parsed.hostname.toLowerCase().startsWith("plugins.")) {
+      return true;
+    }
     if (
       typeof window !== "undefined" &&
       parsed.hostname === window.location.hostname &&
@@ -70,14 +101,29 @@ function isInternalMfeUrl(url: string): boolean {
 }
 
 function buildSeamlessMfeSrc(baseUrl: string): string {
-  const sep = baseUrl.includes("?") ? "&" : "?";
   let currentTheme = "light";
   if (typeof document !== "undefined") {
-    currentTheme = document.documentElement.classList.contains("dark")
-      ? "dark"
-      : "light";
+    const root = document.documentElement;
+    currentTheme =
+      root.classList.contains("dark") ||
+      root.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
   }
-  return `${baseUrl}${sep}embed=1&theme=${currentTheme}`;
+
+  try {
+    const isRelative = baseUrl.startsWith("/");
+    const parsed = new URL(baseUrl, "http://proteus.internal");
+    parsed.searchParams.set("embed", "1");
+    parsed.searchParams.set("theme", currentTheme);
+    if (isRelative) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${sep}embed=1&theme=${currentTheme}`;
+  }
 }
 
 export default function PluginPage({ params }: PluginPageProps) {
