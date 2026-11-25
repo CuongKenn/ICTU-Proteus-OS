@@ -10,14 +10,14 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'plugins/**/manifest.yaml'
-      - 'plugins/**/manifest.yml'
+      - 'plugins/**'
+      - 'scripts/verify_plugin_contracts.py'
       - '.github/workflows/plugin-manifest-lint.yml'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'plugins/**/manifest.yaml'
-      - 'plugins/**/manifest.yml'
+      - 'plugins/**'
+      - 'scripts/verify_plugin_contracts.py'
       - '.github/workflows/plugin-manifest-lint.yml'
 
 jobs:

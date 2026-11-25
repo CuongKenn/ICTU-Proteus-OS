@@ -54,27 +54,51 @@ VALID_CATEGORIES: frozenset[str] = frozenset(
     }
 )
 
-PROHIBITED_NGSI_PII_COLUMNS: frozenset[str] = frozenset(
+PROHIBITED_NGSI_COLUMNS: frozenset[str] = frozenset(
     {
-        "password",
-        "hashed_password",
-        "secret",
-        "salary",
-        "base_salary",
-        "gross_salary",
-        "net_salary",
-        "tax_id",
-        "bank_account",
-        "ssn",
-        "identity_card",
         "cccd",
         "cmnd",
+        "citizen_id",
+        "national_id",
+        "identity_card",
+        "id_card_number",
+        "ssn",
+        "salary",
+        "base_salary",
+        "net_salary",
+        "gross_salary",
+        "bonus",
+        "allowance",
+        "deduction",
+        "tax",
+        "tax_id",
+        "tax_code",
+        "bank_account",
+        "bank_name",
+        "bank_number",
+        "iban",
+        "credit_card",
+        "credit_card_info",
+        "password",
+        "password_hash",
+        "hashed_password",
+        "secret",
         "token",
         "api_key",
         "private_key",
-        "credit_card",
+        "access_pin_code",
+        "dob",
+        "date_of_birth",
+        "phone",
+        "personal_email",
+        "address_detail",
+        "medical_record",
+        "fingerprint",
+        "biometric",
     }
 )
+
+PROHIBITED_NGSI_PII_COLUMNS: frozenset[str] = PROHIBITED_NGSI_COLUMNS
 
 
 def _derive_display_name(code_name: str) -> str:
@@ -135,11 +159,37 @@ def init_plugin(
             f"[ERROR] Thư mục đích '{target_dir}' đã tồn tại và không rỗng.",
         )
 
-    final_display_name = (
+    raw_display_name = (
         display_name.strip()
         if display_name and display_name.strip()
         else _derive_display_name(clean_code)
     )
+    final_display_name = " ".join(raw_display_name.splitlines()).strip()
+    yaml_display_name = json.dumps(final_display_name, ensure_ascii=False)
+    yaml_description = json.dumps(
+        f"Phân hệ nghiệp vụ {final_display_name} vận hành trên kiến trúc đa thuê bao Proteus OS.",
+        ensure_ascii=False,
+    )
+    yaml_wf_name = json.dumps(
+        f"{final_display_name} Sync Webhook", ensure_ascii=False
+    )
+    yaml_mgr_name = json.dumps(
+        f"{final_display_name} Manager", ensure_ascii=False
+    )
+    yaml_mgr_desc = json.dumps(
+        f"Quản trị toàn quyền dữ liệu phân hệ {final_display_name}",
+        ensure_ascii=False,
+    )
+    yaml_viewer_name = json.dumps(
+        f"{final_display_name} Viewer", ensure_ascii=False
+    )
+    yaml_viewer_desc = json.dumps(
+        f"Quyền tra cứu chỉ đọc trên phân hệ {final_display_name}",
+        ensure_ascii=False,
+    )
+    sql_display_name = final_display_name.replace("'", "''")
+    tsx_display_name = json.dumps(final_display_name, ensure_ascii=False)
+
     prefix = clean_code.split("-")[0]
     table_name = f"{prefix}_items"
     webhook_path = f"{clean_code}-items-sync"
@@ -152,10 +202,9 @@ def init_plugin(
 # Plugin Manifest — {clean_code} ({final_display_name})
 
 name: "{clean_code}"
-display_name: "{final_display_name}"
+display_name: {yaml_display_name}
 version: "1.0.0"
-description: |
-  Phân hệ nghiệp vụ {final_display_name} vận hành trên kiến trúc đa thuê bao Proteus OS.
+description: {yaml_description}
 author: "ICTU Open-Source Community"
 license: "AGPL-3.0-or-later"
 category: "Operations"
@@ -179,7 +228,7 @@ database:
 workflows:
   - id: "{workflow_id}"
     file: "workflows/sample_webhook.json"
-    name: "{final_display_name} Sync Webhook"
+    name: {yaml_wf_name}
     description: "Xử lý yêu cầu đồng bộ bản ghi qua n8n webhook"
     trigger: "webhook"
     webhook_path: "{webhook_path}"
@@ -189,15 +238,15 @@ ui:
 
 roles:
   - name: "{prefix}_manager"
-    display_name: "{final_display_name} Manager"
-    description: "Quản trị toàn quyền dữ liệu phân hệ {final_display_name}"
+    display_name: {yaml_mgr_name}
+    description: {yaml_mgr_desc}
     permissions:
       - "{prefix}:items:read"
       - "{prefix}:items:write"
       - "{prefix}:items:approve"
   - name: "{prefix}_viewer"
-    display_name: "{final_display_name} Viewer"
-    description: "Quyền tra cứu chỉ đọc trên phân hệ {final_display_name}"
+    display_name: {yaml_viewer_name}
+    description: {yaml_viewer_desc}
     permissions:
       - "{prefix}:items:read"
 
@@ -254,7 +303,7 @@ INSERT INTO {table_name} (id, item_code, title, status, tenant_id)
 VALUES (
     '10000000-0000-4000-8000-000000000001',
     '{prefix.upper()}-001',
-    'Bản ghi mẫu {final_display_name}',
+    'Bản ghi mẫu {sql_display_name}',
     'ACTIVE',
     current_setting('app.current_tenant_id')::uuid
 )
@@ -386,7 +435,7 @@ export const App: React.FC = () => {{
         }}
       >
         <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>
-          {final_display_name}
+          {{{tsx_display_name}}}
         </h1>
         <p
           style={{
@@ -685,7 +734,9 @@ def validate_plugin(plugin_path: Path) -> tuple[int, list[str]]:
                             )
                             continue
                         col_raw = str(attr.get("column") or "").strip()
-                        target_raw = str(attr.get("target") or "").strip()
+                        target_raw = str(
+                            attr.get("target") or attr.get("name") or ""
+                        ).strip()
                         if not col_raw or not target_raw:
                             errors.append(
                                 f"ngsi.entities[{e_idx}].attributes[{a_idx}] "
@@ -694,12 +745,59 @@ def validate_plugin(plugin_path: Path) -> tuple[int, list[str]]:
                             continue
 
                         col_lower = col_raw.lower()
-                        if col_lower in PROHIBITED_NGSI_PII_COLUMNS:
+                        target_lower = target_raw.lower()
+                        if (
+                            col_lower in PROHIBITED_NGSI_COLUMNS
+                            or target_lower in PROHIBITED_NGSI_COLUMNS
+                        ):
+                            offending = (
+                                col_raw
+                                if col_lower in PROHIBITED_NGSI_COLUMNS
+                                else target_raw
+                            )
                             errors.append(
                                 f"[PII GATEKEEPER BLOCKED] ngsi.entities[{e_idx}] "
-                                f"(table='{etable}'): Cột nhạy cảm PII '{col_raw}' "
+                                f"(table='{etable}'): Cột nhạy cảm PII '{offending}' "
                                 "bị cấm xuất bản lên NGSI-LD Context Broker (L3-004)."
                             )
+
+                    rels = entity.get("relationships") or []
+                    if not isinstance(rels, list):
+                        errors.append(
+                            f"ngsi.entities[{e_idx}].relationships phải là danh sách."
+                        )
+                    else:
+                        for r_idx, rel in enumerate(rels):
+                            if not isinstance(rel, dict):
+                                errors.append(
+                                    f"ngsi.entities[{e_idx}].relationships[{r_idx}] "
+                                    "phải là object."
+                                )
+                                continue
+                            r_col = str(rel.get("column") or "").strip()
+                            r_target = str(rel.get("target") or "").strip()
+                            r_etype = str(rel.get("entity_type") or "").strip()
+                            if not r_col or not r_target or not r_etype:
+                                errors.append(
+                                    f"ngsi.entities[{e_idx}].relationships[{r_idx}] "
+                                    "yêu cầu đủ 'column', 'target' và 'entity_type'."
+                                )
+                                continue
+                            if (
+                                r_col.lower() in PROHIBITED_NGSI_COLUMNS
+                                or r_target.lower() in PROHIBITED_NGSI_COLUMNS
+                            ):
+                                offending_rel = (
+                                    r_col
+                                    if r_col.lower() in PROHIBITED_NGSI_COLUMNS
+                                    else r_target
+                                )
+                                errors.append(
+                                    f"[PII GATEKEEPER BLOCKED] ngsi.entities[{e_idx}] "
+                                    f"(table='{etable}'): Relationship nhạy cảm PII "
+                                    f"'{offending_rel}' bị cấm xuất bản lên NGSI-LD "
+                                    "Context Broker (L3-004)."
+                                )
 
     if errors:
         return (1, errors)
