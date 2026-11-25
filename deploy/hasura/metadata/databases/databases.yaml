@@ -36,15 +36,6 @@
             filter:
               tenant_id:
                 _eq: X-Hasura-Tenant-Id
-      object_relationships:
-        - name: tenant
-          using:
-            manual_configuration:
-              remote_table:
-                schema: public
-                name: tenants
-              column_mapping:
-                tenant_id: id
     - table:
         schema: context
         name: context_outbox

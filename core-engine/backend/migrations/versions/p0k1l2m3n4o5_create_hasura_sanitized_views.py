@@ -11,7 +11,6 @@ Create Date: 2026-11-23
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "p0k1l2m3n4o5"
@@ -21,12 +20,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Tạo view sanitized trong schema context loại bỏ hoàn toàn các cột lương/tài chính/PII
+    # Tạo view sanitized trong schema context loại bỏ các cột lương/tài chính/PII
     op.execute("""
         DO $$ BEGIN
-          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'hr_employees') THEN
-            CREATE OR REPLACE VIEW context.v_hr_employees_sanitized WITH (security_barrier = true) AS
-            SELECT 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'hr_employees'
+          ) THEN
+            CREATE OR REPLACE VIEW context.v_hr_employees_sanitized
+            WITH (security_invoker = true, security_barrier = true) AS
+            SELECT
               id,
               tenant_id,
               employee_code,
@@ -38,7 +41,7 @@ def upgrade() -> None:
               status,
               created_at,
               updated_at
-            FROM hr_employees;
+            FROM public.hr_employees;
           END IF;
         END $$;
         """)

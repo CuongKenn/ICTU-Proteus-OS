@@ -1,15 +1,14 @@
 # Copyright (c) 2026 CuongKenn & ICTU Team
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Unit tests for Hasura GraphQL metadata, Keycloak JWT integration, and Tenant isolation.
+"""Unit tests for Hasura GraphQL metadata, Keycloak JWT, and Tenant isolation.
 
-Tham chiếu: Issue #840 [L3-501], #841 [L3-502], #842 [L3-503], #843 [L3-504], #844 [L3-505], #845 [L3-506].
+Tham chiếu: Issue #840-#845 [L3-501..L3-506].
 """
 
 import json
 from pathlib import Path
 
-import pytest
 import yaml
 
 
@@ -26,15 +25,15 @@ def test_hasura_metadata_files_valid_yaml():
     assert version_path.exists()
     assert databases_path.exists()
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     assert config["version"] == 3
 
-    with open(version_path, "r", encoding="utf-8") as f:
+    with open(version_path, encoding="utf-8") as f:
         version = yaml.safe_load(f)
     assert version["version"] == 3
 
-    with open(databases_path, "r", encoding="utf-8") as f:
+    with open(databases_path, encoding="utf-8") as f:
         dbs = yaml.safe_load(f)
     assert isinstance(dbs, list)
     assert dbs[0]["name"] == "default"
@@ -44,7 +43,7 @@ def test_hasura_tracked_tables_and_tenant_isolation_rules():
     deploy_dir = Path(__file__).parents[4] / "deploy"
     databases_path = deploy_dir / "hasura" / "metadata" / "databases" / "databases.yaml"
 
-    with open(databases_path, "r", encoding="utf-8") as f:
+    with open(databases_path, encoding="utf-8") as f:
         dbs = yaml.safe_load(f)
 
     default_db = dbs[0]
@@ -72,9 +71,16 @@ def test_hasura_tracked_tables_and_tenant_isolation_rules():
         "tenant_id": {"_eq": "X-Hasura-Tenant-Id"}
     }
 
-    # Check object relationship to tenants table
+    # Ensure no dangling object_relationships to untracked public.tenants (#864)
     relationships = entity_state_entry.get("object_relationships", [])
-    assert any(r["name"] == "tenant" for r in relationships)
+    assert not any(
+        r.get("using", {})
+        .get("manual_configuration", {})
+        .get("remote_table", {})
+        .get("name")
+        == "tenants"
+        for r in relationships
+    )
 
 
 def test_keycloak_hasura_claims_scope():
@@ -82,7 +88,7 @@ def test_keycloak_hasura_claims_scope():
     realm_path = deploy_dir / "keycloak" / "realm-import.json"
     assert realm_path.exists()
 
-    with open(realm_path, "r", encoding="utf-8") as f:
+    with open(realm_path, encoding="utf-8") as f:
         realm = json.load(f)
 
     client_scopes = realm.get("clientScopes", [])
@@ -102,7 +108,6 @@ def test_keycloak_hasura_claims_scope():
 
 
 def test_sanitized_views_omit_sensitive_columns():
-    deploy_dir = Path(__file__).parents[4] / "deploy"
     migration_dir = Path(__file__).parents[2] / "migrations" / "versions"
     sanitized_migrations = list(
         migration_dir.glob("*_create_hasura_sanitized_views.py")
@@ -120,7 +125,7 @@ def test_sanitized_views_omit_sensitive_columns():
 
 
 def test_hasura_metadata_validator_script():
-    """Kiểm thử script CI validate_metadata.py đảm bảo metadata an toàn và không có anonymous (#843)."""
+    """Kiểm thử script CI validate_metadata.py đảm bảo không có anonymous (#843)."""
     deploy_dir = Path(__file__).parents[4] / "deploy"
     hasura_dir = deploy_dir / "hasura"
     script_path = hasura_dir / "scripts" / "validate_metadata.py"

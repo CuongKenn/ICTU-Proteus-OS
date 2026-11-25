@@ -3,9 +3,10 @@
 
 """Unit tests for Layer 3 infrastructure configuration and worker skeleton."""
 
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
 
 from app.infrastructure.config import Settings
 from app.workers.context_sync_worker import ContextSyncWorker
@@ -28,7 +29,7 @@ def test_layer3_docker_compose_services():
     compose_path = Path(__file__).parents[4] / "deploy" / "docker-compose.yml"
     assert compose_path.exists()
 
-    with open(compose_path, "r", encoding="utf-8") as f:
+    with open(compose_path, encoding="utf-8") as f:
         compose = yaml.safe_load(f)
 
     services = compose.get("services", {})

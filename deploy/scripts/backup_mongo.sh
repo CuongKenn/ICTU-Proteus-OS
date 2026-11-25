@@ -10,9 +10,9 @@ BACKUP_DIR=${BACKUP_DIR:-"/backups/mongo"}
 BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
 MONGO_HOST=${MONGO_HOST:-"mongo"}
 MONGO_PORT=${MONGO_PORT:-27017}
-MONGO_USER=${MONGO_INITDB_ROOT_USERNAME:-"proteus_orion"}
-MONGO_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-"proteus_orion_secret"}
-MONGO_DB=${MONGO_INITDB_DATABASE:-"orion"}
+MONGO_USER=${MONGO_USER:-${MONGO_INITDB_ROOT_USERNAME:-""}}
+MONGO_PASSWORD=${MONGO_PASSWORD:-${MONGO_INITDB_ROOT_PASSWORD:-""}}
+MONGO_AUTH_DB=${MONGO_AUTH_DB:-"admin"}
 MATTERMOST_WEBHOOK_URL=${MATTERMOST_WEBHOOK_URL:-""}
 
 send_notification() {
@@ -32,9 +32,18 @@ mkdir -p "${BACKUP_DIR}"
 DATE=$(date +"%Y-%m-%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/mongo_orion_backup_${DATE}.archive.gz"
 
-echo "Starting backup of MongoDB ${MONGO_DB} at ${MONGO_HOST}:${MONGO_PORT} to ${BACKUP_FILE}..."
+AUTH_ARGS=()
+if [ -n "${MONGO_USER}" ]; then
+    AUTH_ARGS=(
+        "--username=${MONGO_USER}"
+        "--password=${MONGO_PASSWORD}"
+        "--authenticationDatabase=${MONGO_AUTH_DB}"
+    )
+fi
 
-if mongodump --host="${MONGO_HOST}" --port="${MONGO_PORT}" --username="${MONGO_USER}" --password="${MONGO_PASSWORD}" --authenticationDatabase="admin" --db="${MONGO_DB}" --archive="${BACKUP_FILE}" --gzip; then
+echo "Starting full multi-tenant MongoDB backup (all orion* DBs) at ${MONGO_HOST}:${MONGO_PORT} to ${BACKUP_FILE}..."
+
+if mongodump --host="${MONGO_HOST}" --port="${MONGO_PORT}" "${AUTH_ARGS[@]}" --archive="${BACKUP_FILE}" --gzip; then
     echo "MongoDB backup completed successfully."
     
     echo "Cleaning up old backups (older than ${BACKUP_RETENTION_DAYS} days)..."

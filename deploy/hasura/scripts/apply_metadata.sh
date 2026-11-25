@@ -8,15 +8,23 @@
 set -euo pipefail
 
 HASURA_ENDPOINT="${HASURA_ENDPOINT:-http://localhost:8080}"
-HASURA_ADMIN_SECRET="${HASURA_ADMIN_SECRET:-proteus-hasura-secret}"
+HASURA_ADMIN_SECRET="${HASURA_GRAPHQL_ADMIN_SECRET:-${HASURA_ADMIN_SECRET:-}}"
 HASURA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Validating Hasura metadata files..."
-python3 "${HASURA_DIR}/scripts/validate_metadata.py"
+if command -v python3 &> /dev/null; then
+    python3 "${HASURA_DIR}/scripts/validate_metadata.py"
+else
+    python "${HASURA_DIR}/scripts/validate_metadata.py"
+fi
 
 echo "==> Applying metadata to Hasura at ${HASURA_ENDPOINT}..."
 if command -v hasura &> /dev/null; then
-    hasura metadata apply --endpoint "${HASURA_ENDPOINT}" --admin-secret "${HASURA_ADMIN_SECRET}" --project "${HASURA_DIR}"
+    if [ -n "${HASURA_ADMIN_SECRET}" ]; then
+        hasura metadata apply --endpoint "${HASURA_ENDPOINT}" --admin-secret "${HASURA_ADMIN_SECRET}" --project "${HASURA_DIR}"
+    else
+        hasura metadata apply --endpoint "${HASURA_ENDPOINT}" --project "${HASURA_DIR}"
+    fi
     echo "==> Hasura metadata applied successfully via Hasura CLI."
 else
     echo "==> Hasura CLI not found locally. Validated metadata structure and ready for container mount."
