@@ -77,15 +77,11 @@ class OutlineAdapter(AbstractDocumentSourcePort):
         if not self.api_key:
             raise OutlineAdapterError("OUTLINE_API_KEY chưa cấu hình.")
 
-        coll = collection_id
+        coll = (collection_id or "").strip()
         if not coll:
-            colls = await self._post("/api/collections.list", {"limit": 1})
-            data = colls.get("data") or []
-            if not data:
-                raise OutlineAdapterError(
-                    "Outline chưa có collection nào — tạo collection trước khi publish."
-                )
-            coll = data[0].get("id")
+            raise OutlineAdapterError(
+                "collection_id là bắt buộc để đảm bảo cô lập dữ liệu giữa các tổ chức."
+            )
 
         payload: dict[str, Any] = {
             "title": title,

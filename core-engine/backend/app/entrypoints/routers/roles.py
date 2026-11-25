@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.external.keycloak_adapter import KeycloakAdapter
 from app.adapters.repositories.role_repo import RoleRepository
+from app.adapters.repositories.tenant_repo import SQLAlchemyTenantRepository
 from app.core.domain.entities import TenantContext
 from app.core.domain.exceptions import NotFoundError
 from app.core.use_cases.role_management import RoleManagementUseCase
@@ -34,6 +35,26 @@ from app.infrastructure.config import settings
 
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
+
+
+async def _resolve_keycloak_realm(
+    context: TenantContext, use_case: RoleManagementUseCase | None = None
+) -> str:
+    """Resolve đúng Keycloak realm cho tenant hiện tại (#865.2)."""
+    ctx_realm = getattr(context, "keycloak_realm", None)
+    if isinstance(ctx_realm, str) and ctx_realm.strip():
+        return ctx_realm.strip()
+    try:
+        session = getattr(getattr(use_case, "role_repo", None), "session", None)
+        if session is not None:
+            tenant_repo = SQLAlchemyTenantRepository(session=session)
+            tenant = await tenant_repo.get_by_id(context.tenant_id)
+            t_realm = getattr(tenant, "keycloak_realm", None) if tenant else None
+            if isinstance(t_realm, str) and t_realm.strip():
+                return t_realm.strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return settings.KEYCLOAK_REALM
 
 
 async def _sync_position_on_assign(
@@ -236,10 +257,10 @@ async def assign_role_to_user(
             if getattr(role, "plugin_code_name", None)
             else role.name
         )
+        realm = await _resolve_keycloak_realm(tenant_context, use_case)
         try:
             await keycloak.assign_role_to_user(
-                realm=getattr(tenant_context, "keycloak_realm", None)
-                or settings.KEYCLOAK_REALM,
+                realm=realm,
                 user_id=str(user.keycloak_id),
                 role_name=kc_role_name,
             )
@@ -302,10 +323,10 @@ async def revoke_role_from_user(
             if getattr(role, "plugin_code_name", None)
             else role.name
         )
+        realm = await _resolve_keycloak_realm(tenant_context, use_case)
         try:
             await keycloak.revoke_role_from_user(
-                realm=getattr(tenant_context, "keycloak_realm", None)
-                or settings.KEYCLOAK_REALM,
+                realm=realm,
                 user_id=str(user.keycloak_id),
                 role_name=kc_role_name,
             )

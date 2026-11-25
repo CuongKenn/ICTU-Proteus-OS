@@ -497,7 +497,11 @@ class AICommandUseCase:
         try:
             dry_run_res = await self.dry_run_engine.execute_dry_run(
                 tenant_id=str(ctx.tenant_id),
-                dsl_payload={"action": body.action, "effect": body.effect},
+                dsl_payload={
+                    "action": body.action,
+                    "effect": body.effect,
+                    "parameters": body.parameters or {},
+                },
             )
         except Exception:
             dry_run_res = {"preview": "Không thể thực hiện dry run"}
