@@ -103,7 +103,7 @@ async def test_notifications_endpoint_anti_loop_and_redis_stream():
 @pytest.mark.asyncio
 async def test_subscriptions_crud_endpoints():
     """Kiểm thử API đăng ký, lấy danh sách và hủy Orion subscription (#846, #848)."""
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
     from unittest.mock import MagicMock
 
     from app.core.domain.entities import TenantContext
@@ -121,7 +121,7 @@ async def test_subscriptions_crud_endpoints():
             "Meeting",
             "http://test/cb",
             "ACTIVE",
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
     ]
     mock_session.execute.return_value = mock_cursor

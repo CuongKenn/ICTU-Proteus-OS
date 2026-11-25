@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     # ─── Layer 3 (Context Broker & Digital Twin) ──────────────
     LAYER3_ENABLED: bool = False
     ORION_URL: str = "http://localhost:1026"
+    ORION_WEBHOOK_SECRET: str = ""
     MONGO_URL: str = "mongodb://localhost:27017"
     HASURA_GRAPHQL_URL: str = "http://localhost:8080/v1/graphql"
     HASURA_GRAPHQL_ADMIN_SECRET: str = ""
@@ -115,16 +116,22 @@ class Settings(BaseSettings):
     CONTEXT_SYNC_STREAM_NAME: str = "stream:context:events"
 
     @property
-    def CONTEXT_SYNC_STREAM_KEY(self) -> str:
+    def CONTEXT_SYNC_STREAM_KEY(self) -> str:  # noqa: N802
         return self.CONTEXT_SYNC_STREAM_NAME
 
     @property
     def keycloak_jwks_url(self) -> str:
-        return f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}/protocol/openid-connect/certs"
+        return (
+            f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}"
+            "/protocol/openid-connect/certs"
+        )
 
     @property
     def keycloak_token_url(self) -> str:
-        return f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}/protocol/openid-connect/token"
+        return (
+            f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}"
+            "/protocol/openid-connect/token"
+        )
 
     @property
     def outline_public_base(self) -> str:
