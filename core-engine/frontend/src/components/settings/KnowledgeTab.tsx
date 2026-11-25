@@ -3,10 +3,13 @@
 
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import {
+  Archive,
   BookOpen,
+  Briefcase,
   Search,
   RefreshCw,
   Database,
@@ -17,6 +20,8 @@ import {
   Clock,
   Copy,
   Check,
+  Layers,
+  Sparkles,
   Upload,
   FileText,
 } from "lucide-react";
@@ -27,11 +32,119 @@ import { logger } from "@/lib/logger";
 
 type SubTab = "search" | "sync" | "ingest" | "create";
 
+export type ParaSpaceKey = "projects" | "areas" | "resources" | "archives";
+
+interface ParaSpaceItem {
+  key: ParaSpaceKey;
+  code: string;
+  title: string;
+  subtitle: string;
+  collection_id?: string | null;
+  doc_count?: number;
+  initialized?: boolean;
+  url?: string | null;
+}
+
+const DEFAULT_PARA_SPACES: ParaSpaceItem[] = [
+  {
+    key: "projects",
+    code: "1. Projects",
+    title: "1. Projects",
+    subtitle: "Dự án đang triển khai — mục tiêu & mốc hạn rõ ràng",
+    initialized: false,
+  },
+  {
+    key: "areas",
+    code: "2. Areas",
+    title: "2. Areas",
+    subtitle: "Lĩnh vực vận hành & quy chuẩn duy trì liên tục",
+    initialized: false,
+  },
+  {
+    key: "resources",
+    code: "3. Resources",
+    title: "3. Resources",
+    subtitle: "Tài nguyên chuyên môn, sổ tay & tài liệu tham khảo",
+    initialized: false,
+  },
+  {
+    key: "archives",
+    code: "4. Archives",
+    title: "4. Archives",
+    subtitle: "Lưu trữ dự án đã đóng & hồ sơ lịch sử đối chiếu",
+    initialized: false,
+  },
+];
+
+const PARA_ICON_MAP: Record<ParaSpaceKey, React.ElementType> = {
+  projects: Briefcase,
+  areas: Layers,
+  resources: BookOpen,
+  archives: Archive,
+};
+
+function mergeParaSpaces(rawPayload: unknown): ParaSpaceItem[] {
+  const rawList: Record<string, any>[] = Array.isArray(rawPayload)
+    ? rawPayload
+    : Array.isArray((rawPayload as any)?.spaces)
+      ? (rawPayload as any).spaces
+      : Array.isArray((rawPayload as any)?.items)
+        ? (rawPayload as any).items
+        : [];
+
+  if (rawList.length === 0) return DEFAULT_PARA_SPACES;
+
+  return DEFAULT_PARA_SPACES.map((def) => {
+    const matched = rawList.find((item) => {
+      const k = String(
+        item?.para_space ?? item?.key ?? item?.slug ?? item?.code ?? item?.name ?? ""
+      ).toLowerCase();
+      return k === def.key || k.includes(def.key);
+    });
+
+    if (!matched) return def;
+
+    return {
+      ...def,
+      title:
+        typeof matched.title === "string" && matched.title.trim()
+          ? matched.title
+          : typeof matched.name === "string" && matched.name.trim()
+            ? matched.name
+            : def.title,
+      subtitle:
+        typeof matched.description === "string" && matched.description.trim()
+          ? matched.description
+          : def.subtitle,
+      collection_id:
+        typeof matched.collection_id === "string"
+          ? matched.collection_id
+          : typeof matched.id === "string"
+            ? matched.id
+            : null,
+      doc_count:
+        typeof matched.doc_count === "number"
+          ? matched.doc_count
+          : typeof matched.document_count === "number"
+            ? matched.document_count
+            : undefined,
+      initialized: Boolean(
+        matched.initialized ??
+          matched.bootstrapped ??
+          matched.collection_id ??
+          matched.id
+      ),
+      url: typeof matched.url === "string" ? matched.url : null,
+    };
+  });
+}
+
 interface Citation {
   document?: string;
   score?: number;
   doc_title?: string;
   source_url?: string;
+  para_space?: string;
 }
 
 interface SyncedDoc {
@@ -40,6 +153,7 @@ interface SyncedDoc {
   title?: string;
   url?: string;
   chars?: number;
+  para_space?: string;
   error?: string;
 }
 
@@ -123,6 +237,17 @@ export const KnowledgeTab: React.FC = () => {
   const { data: session } = useSession();
   const [sub, setSub] = useState<SubTab>("search");
 
+  // P.A.R.A Knowledge Space ([H] Human Space — Issue #875)
+  const [paraSpaces, setParaSpaces] =
+    useState<ParaSpaceItem[]>(DEFAULT_PARA_SPACES);
+  const [selectedParaSpace, setSelectedParaSpace] = useState<
+    ParaSpaceKey | "ALL"
+  >("ALL");
+  const [uploadParaSpace, setUploadParaSpace] =
+    useState<ParaSpaceKey>("resources");
+  const [bootstrappingPara, setBootstrappingPara] = useState(false);
+  const [paraNotice, setParaNotice] = useState<Notice | null>(null);
+
   // Search
   const [query, setQuery] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -165,13 +290,64 @@ export const KnowledgeTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<Notice | null>(null);
 
+  const fetchParaSpaces = useCallback(async () => {
+    try {
+      const res = await api.get("/v1/ai/knowledge/para/spaces");
+      setParaSpaces(mergeParaSpaces(res.data));
+    } catch (err) {
+      logger.debug("P.A.R.A spaces using local defaults", err);
+    }
+  }, []);
+
   useEffect(() => {
     if (!session) return;
     api
       .get("/v1/ai/knowledge/connectors")
       .then((res) => setConnectors(res.data?.connectors ?? ["http_feed"]))
       .catch((err) => logger.error("Failed to fetch connectors", err));
-  }, [session]);
+
+    void fetchParaSpaces();
+  }, [session, fetchParaSpaces]);
+
+  const doBootstrapPara = async () => {
+    setBootstrappingPara(true);
+    setParaNotice(null);
+    try {
+      const res = await api.post("/v1/ai/knowledge/para/bootstrap", {});
+      if (res.data) {
+        setParaSpaces(mergeParaSpaces(res.data));
+      }
+      await fetchParaSpaces();
+      setParaNotice({
+        kind: "success",
+        text: "Đã khởi tạo chuẩn không gian tri thức P.A.R.A (1. Projects, 2. Areas, 3. Resources, 4. Archives) trên Outline Wiki!",
+      });
+    } catch (err: any) {
+      logger.error("Failed to bootstrap P.A.R.A spaces", err);
+      setParaNotice({
+        kind: "error",
+        text:
+          err?.response?.status === 403
+            ? "Tài khoản của bạn chưa có quyền khởi tạo không gian P.A.R.A."
+            : extractErrorMessage(
+                err,
+                "Khởi tạo chuẩn P.A.R.A chưa hoàn tất, vui lòng kiểm tra dịch vụ Outline Wiki."
+              ),
+      });
+    } finally {
+      setBootstrappingPara(false);
+    }
+  };
+
+  const handleSelectParaSpaceCard = (spaceKey: ParaSpaceKey) => {
+    setSelectedParaSpace((prev) => {
+      const next = prev === spaceKey ? "ALL" : spaceKey;
+      if (next !== "ALL") {
+        setUploadParaSpace(next);
+      }
+      return next;
+    });
+  };
 
   const doSearch = async (q?: string) => {
     const text = (q ?? query).trim();
@@ -180,10 +356,14 @@ export const KnowledgeTab: React.FC = () => {
     setSearching(true);
     setSearchNotice(null);
     try {
-      const res = await api.post("/v1/ai/knowledge/search", {
+      const payload: Record<string, unknown> = {
         query: text,
         limit: 5,
-      });
+      };
+      if (selectedParaSpace !== "ALL") {
+        payload.para_space = selectedParaSpace;
+      }
+      const res = await api.post("/v1/ai/knowledge/search", payload);
       setCitations(res.data?.citations ?? []);
       setSearched(true);
     } catch (err: any) {
@@ -254,6 +434,7 @@ export const KnowledgeTab: React.FC = () => {
     for (const f of files) {
       const form = new FormData();
       form.append("file", f);
+      form.append("para_space", uploadParaSpace);
       if (collectionId.trim()) form.append("collection_id", collectionId.trim());
       try {
         const res = await fetch("/api/proxy/v1/ai/knowledge/upload", {
@@ -279,6 +460,7 @@ export const KnowledgeTab: React.FC = () => {
             title: data?.title,
             url: data?.url,
             chars: data?.chars,
+            para_space: data?.para_space ?? uploadParaSpace,
           });
         }
       } catch (err) {
@@ -288,11 +470,14 @@ export const KnowledgeTab: React.FC = () => {
     }
     setUploaded(results);
     const ok = results.filter((r) => !r.error).length;
+    const selectedSpaceMeta = DEFAULT_PARA_SPACES.find(
+      (s) => s.key === uploadParaSpace
+    );
     setUploadNotice(
       ok === results.length
         ? {
             kind: "success",
-            text: `Đăng xong ${ok} tài liệu! Qua tab "Nạp cho AI" để AI đọc được.`,
+            text: `Đăng xong ${ok} tài liệu vào ngăn "${selectedSpaceMeta?.code ?? uploadParaSpace}"! Qua tab "Nạp cho AI" để AI đọc được.`,
           }
         : {
             kind: ok === 0 ? "error" : "info",
@@ -302,6 +487,7 @@ export const KnowledgeTab: React.FC = () => {
     if (ok > 0) {
       setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      void fetchParaSpaces();
     }
     setUploading(false);
   };
@@ -410,6 +596,127 @@ export const KnowledgeTab: React.FC = () => {
         </p>
       </div>
 
+      {/* ── KHÔNG GIAN TRI THỨC CHUẨN P.A.R.A ([H] Human Space — Issue #875) ── */}
+      <section className="p-4 md:p-5 rounded-xl bg-paper-subtle/60 border border-line space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-accent-soft text-accent border border-accent/25">
+                [H] Human Space
+              </span>
+              <h3 className="text-sm font-semibold text-ink">
+                Không gian Tri thức Chuẩn P.A.R.A
+              </h3>
+            </div>
+            <p className="text-xs text-muted">
+              Cấu trúc phân tầng tri thức doanh nghiệp đồng bộ trực tiếp với
+              Outline Wiki & kho ngữ nghĩa AI.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {selectedParaSpace !== "ALL" && (
+              <button
+                type="button"
+                onClick={() => setSelectedParaSpace("ALL")}
+                className="btn-ghost btn-sm"
+              >
+                Bỏ lọc ngăn
+              </button>
+            )}
+            <Button
+              variant="accent"
+              onClick={() => void doBootstrapPara()}
+              isLoading={bootstrappingPara}
+              className="btn-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Khởi tạo chuẩn P.A.R.A
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {paraSpaces.map((space) => {
+            const SpaceIcon = PARA_ICON_MAP[space.key];
+            const isSelected = selectedParaSpace === space.key;
+            const safeSpaceUrl = toSafeHttpUrl(space.url);
+
+            return (
+              <div
+                key={space.key}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleSelectParaSpaceCard(space.key)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelectParaSpaceCard(space.key);
+                  }
+                }}
+                aria-pressed={isSelected}
+                className={clsx(
+                  "card-interactive text-left p-3.5 space-y-2 cursor-pointer",
+                  isSelected &&
+                    "ring-2 ring-accent border-accent bg-accent-soft/25"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={clsx(
+                        "w-7 h-7 rounded-lg flex items-center justify-center border shrink-0",
+                        isSelected
+                          ? "bg-accent-solid text-white border-transparent"
+                          : "bg-paper-subtle text-accent border-line"
+                      )}
+                    >
+                      <SpaceIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-semibold text-ink truncate">
+                      {space.title}
+                    </span>
+                  </div>
+
+                  {space.initialized ? (
+                    <span className="status-badge status-badge--active text-[11px] px-2 py-0.5">
+                      Sẵn sàng
+                    </span>
+                  ) : (
+                    <span className="tag-chip">Mặc định</span>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted leading-snug line-clamp-2">
+                  {space.subtitle}
+                </p>
+
+                <div className="flex items-center justify-between pt-1 border-t border-line text-[11px] text-dim">
+                  <span className="tabular-nums">
+                    {typeof space.doc_count === "number"
+                      ? `${space.doc_count} tài liệu`
+                      : `para:${space.key}`}
+                  </span>
+                  {safeSpaceUrl && (
+                    <a
+                      href={safeSpaceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(ev) => ev.stopPropagation()}
+                      className="text-accent hover:underline inline-flex items-center gap-1 font-medium"
+                    >
+                      Mở Wiki <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <NoticeBox notice={paraNotice} />
+      </section>
+
       {/* Sub-tab pills */}
       <div className="flex flex-wrap gap-2">
         {SUB_TABS.map((t) => (
@@ -440,6 +747,26 @@ export const KnowledgeTab: React.FC = () => {
       {/* ── SEARCH ── */}
       {sub === "search" && (
         <div className="space-y-4">
+          {selectedParaSpace !== "ALL" && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-accent-soft border border-accent/25 text-xs text-ink">
+              <span>
+                Đang lọc tìm kiếm trong ngăn P.A.R.A:{" "}
+                <strong className="text-accent">
+                  {
+                    DEFAULT_PARA_SPACES.find((s) => s.key === selectedParaSpace)
+                      ?.code
+                  }
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedParaSpace("ALL")}
+                className="text-accent font-medium hover:underline"
+              >
+                Tìm trên toàn bộ
+              </button>
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               value={query}
@@ -522,6 +849,34 @@ export const KnowledgeTab: React.FC = () => {
               Nhận PDF, Word (.docx), TXT, MD — mỗi file thành 1 bài trên Wiki
               (tối đa 10MB/file).
             </p>
+
+            {/* Chọn ngăn không gian tri thức P.A.R.A khi tải lên */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-ink-soft block">
+                Phân loại vào ngăn tri thức P.A.R.A (`para_space`)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {DEFAULT_PARA_SPACES.map((sp) => {
+                  const active = uploadParaSpace === sp.key;
+                  return (
+                    <button
+                      key={sp.key}
+                      type="button"
+                      onClick={() => setUploadParaSpace(sp.key)}
+                      className={clsx(
+                        "px-3 py-2 rounded-lg text-xs font-medium border text-left transition-all",
+                        active
+                          ? "bg-accent-soft text-accent border-accent font-semibold"
+                          : "bg-paper-white text-muted border-line hover:border-line-hi hover:text-ink"
+                      )}
+                    >
+                      {sp.code}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <label className="flex items-center justify-center gap-2 w-full px-4 py-6 rounded-lg border border-dashed border-border cursor-pointer hover:border-primary transition-colors text-sm text-text-secondary">
               <FileText className="w-5 h-5" />
               {files.length > 0
@@ -573,6 +928,9 @@ export const KnowledgeTab: React.FC = () => {
                           ? `${d.filename}: ${d.error}`
                           : (d.title || d.filename)}
                       </span>
+                      {!d.error && d.para_space && (
+                        <span className="tag-chip">{d.para_space}</span>
+                      )}
                     </span>
                     {(() => {
                       const safeUrl = toSafeHttpUrl(d.url);

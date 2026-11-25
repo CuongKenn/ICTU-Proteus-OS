@@ -167,3 +167,44 @@ event_publications:
     description: "Khi ticket hỗ trợ khách hàng được giải quyết"
     payload_schema:
       ticket_id: "uuid"
+
+ngsi:
+  entities:
+    - table: "crm_customers"
+      type: "Customer"
+      id_pattern: "urn:ngsi-ld:Customer:{tenant}:{id}"
+      attributes:
+        - column: "name"
+          target: "companyName"
+          type: "Property"
+        - column: "type"
+          target: "customerType"
+          type: "Property"
+        - column: "industry"
+          target: "industry"
+          type: "Property"
+        - column: "company_size"
+          target: "companySize"
+          type: "Property"
+        - column: "status"
+          target: "status"
+          type: "Property"
+      relationships: []
+    - table: "crm_leads"
+      type: "Lead"
+      id_pattern: "urn:ngsi-ld:Lead:{tenant}:{id}"
+      attributes:
+        - column: "company_name"
+          target: "companyName"
+          type: "Property"
+        - column: "source"
+          target: "source"
+          type: "Property"
+        - column: "stage"
+          target: "status"
+          type: "Property"
+      relationships:
+        - column: "assigned_to"
+          target: "assignedTo"
+          entity_type: "Employee"
+          id_pattern: "urn:ngsi-ld:Employee:{tenant}:{assigned_to}"

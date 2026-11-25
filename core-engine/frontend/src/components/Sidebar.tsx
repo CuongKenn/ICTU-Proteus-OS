@@ -10,6 +10,7 @@ import { clsx } from "clsx";
 import {
   LayoutDashboard,
   Bot,
+  Network,
   Store,
   Settings,
   MessageSquare,
@@ -35,6 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Không gian làm việc",
     items: [
       { id: "launchpad", label: "Dashboard", icon: LayoutDashboard, href: "/launchpad" },
+      { id: "digital-twin", label: "Bản sao số (Digital Twin)", icon: Network, href: "/digital-twin" },
       { id: "ai", label: "Proteus AI", icon: Bot, href: "/ai" },
       { id: "marketplace", label: "Marketplace", icon: Store, href: "/marketplace" },
     ],

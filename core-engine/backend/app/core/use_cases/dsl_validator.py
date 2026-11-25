@@ -60,6 +60,7 @@ class DSLValidator:
         self.user_id = user_id
         self.manifest_parser = manifest_parser
         self.roles = roles or []
+        self.last_z3_proof: dict[str, Any] | None = None
 
     async def _get_user_permissions(self) -> list[str]:
         if not self.role_repo:
@@ -188,20 +189,26 @@ class DSLValidator:
                     "reason": {"type": "string"},
                     "raw_input": {"type": "string"},
                 },
-                # Bỏ qua yêu cầu bắt buộc "request_ids" vì AI thường chỉ trả về "raw_input"
+                # Bỏ qua bắt buộc "request_ids" vì AI thường chỉ trả "raw_input"
             }
 
         try:
             jsonschema.validate(instance=params, schema=schema)
         except jsonschema.exceptions.ValidationError as e:
-            raise DSLInvalidParametersError(f"Parameter validation failed: {e.message}")
+            raise DSLInvalidParametersError(
+                f"Parameter validation failed: {e.message}"
+            ) from e
 
         # Rule 6: Mathematical & Logical Invariant Verification (Formal Verification)
         try:
             verifier = Z3FormalVerifier(tenant_id=self.tenant_id, user_id=self.user_id)
             verifier.verify_dsl(dsl_payload)
+            self.last_z3_proof = verifier.last_proof
         except Z3VerificationError as e:
-            raise DSLInvalidParametersError(str(e))
+            self.last_z3_proof = getattr(e, "proof", None)
+            err = DSLInvalidParametersError(str(e))
+            err.z3_proof = self.last_z3_proof  # type: ignore[attr-defined]
+            raise err from e
 
         return True
 
@@ -307,5 +314,9 @@ class DSLValidator:
         try:
             verifier = Z3FormalVerifier(tenant_id=self.tenant_id, user_id=self.user_id)
             verifier.verify_dsl(dsl_payload)
+            self.last_z3_proof = verifier.last_proof
         except Z3VerificationError as e:
-            raise DSLInvalidParametersError(str(e))
+            self.last_z3_proof = getattr(e, "proof", None)
+            err = DSLInvalidParametersError(str(e))
+            err.z3_proof = self.last_z3_proof  # type: ignore[attr-defined]
+            raise err from e

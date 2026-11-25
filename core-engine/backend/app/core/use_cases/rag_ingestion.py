@@ -8,6 +8,135 @@ from app.core.domain.ports import AbstractDocumentSourcePort, AbstractVectorDBPo
 
 logger = logging.getLogger(__name__)
 
+VALID_PARA_SPACES: tuple[str, ...] = ("projects", "areas", "resources", "archives")
+
+_PARA_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "archives",
+        (
+            "4. archives",
+            ":para:archives",
+            "archives",
+            "archive",
+            "lưu trữ",
+            "luu tru",
+            "luu-tru",
+            "hết hiệu lực",
+            "deprecated",
+            "hồ sơ cũ",
+            "quy định cũ",
+        ),
+    ),
+    (
+        "projects",
+        (
+            "1. projects",
+            ":para:projects",
+            "projects",
+            "project",
+            "dự án",
+            "du an",
+            "du-an",
+            "triển khai",
+            "sprint",
+            "milestone",
+            "okr",
+        ),
+    ),
+    (
+        "areas",
+        (
+            "2. areas",
+            ":para:areas",
+            "areas",
+            "area",
+            "quy trình",
+            "quy trinh",
+            "quy-trinh",
+            "quy chế",
+            "quy định",
+            "nội quy",
+            "noi-quy",
+            "chính sách",
+            "sop",
+            "sla",
+            "phòng ban",
+            "vận hành",
+        ),
+    ),
+    (
+        "resources",
+        (
+            "3. resources",
+            ":para:resources",
+            "resources",
+            "resource",
+            "tài liệu",
+            "tai-lieu",
+            "cẩm nang",
+            "cam-nang",
+            "biểu mẫu",
+            "bieu-mau",
+            "template",
+            "hướng dẫn",
+            "handbook",
+            "tham khảo",
+        ),
+    ),
+)
+
+
+def infer_para_space(
+    *,
+    doc: dict[str, Any] | None = None,
+    title: str = "",
+    collection_id: str | None = None,
+    collection_name: str = "",
+    explicit_para_space: str | None = None,
+) -> str:
+    """Suy luận nhãn P.A.R.A ('projects' | 'areas' | 'resources' | 'archives').
+
+    Ưu tiên: explicit -> metadata -> collection -> title -> mặc định 'resources'.
+    """
+    doc_dict = doc or {}
+    meta_dict = (
+        doc_dict.get("metadata") if isinstance(doc_dict.get("metadata"), dict) else {}
+    )
+
+    for candidate in (
+        explicit_para_space,
+        doc_dict.get("para_space"),
+        meta_dict.get("para_space"),
+    ):
+        if candidate is not None:
+            norm = str(candidate).strip().lower()
+            if norm in VALID_PARA_SPACES:
+                return norm
+
+    coll_signals = " ".join(
+        str(x).strip().lower()
+        for x in (
+            collection_name,
+            doc_dict.get("collection_name"),
+            doc_dict.get("collectionName"),
+            collection_id,
+            doc_dict.get("collectionId"),
+        )
+        if x
+    )
+    if coll_signals:
+        for space, keywords in _PARA_KEYWORDS:
+            if any(kw in coll_signals for kw in keywords):
+                return space
+
+    title_signal = str(title or doc_dict.get("title") or "").strip().lower()
+    if title_signal:
+        for space, keywords in _PARA_KEYWORDS:
+            if any(kw in title_signal for kw in keywords):
+                return space
+
+    return "resources"
+
 
 class RAGIngestionUseCase:
     """
@@ -65,12 +194,28 @@ class RAGIngestionUseCase:
 
         return chunks
 
+    def _infer_para_space(
+        self,
+        *,
+        doc: dict[str, Any] | None = None,
+        collection_id: str | None = None,
+        explicit_para_space: str | None = None,
+    ) -> str:
+        return infer_para_space(
+            doc=doc,
+            collection_id=collection_id,
+            explicit_para_space=explicit_para_space,
+        )
+
     async def execute(
-        self, tenant_id: str, collection_id: str | None = None
+        self,
+        tenant_id: str,
+        collection_id: str | None = None,
+        para_space: str | None = None,
     ) -> dict[str, Any]:
         """
         Thực thi quy trình RAG Ingestion cho một tenant cụ thể.
-        Bắt buộc lọc theo collection của tenant (#734).
+        Bắt buộc lọc theo collection của tenant (#734) và gắn nhãn P.A.R.A (#875).
         """
         logger.info(
             "Starting RAG Ingestion for tenant: %s, collection: %s",
@@ -99,7 +244,7 @@ class RAGIngestionUseCase:
             all_chunks: list[str] = []
             all_metadatas: list[dict[str, Any]] = []
 
-            # 2. Chunking
+            # 2. Chunking & gắn nhãn P.A.R.A
             for doc in documents:
                 title = doc.get("title", "Untitled")
                 source_url = doc.get("source_url", "")
@@ -110,12 +255,19 @@ class RAGIngestionUseCase:
                 if not chunks:
                     continue
 
+                doc_para_space = self._infer_para_space(
+                    doc=doc,
+                    collection_id=target_collection,
+                    explicit_para_space=para_space,
+                )
+
                 metadatas = [
                     {
                         "doc_title": title,
                         "source_url": source_url,
                         "document_id": doc.get("id"),
                         "chunk_index": idx,
+                        "para_space": doc_para_space,
                     }
                     for idx, _ in enumerate(chunks)
                 ]

@@ -16,6 +16,8 @@ describe('AIChatWidget', () => {
   const mockOpenWidget = vi.fn();
   const mockMinimizeWidget = vi.fn();
   const mockResetAndClose = vi.fn();
+  const mockStartNewSession = vi.fn();
+  const mockLoadSessionHistory = vi.fn();
   const mockSendCommand = vi.fn();
   const mockSetInputValue = vi.fn();
   const mockOpenMattermostApproval = vi.fn();
@@ -27,10 +29,13 @@ describe('AIChatWidget', () => {
     inputValue: '',
     dslPreview: null,
     sessionId: 'test-session',
+    streamStatus: null,
     setInputValue: mockSetInputValue,
     openWidget: mockOpenWidget,
     minimizeWidget: mockMinimizeWidget,
     resetAndClose: mockResetAndClose,
+    startNewSession: mockStartNewSession,
+    loadSessionHistory: mockLoadSessionHistory,
     sendCommand: mockSendCommand,
     openMattermostApproval: mockOpenMattermostApproval,
     cancelApproval: mockCancelApproval,
@@ -39,7 +44,7 @@ describe('AIChatWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue(defaultMockReturn);
-    
+
     // Mock scrollIntoView
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
@@ -123,7 +128,7 @@ describe('AIChatWidget', () => {
         approval_message: 'Cần duyệt đơn',
         dry_run_result: {
           affected_count: 1,
-          preview: 'Không thể thực hiện dry run' as any,
+          preview: 'Không thể thực hiện dry run',
         },
         approval_deadline: '2026-12-31T23:59:59Z',
       },
@@ -132,5 +137,73 @@ describe('AIChatWidget', () => {
     render(<AIChatWidget />);
     expect(screen.getByText('hr.leave.reject')).toBeInTheDocument();
     expect(screen.getByText('Không thể thực hiện dry run')).toBeInTheDocument();
+  });
+
+  it('renders 4 quick action starter chips on welcome screen and triggers sendCommand (#874)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'expanded',
+      messages: [],
+    });
+
+    render(<AIChatWidget />);
+    const pokaChip = screen.getByText(/Chuyển thiết bị từ Phòng C1-202 sang Phòng C1-202/i);
+    expect(pokaChip).toBeInTheDocument();
+    fireEvent.click(pokaChip);
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      'Chuyển thiết bị từ Phòng C1-202 sang Phòng C1-202'
+    );
+  });
+
+  it('renders Z3 Formal Proof SAT badge & dual-approval tag when escalated (#874)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'awaiting_approval',
+      dslPreview: {
+        command_id: 'cmd-z3-sat',
+        action: 'finance.purchase.create',
+        effect: 'critical',
+        approval_message: 'Mua thiết bị Lab',
+        z3_verification: {
+          status: 'SAT',
+          verified: true,
+          solve_time_ms: 3.2,
+          invariants_checked: ['budget_non_negative', 'amount_gt_zero'],
+          escalated_to_critical: true,
+        },
+      },
+    });
+
+    render(<AIChatWidget />);
+    expect(screen.getByText(/Z3 Formal Proof: SAT \(3\.2ms\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phê duyệt kép 2 cấp/i)).toBeInTheDocument();
+    expect(screen.getByText(/NL → DX-DSL/i)).toBeInTheDocument();
+  });
+
+  it('renders POKA-YOKE Z3 BLOCKED (UNSAT) alert with violated constraint (#874)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'expanded',
+      messages: [
+        {
+          id: 'msg-unsat',
+          role: 'assistant',
+          content: 'Lệnh bị chặn bởi Z3 SMT Solver.',
+          timestamp: new Date(),
+          show_pipeline: true,
+          z3_verification: {
+            status: 'UNSAT',
+            verified: false,
+            violated_constraint: 'source_room != target_room (C1-202 == C1-202)',
+          },
+        },
+      ],
+    });
+
+    render(<AIChatWidget />);
+    expect(screen.getByText(/POKA-YOKE Z3 BLOCKED \(UNSAT\)/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/source_room != target_room \(C1-202 == C1-202\)/i)
+    ).toBeInTheDocument();
   });
 });

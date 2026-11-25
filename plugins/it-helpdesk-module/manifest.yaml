@@ -140,3 +140,40 @@ event_publications:
     description: "Khi ticket vi phạm thời hạn cam kết SLA"
     payload_schema:
       ticket_id: "uuid"
+
+ngsi:
+  entities:
+    - table: "it_tickets"
+      type: "Ticket"
+      id_pattern: "urn:ngsi-ld:Ticket:{tenant}:{id}"
+      attributes:
+        - column: "title"
+          target: "title"
+          type: "Property"
+        - column: "priority"
+          target: "priority"
+          type: "Property"
+        - column: "status"
+          target: "status"
+          type: "Property"
+        - column: "escalated"
+          target: "escalated"
+          type: "Property"
+        - column: "created_at"
+          target: "createdAt"
+          type: "Property"
+      relationships:
+        - column: "requester_id"
+          target: "reportedBy"
+          entity_type: "Employee"
+          id_pattern: "urn:ngsi-ld:Employee:{tenant}:{requester_id}"
+        - column: "assignee_id"
+          target: "assignedTo"
+          entity_type: "Employee"
+          id_pattern: "urn:ngsi-ld:Employee:{tenant}:{assignee_id}"
+        - column: "category_id"
+          target: "hasCategory"
+          entity_type: "ITCategory"
+          id_pattern: "urn:ngsi-ld:ITCategory:{tenant}:{category_id}"
+      geo_attribute:
+        target: "location"

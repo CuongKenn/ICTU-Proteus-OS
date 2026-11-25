@@ -141,3 +141,47 @@ event_publications:
     description: "Khi hóa đơn quá hạn thanh toán"
     payload_schema:
       invoice_id: "uuid"
+
+ngsi:
+  entities:
+    - table: "finance_invoices"
+      type: "Invoice"
+      id_pattern: "urn:ngsi-ld:Invoice:{tenant}:{id}"
+      attributes:
+        - column: "invoice_number"
+          target: "invoiceNumber"
+          type: "Property"
+        - column: "vendor_name"
+          target: "vendorName"
+          type: "Property"
+        - column: "amount"
+          target: "totalAmount"
+          type: "Property"
+        - column: "issue_date"
+          target: "issueDate"
+          type: "Property"
+        - column: "due_date"
+          target: "dueDate"
+          type: "Property"
+        - column: "status"
+          target: "status"
+          type: "Property"
+      relationships: []
+    - table: "finance_expense_requests"
+      type: "ExpenseRequest"
+      id_pattern: "urn:ngsi-ld:ExpenseRequest:{tenant}:{id}"
+      attributes:
+        - column: "category"
+          target: "category"
+          type: "Property"
+        - column: "amount"
+          target: "amount"
+          type: "Property"
+        - column: "status"
+          target: "status"
+          type: "Property"
+      relationships:
+        - column: "requester_id"
+          target: "requestedBy"
+          entity_type: "Employee"
+          id_pattern: "urn:ngsi-ld:Employee:{tenant}:{requester_id}"

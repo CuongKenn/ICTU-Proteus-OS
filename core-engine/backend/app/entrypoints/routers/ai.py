@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Form,
@@ -24,7 +25,11 @@ from app.core.domain.entities import AICommandStatus, TenantContext
 from app.core.use_cases.ai_chat import AIChatDTO, AIChatUseCase
 from app.core.use_cases.ai_command import AICommandDTO, AICommandUseCase
 from app.core.use_cases.conversation import ConversationUseCase
-from app.core.use_cases.rag_ingestion import RAGIngestionUseCase
+from app.core.use_cases.rag_ingestion import (
+    VALID_PARA_SPACES,
+    RAGIngestionUseCase,
+    infer_para_space,
+)
 from app.entrypoints.dependencies import (
     get_ai_chat_use_case,
     get_ai_command_use_case,
@@ -239,9 +244,11 @@ async def trigger_rag_ingestion(
     tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
         ctx.tenant_id
     )
+    local_para_prefix = f"{ctx.tenant_id}:para:"
     if (
         collection_id
         and collection_id != tenant_collection
+        and not collection_id.startswith(local_para_prefix)
         and "superadmin" not in (ctx.roles or [])
     ):
         raise HTTPException(
@@ -531,10 +538,32 @@ async def search_knowledge(
             detail="limit phải là số nguyên hợp lệ.",
         ) from e
     limit = max(1, min(limit, 20))
+    raw_para_filter = (body or {}).get("para_space")
+    para_filter: str | None = None
+    if raw_para_filter is not None and str(raw_para_filter).strip():
+        norm_filter = str(raw_para_filter).strip().lower()
+        if norm_filter not in VALID_PARA_SPACES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"para_space '{raw_para_filter}' không hợp lệ. "
+                    f"Chỉ hỗ trợ: {', '.join(VALID_PARA_SPACES)}."
+                ),
+            )
+        para_filter = norm_filter
+
     try:
-        hits = await qdrant.search(
-            tenant_id=str(ctx.tenant_id), query=query, limit=limit
-        )
+        if para_filter:
+            hits = await qdrant.search(
+                tenant_id=str(ctx.tenant_id),
+                query=query,
+                limit=limit,
+                filters={"para_space": para_filter},
+            )
+        else:
+            hits = await qdrant.search(
+                tenant_id=str(ctx.tenant_id), query=query, limit=limit
+            )
     except Exception as e:
         logger.warning("Knowledge search thất bại: %s", e)
         return {"query": query, "citations": [], "warning": f"RAG chưa khả dụng: {e}"}
@@ -546,9 +575,69 @@ async def search_knowledge(
                 "score": h.get("score"),
                 "doc_title": (h.get("metadata") or {}).get("doc_title"),
                 "source_url": (h.get("metadata") or {}).get("source_url"),
+                "para_space": (h.get("metadata") or {}).get("para_space"),
             }
             for h in hits
         ],
+    }
+
+
+@router.get(
+    "/knowledge/para/spaces",
+    status_code=status.HTTP_200_OK,
+    summary="Lấy danh sách 4 không gian tri thức P.A.R.A của tổ chức hiện tại",
+)
+async def list_para_knowledge_spaces(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant_context),
+):
+    from app.adapters.external.outline_adapter import OutlineAdapter
+
+    http_client = getattr(request.app.state, "http_client", None)
+    source = OutlineAdapter(client=http_client)
+    spaces = await source.get_para_spaces(tenant_id=str(ctx.tenant_id))
+    mode = (
+        "outline"
+        if spaces and all(s.get("mode") == "outline" for s in spaces)
+        else "local_para"
+    )
+    return {
+        "status": "ready",
+        "tenant_id": str(ctx.tenant_id),
+        "mode": mode,
+        "spaces": spaces,
+    }
+
+
+@router.post(
+    "/knowledge/para/bootstrap",
+    status_code=status.HTTP_200_OK,
+    summary="Khởi tạo tự động 4 không gian tri thức P.A.R.A trên Outline / Local",
+)
+@limiter.limit("10/minute")
+async def bootstrap_para_knowledge_spaces(
+    request: Request,
+    body: dict[str, Any] | None = Body(default=None),
+    ctx: TenantContext = Depends(get_current_tenant_context),
+):
+    from app.adapters.external.outline_adapter import OutlineAdapter
+
+    tenant_name = str((body or {}).get("tenant_name") or "").strip()
+    http_client = getattr(request.app.state, "http_client", None)
+    source = OutlineAdapter(client=http_client)
+    spaces = await source.bootstrap_para_collections(
+        tenant_id=str(ctx.tenant_id), tenant_name=tenant_name
+    )
+    mode = (
+        "outline"
+        if spaces and all(s.get("mode") == "outline" for s in spaces)
+        else "local_para"
+    )
+    return {
+        "status": "ready",
+        "tenant_id": str(ctx.tenant_id),
+        "mode": mode,
+        "spaces": spaces,
     }
 
 
@@ -595,9 +684,11 @@ async def sync_knowledge(
     tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
         ctx.tenant_id
     )
+    local_para_prefix = f"{ctx.tenant_id}:para:"
     if (
         req_collection_id
         and req_collection_id != tenant_collection
+        and not req_collection_id.startswith(local_para_prefix)
         and "superadmin" not in (ctx.roles or [])
     ):
         raise HTTPException(
@@ -614,7 +705,7 @@ async def sync_knowledge(
             detail=f"Connector '{connector_name}' không tồn tại.",
         )
     connector = connector_cls()
-    source = OutlineAdapter(client=request.app.state.http_client)
+    source = OutlineAdapter(client=getattr(request.app.state, "http_client", None))
     use_case = KnowledgeSyncUseCase(connector=connector, document_source=source)
     result = await use_case.execute(
         config=payload.get("config") or {},
@@ -634,19 +725,44 @@ async def upload_knowledge(
     request: Request,
     file: UploadFile = File(..., description="File PDF/DOCX/TXT/MD (tối đa 10MB)"),
     collection_id: str | None = Form(None),
+    para_space: str | None = Form(default=None),
     ctx: TenantContext = Depends(require_permission("plugins:install")),
 ):
-    """Nhận 1 file upload → trích văn bản → publish thành tài liệu Wiki.
+    """Nhận 1 file upload → trích văn bản → publish tài liệu Wiki kèm nhãn P.A.R.A.
 
     Mỗi file = 1 tài liệu (tiêu đề = tên file). File .doc đời cũ,
     PDF scan toàn ảnh hoặc file quá 10MB bị từ chối với lỗi rõ ràng.
     """
-    from app.adapters.external.outline_adapter import OutlineAdapter
+    from app.adapters.external.outline_adapter import (
+        OutlineAdapter,
+        OutlineAdapterError,
+    )
     from app.core.use_cases.knowledge_upload import (
         MAX_UPLOAD_BYTES,
         KnowledgeUploadUseCase,
         UnsupportedFileError,
+        extract_text,
+        title_from_filename,
     )
+
+    raw_para = (
+        para_space if para_space is not None else request.query_params.get("para_space")
+    )
+    explicit_para: str | None = None
+    if raw_para is not None and str(raw_para).strip():
+        norm_para = str(raw_para).strip().lower()
+        if norm_para not in VALID_PARA_SPACES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"para_space '{raw_para}' không hợp lệ. "
+                    f"Chỉ chấp nhận: {', '.join(VALID_PARA_SPACES)}."
+                ),
+            )
+        explicit_para = norm_para
+
+    http_client = getattr(request.app.state, "http_client", None)
+    source = OutlineAdapter(client=http_client)
 
     req_collection_id = (
         collection_id.strip() if collection_id and collection_id.strip() else None
@@ -654,15 +770,29 @@ async def upload_knowledge(
     tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
         ctx.tenant_id
     )
+    local_para_prefix = f"{ctx.tenant_id}:para:"
     if (
         req_collection_id
         and req_collection_id != tenant_collection
+        and not req_collection_id.startswith(local_para_prefix)
         and "superadmin" not in (ctx.roles or [])
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Không có quyền thao tác trên collection của tổ chức khác.",
-        )
+        allowed_para_ids = {
+            str(s.get("collection_id"))
+            for s in await source.get_para_spaces(tenant_id=str(ctx.tenant_id))
+            if s.get("collection_id")
+        }
+        if req_collection_id not in allowed_para_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Không có quyền thao tác trên collection của tổ chức khác.",
+            )
+
+    resolved_para_space = infer_para_space(
+        title=file.filename or "",
+        collection_id=req_collection_id or tenant_collection,
+        explicit_para_space=explicit_para,
+    )
     target_collection = req_collection_id or tenant_collection
 
     content = await file.read(MAX_UPLOAD_BYTES + 1)
@@ -671,18 +801,48 @@ async def upload_knowledge(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File vượt quá giới hạn {MAX_UPLOAD_BYTES // (1024 * 1024)}MB.",
         )
-    source = OutlineAdapter(client=request.app.state.http_client)
+
     use_case = KnowledgeUploadUseCase(document_source=source)
     try:
-        return await use_case.execute(
+        upload_res = await use_case.execute(
             filename=file.filename or "tai-lieu",
             content=content,
             collection_id=target_collection,
         )
+        return {
+            **upload_res,
+            "para_space": resolved_para_space,
+            "collection_id": target_collection,
+        }
     except UnsupportedFileError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         ) from e
+    except OutlineAdapterError:
+        if source.api_key:
+            raise
+        # Fallback an toàn khi môi trường local chưa cấu hình OUTLINE_API_KEY
+        try:
+            extracted = extract_text(file.filename or "tai-lieu.txt", content)
+        except UnsupportedFileError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        local_coll = (
+            req_collection_id
+            if req_collection_id and req_collection_id.startswith(local_para_prefix)
+            else f"{ctx.tenant_id}:para:{resolved_para_space}"
+        )
+        return {
+            "status": "success",
+            "mode": "local_para",
+            "filename": file.filename or "tai-lieu",
+            "title": title_from_filename(file.filename or "tai-lieu"),
+            "url": "",
+            "chars": len(extracted),
+            "para_space": resolved_para_space,
+            "collection_id": local_coll,
+        }
 
 
 # ─── Chat Streaming (SSE pipeline events) ───────────────────────────────────

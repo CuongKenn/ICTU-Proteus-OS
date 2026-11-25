@@ -168,11 +168,13 @@ class TenantOnboardingUseCase:
         keycloak_adapter: AbstractIdentityProviderPort,
         session: AsyncSession,
         mattermost_adapter: Any = None,
+        outline_adapter: Any = None,
     ) -> None:
         self.tenant_repo = tenant_repo
         self.keycloak_adapter = keycloak_adapter
         self.session = session
         self.mattermost_adapter = mattermost_adapter
+        self.outline_adapter = outline_adapter
 
     def _require_superadmin(self, context: TenantContext) -> None:
         if "superadmin" not in context.roles:
@@ -235,6 +237,26 @@ class TenantOnboardingUseCase:
                 )
             except Exception as e:
                 logger.warning("Bỏ qua tạo Mattermost team cho tenant %s: %s", slug, e)
+
+        # 4. Khởi tạo cấu trúc tri thức P.A.R.A trên Outline (best-effort, độc lập #875)
+        try:
+            import asyncio
+
+            from app.adapters.external.outline_adapter import OutlineAdapter
+
+            para_adapter = self.outline_adapter or OutlineAdapter()
+            await asyncio.wait_for(
+                para_adapter.bootstrap_para_collections(
+                    tenant_id=str(tenant_id), tenant_name=name
+                ),
+                timeout=2.5,
+            )
+        except Exception as e:
+            logger.warning(
+                "Bỏ qua khởi tạo không gian tri thức P.A.R.A cho tenant %s: %s",
+                slug,
+                e,
+            )
 
         return created_tenant
 

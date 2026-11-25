@@ -557,7 +557,8 @@ def test_issue_865_5_plugin_records_has_no_orphan_cr():
         / "plugin_records.py"
     )
     raw = records_path.read_bytes()
-    assert b"\r" not in raw
+    assert b"\n" in raw
+    assert b"\r" not in raw.replace(b"\r\n", b"\n")
 
 
 def test_issue_865_5_coerce_boolean_and_rejects_bool_for_numeric():

@@ -12,8 +12,9 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
 
 from app.ai.llm_provider import extract_json_object
 from app.core.domain.entities import AICommandStatus
@@ -152,6 +153,19 @@ def _format_step_data(step_result: Any) -> str | None:
     return head_text.strip() or None
 
 
+def _extract_z3_verification(step_result: Any) -> dict[str, Any] | None:
+    """Trích xuất proof_dict z3_verification từ kết quả thực thi hoặc dry_run (#873)."""
+    if not isinstance(step_result, dict):
+        return None
+    z3_v = step_result.get("z3_verification")
+    if isinstance(z3_v, dict):
+        return z3_v
+    dry = step_result.get("dry_run_result") or step_result.get("dry_run")
+    if isinstance(dry, dict) and isinstance(dry.get("z3_verification"), dict):
+        return dry["z3_verification"]
+    return None
+
+
 class AIChatUseCase:
     def __init__(
         self,
@@ -183,46 +197,62 @@ class AIChatUseCase:
             logger.warning("Không dựng được catalog động, dùng fallback: %s", e)
             catalog = []
         action_list = render_for_prompt(catalog) if catalog else FALLBACK_PROMPT_ACTIONS
-        system_prompt = f"""Bạn là trợ lý AI (Proteus AI) đóng vai trò là một Orchestrator. Nhiệm vụ của bạn là chuyển đổi câu lệnh ngôn ngữ tự nhiên của người dùng thành một lệnh hệ thống chuẩn DX-DSL.
-
-Bạn CHỈ ĐƯỢC PHÉP trả về một object JSON hợp lệ với 1 trong 2 dạng sau, tuyệt đối không trả lời thêm bất kỳ văn bản nào khác:
-
-Dạng 1 — plan nhiều bước (khi việc cần từ 2 việc trở lên):
-{{
-  "goal": "<mục tiêu tóm tắt>",
-  "steps": [
-    {{
-      "action": "<tên hành động>",
-      "effect": "<read | write | critical>",
-      "parameters": {{ "raw_input": "<câu lệnh gốc của người dùng>" }},
-      "approval_message": "<tiếng Việt, chỉ dùng khi effect là write hoặc critical, nếu không thì để null>"
-    }}
-  ]
-}}
-Tối đa {MAX_PLAN_STEPS} steps. Sắp xếp steps read (tra cứu) TRƯỚC, write/critical SAU.
-
-Dạng 2 — lệnh đơn (việc đơn giản, chỉ 1 hành động):
-{{
-  "action": "<tên hành động>",
-  "effect": "<read | write | critical>",
-  "parameters": {{ "raw_input": "<câu lệnh gốc của người dùng>" }},
-  "approval_message": "<như trên>"
-}}
-
-Danh sách các hành động (action) được hỗ trợ hiện tại:
-{action_list}
-
-Quy tắc effect: "read" cho tra cứu/báo cáo (trả lời ngay), "write" cho thay đổi dữ liệu (cần 1 duyệt), "critical" cho xóa/khóa/chuyển khoản (cần 2 duyệt).
-
-Xử lý hội thoại (dùng "core.chat.reply", parameters.reply TIẾNG VIỆT, xưng "tôi"):
-- Chào/cảm ơn/tạm biệt ("xin chào", "hello", "cảm ơn", "bye"...): chào lại thân thiện + gợi ý 1-2 việc có thể làm.
-- Được hỏi khả năng ("làm được gì", "tính năng", "bạn là ai"...): LIỆT KÊ từ danh sách actions ở trên (nhóm tra cứu / cần phê duyệt), không bịa thêm action.
-- Câu nghiệp vụ không có action phù hợp: giải thích không làm được + gợi ý việc gần nhất.
-TUYỆT ĐỐI không gọi action nghiệp vụ cho các câu trên.
-
-Ví dụ:
-- Input "xin chào" → {{"action": "core.chat.reply", "effect": "read", "parameters": {{"reply": "Xin chào! Tôi là Proteus AI, trợ lý điều hành của tổ chức bạn. Tôi tra cứu nhân sự, nghỉ phép, tri thức nội bộ hoặc thực hiện tác vụ cần phê duyệt. Bạn cần gì?"}}, "approval_message": null}}
-- Input "mày làm được gì" → {{"action": "core.chat.reply", "effect": "read", "parameters": {{"reply": "Tôi có thể giúp bạn:\n🔍 Tra cứu, báo cáo (trả lời ngay): liệt kê plugin, tìm nhân sự, tra tri thức nội bộ...\n⚙️ Thực hiện (cần bạn phê duyệt): duyệt nghỉ phép, cài plugin...\nCứ hỏi cụ thể bằng tiếng Việt nhé!"}}, "approval_message": null}}"""
+        system_prompt = (
+            "Bạn là trợ lý AI (Proteus AI) đóng vai trò là một Orchestrator. "
+            "Nhiệm vụ của bạn là chuyển đổi câu lệnh ngôn ngữ tự nhiên của "
+            "người dùng thành một lệnh hệ thống chuẩn DX-DSL.\n\n"
+            "Bạn CHỈ ĐƯỢC PHÉP trả về một object JSON hợp lệ với 1 trong 2 "
+            "dạng sau, tuyệt đối không trả lời thêm bất kỳ văn bản nào khác:\n\n"
+            "Dạng 1 — plan nhiều bước (khi việc cần từ 2 việc trở lên):\n"
+            "{\n"
+            '  "goal": "<mục tiêu tóm tắt>",\n'
+            '  "steps": [\n'
+            "    {\n"
+            '      "action": "<tên hành động>",\n'
+            '      "effect": "<read | write | critical>",\n'
+            '      "parameters": { "raw_input": "<câu lệnh gốc của người dùng>" },\n'
+            '      "approval_message": "<tiếng Việt, chỉ dùng khi effect là write '
+            'hoặc critical, nếu không thì để null>"\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            f"Tối đa {MAX_PLAN_STEPS} steps. Sắp xếp steps read (tra cứu) TRƯỚC, "
+            "write/critical SAU.\n\n"
+            "Dạng 2 — lệnh đơn (việc đơn giản, chỉ 1 hành động):\n"
+            "{\n"
+            '  "action": "<tên hành động>",\n'
+            '  "effect": "<read | write | critical>",\n'
+            '  "parameters": { "raw_input": "<câu lệnh gốc của người dùng>" },\n'
+            '  "approval_message": "<như trên>"\n'
+            "}\n\n"
+            "Danh sách các hành động (action) được hỗ trợ hiện tại:\n"
+            f"{action_list}\n\n"
+            'Quy tắc effect: "read" cho tra cứu/báo cáo (trả lời ngay), '
+            '"write" cho thay đổi dữ liệu (cần 1 duyệt), '
+            '"critical" cho xóa/khóa/chuyển khoản (cần 2 duyệt).\n\n'
+            'Xử lý hội thoại (dùng "core.chat.reply", parameters.reply '
+            'TIẾNG VIỆT, xưng "tôi"):\n'
+            '- Chào/cảm ơn/tạm biệt ("xin chào", "hello", "cảm ơn", "bye"...): '
+            "chào lại thân thiện + gợi ý 1-2 việc có thể làm.\n"
+            '- Được hỏi khả năng ("làm được gì", "tính năng", "bạn là ai"...): '
+            "LIỆT KÊ từ danh sách actions ở trên (nhóm tra cứu / cần phê duyệt), "
+            "không bịa thêm action.\n"
+            "- Câu nghiệp vụ không có action phù hợp: giải thích không làm được "
+            "+ gợi ý việc gần nhất.\n"
+            "TUYỆT ĐỐI không gọi action nghiệp vụ cho các câu trên.\n\n"
+            "Ví dụ:\n"
+            '- Input "xin chào" → {"action": "core.chat.reply", "effect": "read", '
+            '"parameters": {"reply": "Xin chào! Tôi là Proteus AI, trợ lý điều hành '
+            "của tổ chức bạn. Tôi tra cứu nhân sự, nghỉ phép, tri thức nội bộ hoặc "
+            'thực hiện tác vụ cần phê duyệt. Bạn cần gì?"}, '
+            '"approval_message": null}\n'
+            '- Input "mày làm được gì" → {"action": "core.chat.reply", '
+            '"effect": "read", "parameters": {"reply": "Tôi có thể giúp bạn:\\n'
+            "🔍 Tra cứu, báo cáo (trả lời ngay): liệt kê plugin, tìm nhân sự, "
+            "tra tri thức nội bộ...\\n⚙️ Thực hiện (cần bạn phê duyệt): duyệt "
+            'nghỉ phép, cài plugin...\\nCứ hỏi cụ thể bằng tiếng Việt nhé!"}, '
+            '"approval_message": null}'
+        )
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
         # Nạp lịch sử hội thoại từ conversation_repo nếu có session_id (#748)
@@ -410,22 +440,20 @@ Ví dụ:
             "\n".join(f"- `{s.action}` ({s.effect})" for s in suggestion)
             or "(hết gợi ý — tự quyết định bước tiếp hoặc kết thúc)"
         )
-        system = f"""Bạn là Proteus AI đang thực hiện mục tiêu: {goal}
-
-Đã làm xong:
-{done_lines}
-
-Gợi ý plan ban đầu còn lại:
-{sugg_lines}
-
-Tools khả dụng:
-{action_list}
-
-Quy tắc effect: read (trả lời ngay), write (1 duyệt), critical (2 duyệt).
-Chào hỏi/linh tinh → dùng "core.chat.reply".
-CHỈ trả về JSON, không text thừa:
-- Còn việc cần làm: {{"thought": "<suy luận ngắn gọn vì sao chọn bước này>", "next_action": {{"action": "...", "effect": "...", "parameters": {{"raw_input": "{goal}"}}, "approval_message": "..."}}}}
-- Xong hoặc không làm thêm được: {{"thought": "<lý do>", "finish": true}}"""
+        system = (
+            f"Bạn là Proteus AI đang thực hiện mục tiêu: {goal}\n\n"
+            f"Đã làm xong:\n{done_lines}\n\n"
+            f"Gợi ý plan ban đầu còn lại:\n{sugg_lines}\n\n"
+            f"Tools khả dụng:\n{action_list}\n\n"
+            "Quy tắc effect: read (trả lời ngay), write (1 duyệt), "
+            "critical (2 duyệt).\n"
+            'Chào hỏi/linh tinh → dùng "core.chat.reply".\n'
+            "CHỈ trả về JSON, không text thừa:\n"
+            '- Còn việc cần làm: {"thought": "<suy luận ngắn gọn vì sao chọn '
+            'bước này>", "next_action": {"action": "...", "effect": "...", '
+            f'"parameters": {{"raw_input": "{goal}"}}, "approval_message": "..."}}\n'
+            '- Xong hoặc không làm thêm được: {"thought": "<lý do>", "finish": true}'
+        )
         return [
             {"role": "system", "content": system},
             {"role": "user", "content": f"Tiếp tục mục tiêu: {goal}"},
@@ -461,7 +489,7 @@ CHỈ trả về JSON, không text thừa:
         except Exception as e:
             logger.warning("Lấy deadline duyệt thất bại (best-effort): %s", e)
         dry = last.get("result")
-        return {
+        preview: dict[str, Any] = {
             "command_id": last.get("command_id"),
             "action": last.get("action"),
             "effect": last.get("effect"),
@@ -469,6 +497,10 @@ CHỈ trả về JSON, không text thừa:
             "approval_deadline": deadline,
             "dry_run_result": dry if isinstance(dry, dict) else None,
         }
+        z3_verif = last.get("z3_verification") or _extract_z3_verification(dry)
+        if isinstance(z3_verif, dict):
+            preview["z3_verification"] = z3_verif
+        return preview
 
     async def _run_react(
         self,
@@ -497,40 +529,48 @@ CHỈ trả về JSON, không text thừa:
         total_hint = len(seed_plan)
         t0 = _time.monotonic()
 
-        async def _do_step(index: int, step: AICommandDTO):
+        async def _do_step(
+            index: int, step: AICommandDTO
+        ) -> tuple[AICommandStatus, dict[str, Any] | None]:
             params = dict(step.parameters or {})
             params["_plan"] = {"index": index, "total": total_hint, "react": True}
             step.parameters = params
             status, message, result = await self.ai_command_use_case.execute(step, ctx)
-            outcomes.append(
-                {
-                    "index": index,
-                    "command_id": str(step.command_id),
-                    "action": step.action,
-                    "effect": step.effect,
-                    "status": status.value,
-                    "message": message,
-                    "result": result,
-                    "approval_message": step.approval_message,
-                }
-            )
-            await _emit(
-                "step",
-                {
-                    "index": index,
-                    "command_id": str(step.command_id),
-                    "action": step.action,
-                    "status": status.value,
-                    "message": message,
-                },
-            )
-            return status
+            z3_verif = _extract_z3_verification(result)
+            outcome: dict[str, Any] = {
+                "index": index,
+                "command_id": str(step.command_id),
+                "action": step.action,
+                "effect": step.effect,
+                "status": status.value,
+                "message": message,
+                "result": result,
+                "approval_message": step.approval_message,
+            }
+            if z3_verif is not None:
+                outcome["z3_verification"] = z3_verif
+            outcomes.append(outcome)
+
+            step_event: dict[str, Any] = {
+                "index": index,
+                "command_id": str(step.command_id),
+                "action": step.action,
+                "effect": step.effect,
+                "status": status.value,
+                "message": message,
+            }
+            if z3_verif is not None:
+                step_event["z3_verification"] = z3_verif
+            await _emit("step", step_event)
+            return status, z3_verif
 
         # Step mồi: chạy ngay không tốn thêm LLM call.
         first, rest = seed_plan[0], seed_plan[1:]
-        first_status = await _do_step(1, first)
-        if first_status == AICommandStatus.PENDING_APPROVAL:
-            # Dừng chờ duyệt: step sau có thể phụ thuộc mutation chưa duyệt.
+        first_status, first_z3 = await _do_step(1, first)
+        if first_status == AICommandStatus.PENDING_APPROVAL or (
+            isinstance(first_z3, dict) and first_z3.get("verified") is False
+        ):
+            # Dừng chờ duyệt hoặc khi bị Z3 Poka-yoke chặn cứng (UNSAT).
             return await self._finish(
                 outcomes,
                 total_hint,
@@ -547,7 +587,7 @@ CHỈ trả về JSON, không text thừa:
                 "done",
                 question=dto.natural_language_input,
             )
-        # FAILED hoặc còn gợi ý: vào loop cho LLM cứu/tiếp tục (giới hạn vòng).
+        # FAILED (không phải Z3 UNSAT) hoặc còn gợi ý: vào loop cho LLM cứu/tiếp tục.
 
         suggestion = list(rest)
         end_reason = "finish"
@@ -575,8 +615,10 @@ CHỈ trả về JSON, không text thừa:
             if nxt is None:
                 break
             suggestion = []
-            st = await _do_step(len(outcomes) + 1, nxt)
-            if st == AICommandStatus.PENDING_APPROVAL:
+            st, step_z3 = await _do_step(len(outcomes) + 1, nxt)
+            if st == AICommandStatus.PENDING_APPROVAL or (
+                isinstance(step_z3, dict) and step_z3.get("verified") is False
+            ):
                 break
             # FAILED: cho LLM 1 cơ hội cứu ở vòng sau (obs đã ghi) —
             # vòng lặp tự kết thúc nhờ MAX_REACT_ITERS.
@@ -606,11 +648,33 @@ CHỈ trả về JSON, không text thừa:
         overall, summary, result = self._summarize(
             outcomes, total_hint, thoughts, end_reason
         )
+        last_step = outcomes[-1] if outcomes else {}
+        last_z3 = last_step.get("z3_verification") or _extract_z3_verification(
+            last_step.get("result")
+        )
         if overall == AICommandStatus.PENDING_APPROVAL:
             preview = await self._pending_preview(outcomes)
             if preview is not None:
                 result["dsl_preview"] = preview
+                if isinstance(preview.get("z3_verification"), dict):
+                    result["z3_verification"] = preview["z3_verification"]
             return overall, summary, result
+        if isinstance(last_z3, dict):
+            result["z3_verification"] = last_z3
+            if overall == AICommandStatus.FAILED:
+                result["dsl_preview"] = {
+                    "command_id": last_step.get("command_id"),
+                    "action": last_step.get("action"),
+                    "effect": last_step.get("effect"),
+                    "approval_message": last_step.get("approval_message"),
+                    "approval_deadline": None,
+                    "dry_run_result": (
+                        last_step.get("result")
+                        if isinstance(last_step.get("result"), dict)
+                        else None
+                    ),
+                    "z3_verification": last_z3,
+                }
         if overall == AICommandStatus.COMPLETED and question:
             cites: list[dict[str, Any]] = [
                 c
@@ -764,17 +828,19 @@ CHỈ trả về JSON, không text thừa:
             params["_plan"] = {"index": i + 1, "total": total}
             step.parameters = params
             status, message, result = await self.ai_command_use_case.execute(step, ctx)
-            outcomes.append(
-                {
-                    "index": i + 1,
-                    "command_id": str(step.command_id),
-                    "action": step.action,
-                    "effect": step.effect,
-                    "status": status.value,
-                    "message": message,
-                    "result": result,
-                }
-            )
+            z3_verif = _extract_z3_verification(result)
+            outcome: dict[str, Any] = {
+                "index": i + 1,
+                "command_id": str(step.command_id),
+                "action": step.action,
+                "effect": step.effect,
+                "status": status.value,
+                "message": message,
+                "result": result,
+            }
+            if z3_verif is not None:
+                outcome["z3_verification"] = z3_verif
+            outcomes.append(outcome)
             if on_step is not None:
                 maybe = on_step(i, step, status, message)
                 if hasattr(maybe, "__await__"):
@@ -912,10 +978,13 @@ CHỈ trả về JSON, không text thừa:
             yield {"event": "thought" if se.pop("thought", False) else "step", **se}
         first_cmd = command_dtos[0].command_id if command_dtos else None
         await self._persist_turn(ctx, dto.session_id, "assistant", message, first_cmd)
-        yield {
+        res_event: dict[str, Any] = {
             "event": "result",
             "status": overall.value,
             "message": message,
             "result": result,
             "command_id": str(first_cmd) if first_cmd else None,
         }
+        if isinstance(result, dict) and isinstance(result.get("z3_verification"), dict):
+            res_event["z3_verification"] = result["z3_verification"]
+        yield res_event

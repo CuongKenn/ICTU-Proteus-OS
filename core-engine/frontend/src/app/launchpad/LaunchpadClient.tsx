@@ -75,12 +75,7 @@ export function LaunchpadClient() {
   };
 
   const handleOpenPlugin = (code_name: string) => {
-    const plugin = plugins.find((p) => p.code_name === code_name);
-    const targetUrl =
-      plugin?.external_url ||
-      plugin?.homepage_url ||
-      `${process.env.NEXT_PUBLIC_APPSMITH_URL || "http://apps.proteus.local"}/app/${code_name}`;
-    openIframe(code_name, targetUrl);
+    router.push(`/plugins/${code_name}`);
   };
 
   const getGreeting = () => {
