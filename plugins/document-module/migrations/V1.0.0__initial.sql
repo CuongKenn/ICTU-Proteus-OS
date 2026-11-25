@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS document_outgoing (
     nguoi_ky UUID,
     ngay_phat_hanh DATE,
     file_url VARCHAR(1024),
+    trich_yeu TEXT,
     status VARCHAR(50) DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -4,7 +4,7 @@
 // HR — Tuyển dụng (ATS): bảng tin tuyển dụng + pipeline ứng viên + phỏng vấn/offer.
 // P2: tạo hồ sơ/phỏng vấn qua dispatcher (wf_application_received,
 // wf_interview_schedule). P3: "AI chấm" gọi DSL hr.applications.screen.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Application,
   AppStage,
@@ -164,13 +164,24 @@ export function RecruitmentPage() {
 
   // AI chấm chạy nền ở n8n (~1 phút). Sau khi trigger, poll danh sách hồ sơ
   // để cập nhật điểm mà không cần reload trang.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const pollForScore = useCallback(
     async (id: string) => {
       if (!store) return;
       for (let i = 0; i < 45; i++) {
+        if (!mountedRef.current) return;
         await new Promise((r) => setTimeout(r, 4000));
+        if (!mountedRef.current) return;
         try {
           const list = await store.listApplications();
+          if (!mountedRef.current) return;
           setApps(list);
           const found = list.find((a) => a.id === id);
           if (found && found.score !== null) return;
@@ -191,13 +202,16 @@ export function RecruitmentPage() {
       try {
         await store.screenApplication(a.id);
       } catch (e) {
+        if (!mountedRef.current) return;
         const msg = errText(e);
         // Timeout/abort do LLM chậm → workflow vẫn chạy nền, không báo lỗi cứng.
         if (!/502|504|timeout|abort|mạng|network|fetch/i.test(msg)) {
           setError(msg);
         }
       }
+      if (!mountedRef.current) return;
       await pollForScore(a.id);
+      if (!mountedRef.current) return;
       setBusyId(null);
       setScreenMsg(null);
     })();

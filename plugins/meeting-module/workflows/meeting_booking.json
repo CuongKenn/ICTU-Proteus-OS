@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1 AND is_active = true AND NOT EXISTS (SELECT 1 FROM {{TENANT_SCHEMA}}.meeting_bookings b WHERE b.room_id = $1 AND b.status != 'CANCELLED' AND tsrange(b.start_time, b.end_time) && tsrange($2::timestamp, $3::timestamp));",
+        "query": "SELECT id FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1::uuid AND is_active = true AND NOT EXISTS (SELECT 1 FROM {{TENANT_SCHEMA}}.meeting_bookings b WHERE b.room_id = $1::uuid AND b.status != 'CANCELLED' AND ($4::text = '' OR b.id::text != $4::text) AND tstzrange(b.start_time, b.end_time) && tstzrange($2::timestamptz, $3::timestamptz));",
         "options": {
-          "queryReplacement": "={{$json.body.room_id}},={{$json.body.start_time}},={{$json.body.end_time}}"
+          "queryReplacement": "={{$json.body.room_id}},={{$json.body.start_time}},={{$json.body.end_time}},={{$json.body.id || ''}}"
         }
       },
       "name": "Check Room Available",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -56,9 +57,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.meeting_bookings (room_id, organizer_id, title, start_time, end_time, status, description) VALUES ($1,$2,$3,$4,$5,'SCHEDULED',$6) RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.meeting_bookings (id, room_id, organizer_id, title, start_time, end_time, status, description) VALUES (COALESCE(NULLIF($7::text, '')::uuid, uuid_generate_v4()), $1::uuid, $2::uuid, $3, $4::timestamptz, $5::timestamptz, 'SCHEDULED', $6) ON CONFLICT (id) DO UPDATE SET updated_at = NOW() RETURNING id;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id}},={{$('Webhook - Book Meeting').item.json.body.organizer_id}},={{$('Webhook - Book Meeting').item.json.body.title}},={{$('Webhook - Book Meeting').item.json.body.start_time}},={{$('Webhook - Book Meeting').item.json.body.end_time}},={{$('Webhook - Book Meeting').item.json.body.agenda || $('Webhook - Book Meeting').item.json.body.description}}"
+          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id}},={{$('Webhook - Book Meeting').item.json.body.organizer_id || '00000000-0000-0000-0000-000000000001'}},={{$('Webhook - Book Meeting').item.json.body.title}},={{$('Webhook - Book Meeting').item.json.body.start_time}},={{$('Webhook - Book Meeting').item.json.body.end_time}},={{$('Webhook - Book Meeting').item.json.body.agenda || $('Webhook - Book Meeting').item.json.body.description || ''}},={{$('Webhook - Book Meeting').item.json.body.id || ''}}"
         }
       },
       "name": "Create Booking",
@@ -72,7 +73,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT name, capacity FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1;",
+        "query": "SELECT name, capacity FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1::uuid;",
         "options": {
           "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id}}"
         }
@@ -93,8 +94,22 @@
       "name": "Confirm to Organizer",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"booking_id\": \"{{$('Create Booking').item.json.id}}\"}"
+      },
+      "name": "Booking Confirmed Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1450,
         200
       ]
     },
@@ -169,6 +184,17 @@
         [
           {
             "node": "Confirm to Organizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm to Organizer": {
+      "main": [
+        [
+          {
+            "node": "Booking Confirmed Response",
             "type": "main",
             "index": 0
           }

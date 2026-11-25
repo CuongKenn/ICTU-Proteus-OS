@@ -138,9 +138,9 @@ export function IncomingPage() {
         <ReassignForm
           soVb={reassigning.so_van_ban}
           onClose={() => setReassigning(null)}
-          onSubmit={(a) =>
+          onSubmit={(assignee, reason) =>
             mutate(async () => {
-              await store!.reassignIncoming(reassigning.id, a);
+              await store!.reassignIncoming(reassigning.id, assignee, reason);
               setReassigning(null);
             })
           }
@@ -198,13 +198,23 @@ function IncomingForm(props: {
   );
 }
 
-function ReassignForm(props: { soVb: string; onClose: () => void; onSubmit: (a: string) => Promise<void> }) {
+function ReassignForm(props: {
+  soVb: string;
+  onClose: () => void;
+  onSubmit: (assignee: string, reason?: string) => Promise<void>;
+}) {
   const [assignee, setAssignee] = useState('');
+  const [reason, setReason] = useState('');
   return (
     <Modal title={`Điều chuyển ${props.soVb}`} onClose={props.onClose}>
       <div style={{ display: 'grid', gap: '.6rem' }}>
-        <Input placeholder="Người nhận / Phòng ban mới" value={assignee} onChange={(e) => setAssignee(e.target.value)} />
-        <Btn primary disabled={!assignee.trim()} onClick={() => props.onSubmit(assignee.trim())}>
+        <Input placeholder="Người nhận (UUID) hoặc Phòng ban tiếp nhận" value={assignee} onChange={(e) => setAssignee(e.target.value)} />
+        <Input placeholder="Lý do / Ghi chú điều chuyển (tùy chọn)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <Btn
+          primary
+          disabled={!assignee.trim()}
+          onClick={() => props.onSubmit(assignee.trim(), reason.trim() || undefined)}
+        >
           Xác nhận điều chuyển
         </Btn>
       </div>

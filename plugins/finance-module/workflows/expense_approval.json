@@ -59,12 +59,13 @@
         "operation": "executeQuery",
         "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
         }
       },
       "name": "Get Director Approver",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         200
@@ -75,12 +76,13 @@
         "operation": "executeQuery",
         "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
         }
       },
       "name": "Get Manager Approver",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         400

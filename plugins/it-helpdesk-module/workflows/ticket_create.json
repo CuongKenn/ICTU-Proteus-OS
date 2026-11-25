@@ -39,12 +39,13 @@
         "operation": "executeQuery",
         "query": "SELECT u.id as user_id, u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - New Ticket').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
         }
       },
       "name": "Auto-Assign Agent",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         650,
         300

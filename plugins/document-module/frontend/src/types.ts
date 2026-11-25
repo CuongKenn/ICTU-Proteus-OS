@@ -36,7 +36,7 @@ export interface OutgoingDoc {
   ngay_phat_hanh: string; // YYYY-MM-DD
   file_url: string;
   status: OutgoingStatus;
-  // Helper chỉ dùng ở DEMO để hiển thị (bảng gốc không có cột này).
+  trich_yeu?: string;
   tieu_de?: string;
 }
 

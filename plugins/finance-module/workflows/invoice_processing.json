@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_invoices (invoice_number, vendor_name, amount, issue_date, due_date, status) VALUES ($1,$2,$3,CURRENT_DATE,$4,'PENDING') RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_invoices (invoice_number, vendor_name, amount, issue_date, due_date, status) VALUES ($1, $2, $3, COALESCE(NULLIF($4::text, '')::date, CURRENT_DATE), COALESCE(NULLIF($5::text, '')::date, CURRENT_DATE), 'PENDING') RETURNING id;",
         "options": {
-          "queryReplacement": "={{$json.body.invoice_number}},={{$json.body.vendor_name || 'Vendor'}},={{$json.body.amount}},={{$json.body.due_date}}"
+          "queryReplacement": "={{$json.body.invoice_number}},={{$json.body.vendor_name || 'Vendor'}},={{$json.body.amount}},={{$json.body.issue_date || ''}},={{$json.body.due_date || ''}}"
         }
       },
       "name": "Create Invoice",
@@ -55,12 +55,13 @@
         "operation": "executeQuery",
         "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - New Invoice').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
         }
       },
       "name": "Get Accountant",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         300
@@ -69,11 +70,12 @@
     {
       "parameters": {
         "userId": "={{$json.mattermost_user_id}}",
-        "message": "=📄 **Hóa đơn mới cần xử lý**\nSố HĐ: {{$('Webhook - New Invoice').item.json.body.invoice_number}}\nNhà cung cấp: {{$('Get Vendor Info').item.json.name}}\nSố tiền: {{$('Webhook - New Invoice').item.json.body.amount}} {{$('Webhook - New Invoice').item.json.body.currency}}\nHạn thanh toán: {{$('Webhook - New Invoice').item.json.body.due_date}}\nID Hóa đơn: {{$('Create Invoice').item.json.id}}"
+        "message": "=📄 **Hóa đơn mới cần xử lý**\nSố HĐ: {{$('Webhook - New Invoice').item.json.body.invoice_number}}\nNhà cung cấp: {{$('Get Vendor Info').item.json.name}}\nSố tiền: {{$('Webhook - New Invoice').item.json.body.amount}} {{$('Webhook - New Invoice').item.json.body.currency || 'VND'}}\nNgày phát hành: {{$('Webhook - New Invoice').item.json.body.issue_date || 'Hôm nay'}}\nHạn thanh toán: {{$('Webhook - New Invoice').item.json.body.due_date}}\nID Hóa đơn: {{$('Create Invoice').item.json.id}}"
       },
       "name": "Notify Accountant",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1050,
         300
