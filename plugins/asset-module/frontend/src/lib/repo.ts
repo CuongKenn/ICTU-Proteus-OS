@@ -256,6 +256,21 @@ function toDisposal(r: Record<string, unknown>): DisposalRequest {
   };
 }
 
+function toMaintenance(r: Record<string, unknown>): MaintenanceLog {
+  const performedRaw = r.performed_at ?? r.done_at ?? '';
+  return {
+    id: String(r.id ?? ''),
+    asset_id: String(r.asset_id ?? ''),
+    type: r.type === 'REPAIR' ? 'REPAIR' : 'ROUTINE',
+    technician: String(r.technician ?? ''),
+    cost: Number(r.cost ?? 0),
+    done_at: String(r.done_at ?? r.performed_at ?? ''),
+    performed_at: String(performedRaw).slice(0, 10),
+    next_due: String(r.next_due ?? '').slice(0, 10),
+    notes: String(r.notes ?? ''),
+  };
+}
+
 /** Demo store: bọc mock sync thành async (giữ nguyên localStorage). */
 export function createDemoStore(): AssetStore {
   const m = createMockRepo();
@@ -338,12 +353,21 @@ export function createLiveStore(client: BffClient): AssetStore {
       return asset_id ? all.filter((a) => a.asset_id === asset_id) : all;
     },
     async listMaintenance(asset_id) {
-      const all = await rows<MaintenanceLog>('asset_maintenance_logs');
+      const all = (await rows<Record<string, unknown>>('asset_maintenance_logs')).map(toMaintenance);
       return asset_id ? all.filter((m) => m.asset_id === asset_id) : all;
     },
     async addMaintenance(log) {
+      const payload = {
+        asset_id: log.asset_id,
+        type: log.type,
+        technician: log.technician,
+        cost: Number(log.cost ?? 0),
+        done_at: log.done_at || new Date().toISOString(),
+        next_due: log.next_due || null,
+        notes: log.notes,
+      };
       const row = await client.post<Record<string, unknown>>(
-        `${R}/asset_maintenance_logs`, log,
+        `${R}/asset_maintenance_logs`, payload,
       );
       try {
         const items = await this.listItems();
@@ -354,7 +378,7 @@ export function createLiveStore(client: BffClient): AssetStore {
           });
         }
       } catch { /* best-effort */ }
-      return row as unknown as MaintenanceLog;
+      return toMaintenance(row);
     },
     async listDisposals() {
       return (await rows<Record<string, unknown>>('asset_disposal_requests')).map(toDisposal);

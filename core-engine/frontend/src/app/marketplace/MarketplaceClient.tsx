@@ -394,6 +394,7 @@ export const MarketplaceClient: React.FC = () => {
       <AIPluginStudioModal
         isOpen={isStudioOpen}
         onClose={() => setIsStudioOpen(false)}
+        canInstall={canInstall}
       />
     </div>
   );

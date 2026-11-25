@@ -9,7 +9,7 @@
 # ════════════════════════════════════════════════
 name: "hr-module"
 display_name: "HR Core"
-version: "1.1.0"
+version: "1.2.0"
 description: |
   Quản lý nhân sự toàn diện: hồ sơ nhân viên, chấm công, quản lý nghỉ phép.
 author: "ICTU Team"

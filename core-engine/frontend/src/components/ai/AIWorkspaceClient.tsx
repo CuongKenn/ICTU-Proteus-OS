@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   MessageSquare,
@@ -15,6 +15,8 @@ import {
   GitBranch,
   RefreshCw,
   Clock,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { AIChatPanel } from "@/components/AIChatWidget";
@@ -54,6 +56,8 @@ export const AIWorkspaceClient: React.FC = () => {
     undefined
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyReqSeqRef = useRef<number>(0);
 
   const fetchSessions = useCallback(async () => {
     setIsLoadingSessions(true);
@@ -80,13 +84,19 @@ export const AIWorkspaceClient: React.FC = () => {
   }, [fetchSessions]);
 
   const handleNewSession = () => {
+    historyReqSeqRef.current += 1;
+    setIsLoadingHistory(false);
+    setHistoryError(null);
     const nextId = uuid();
     setActiveSessionId(nextId);
     setLoadedMessages([]);
   };
 
   const handleSelectSession = async (session: SessionSummary) => {
+    const reqSeq = ++historyReqSeqRef.current;
+    setHistoryError(null);
     setActiveSessionId(session.id);
+    setLoadedMessages([]);
     setIsLoadingHistory(true);
     try {
       const res = await fetch(
@@ -96,32 +106,47 @@ export const AIWorkspaceClient: React.FC = () => {
           headers: { Accept: "application/json" },
         }
       );
-      if (res.ok) {
-        const rows = (await res.json()) as RawSessionMessage[];
-        if (Array.isArray(rows)) {
-          const mapped: ChatMessage[] = rows.map((r) => {
-            const parsedDate = r.created_at ? new Date(r.created_at) : new Date();
-            const safeDate = Number.isNaN(parsedDate.getTime())
-              ? new Date()
-              : parsedDate;
-            const normalizedRole =
-              r.role === "user" || r.role === "assistant" || r.role === "system"
-                ? r.role
-                : "assistant";
-            return {
-              id: r.id || uuid(),
-              role: normalizedRole,
-              content: r.content || "",
-              timestamp: safeDate,
-            };
-          });
-          setLoadedMessages(mapped);
-        }
+      if (reqSeq !== historyReqSeqRef.current) return;
+      if (!res.ok) {
+        setLoadedMessages([]);
+        setHistoryError(
+          "Không thể tải lịch sử phiên hội thoại này. Vui lòng thử lại sau."
+        );
+        return;
+      }
+      const rows = (await res.json()) as RawSessionMessage[];
+      if (reqSeq !== historyReqSeqRef.current) return;
+      if (Array.isArray(rows)) {
+        const mapped: ChatMessage[] = rows.map((r) => {
+          const parsedDate = r.created_at ? new Date(r.created_at) : new Date();
+          const safeDate = Number.isNaN(parsedDate.getTime())
+            ? new Date()
+            : parsedDate;
+          const normalizedRole =
+            r.role === "user" || r.role === "assistant" || r.role === "system"
+              ? r.role
+              : "assistant";
+          return {
+            id: r.id || uuid(),
+            role: normalizedRole,
+            content: r.content || "",
+            timestamp: safeDate,
+          };
+        });
+        setLoadedMessages(mapped);
+      } else {
+        setLoadedMessages([]);
       }
     } catch {
-      // Bỏ qua nếu không tải được lịch sử chi tiết
+      if (reqSeq !== historyReqSeqRef.current) return;
+      setLoadedMessages([]);
+      setHistoryError(
+        "Không thể kết nối để tải lịch sử phiên hội thoại. Vui lòng thử lại sau."
+      );
     } finally {
-      setIsLoadingHistory(false);
+      if (reqSeq === historyReqSeqRef.current) {
+        setIsLoadingHistory(false);
+      }
     }
   };
 
@@ -288,7 +313,31 @@ export const AIWorkspaceClient: React.FC = () => {
       </aside>
 
       {/* Right Column: Main Inline AI Console */}
-      <main className="flex-1 min-w-0 h-full flex flex-col relative">
+      <main className="flex-1 min-w-0 h-full flex flex-col gap-2.5 relative">
+        {historyError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl border text-xs shrink-0"
+            style={{
+              background: "var(--rose-fill)",
+              borderColor: "rgba(190, 18, 60, 0.3)",
+              color: "var(--rose)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{historyError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHistoryError(null)}
+              aria-label="Đóng thông báo lỗi lịch sử"
+              className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         {isLoadingHistory && (
           <div className="absolute inset-0 z-10 bg-paper/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
             <span className="text-xs font-medium text-muted px-3 py-1.5 rounded-lg bg-paper-white border border-line shadow-card">

@@ -138,12 +138,12 @@ async def mattermost_interactive_callback(
                 )
         except HTTPException:
             raise
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as ts_err:
             logger.warning("Mattermost timestamp không hợp lệ: %s", ts_header)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Timestamp không hợp lệ.",
-            )
+            ) from ts_err
     is_valid_hmac = mattermost_signature and verify_mattermost_signature(
         raw_body, mattermost_signature
     )
@@ -172,7 +172,7 @@ async def mattermost_interactive_callback(
                 if _age <= 2100:
                     _exp = hmac.new(
                         settings.MATTERMOST_WEBHOOK_SECRET.encode("utf-8"),
-                        f"{_aid}.{_ts}".encode("utf-8"),
+                        f"{_aid}.{_ts}".encode(),
                         hashlib.sha256,
                     ).hexdigest()
                     is_valid_ctx_hmac = secrets.compare_digest(str(_sig), _exp)
@@ -216,7 +216,9 @@ async def mattermost_interactive_callback(
         if action == "approve":
             if not tenant_id_str:
                 return {
-                    "ephemeral_text": f"❌ Thiếu tenant_id để dọn dẹp plugin `{plugin_id_str}`.",
+                    "ephemeral_text": (
+                        f"❌ Thiếu tenant_id để dọn dẹp plugin `{plugin_id_str}`."
+                    ),
                 }
             try:
                 from app.adapters.repositories.plugin_repo import (
@@ -244,7 +246,10 @@ async def mattermost_interactive_callback(
                 }
             return {
                 "update": {
-                    "message": f"✅ Plugin `{plugin_id_str}` đã được dọn dẹp bởi <@{user_id}>.",
+                    "message": (
+                        f"✅ Plugin `{plugin_id_str}` đã được dọn dẹp "
+                        f"bởi <@{user_id}>."
+                    ),
                     "props": {},
                 },
                 "ephemeral_text": f"✅ Đã xác nhận dọn dẹp plugin {plugin_id_str}.",
@@ -252,7 +257,10 @@ async def mattermost_interactive_callback(
         else:
             return {
                 "update": {
-                    "message": f"❌ Đã từ chối dọn dẹp plugin `{plugin_id_str}` bởi <@{user_id}>.",
+                    "message": (
+                        f"❌ Đã từ chối dọn dẹp plugin `{plugin_id_str}` "
+                        f"bởi <@{user_id}>."
+                    ),
                     "props": {},
                 },
                 "ephemeral_text": f"Đã bỏ qua dọn dẹp plugin {plugin_id_str}.",
@@ -298,11 +306,16 @@ async def mattermost_interactive_callback(
             }
         if outcome == "denied":
             return {
-                "ephemeral_text": "⛔ Bạn không có quyền duyệt lệnh này (cần đúng vai trò, không tự duyệt lệnh của mình).",
+                "ephemeral_text": (
+                    "⛔ Bạn không có quyền duyệt lệnh này "
+                    "(cần đúng vai trò, không tự duyệt lệnh của mình)."
+                ),
             }
         if outcome == "invalid":
             return {
-                "ephemeral_text": "Lệnh không còn ở trạng thái chờ duyệt (đã xử lý hoặc hết hạn).",
+                "ephemeral_text": (
+                    "Lệnh không còn ở trạng thái chờ duyệt (đã xử lý hoặc hết hạn)."
+                ),
             }
         if outcome == "partially_approved":
             if cmd:
@@ -350,9 +363,20 @@ async def mattermost_interactive_callback(
     elif action == "reject":
         logger.info("Yêu cầu %s BỊ TỪ CHỐI bởi user %s.", action_id, user_id)
         try:
+            from app.infrastructure.database import set_session_tenant
+
+            _mm_sess = getattr(ai_command_use_case.ai_command_repo, "_session", None)
+            await set_session_tenant(db, "__system__")
+            if _mm_sess is not None and _mm_sess is not db:
+                await set_session_tenant(_mm_sess, "__system__")
             cmd = await ai_command_use_case.ai_command_repo.get_command_by_id(
                 uuid.UUID(action_id)
             )
+            if cmd and cmd.get("tenant_id"):
+                tid_str = str(cmd["tenant_id"])
+                await set_session_tenant(db, tid_str)
+                if _mm_sess is not None and _mm_sess is not db:
+                    await set_session_tenant(_mm_sess, tid_str)
         except (ValueError, AttributeError, TypeError):
             cmd = None
         outcome = await ai_command_use_case.process_approval(
@@ -364,7 +388,9 @@ async def mattermost_interactive_callback(
             }
         if outcome == "invalid":
             return {
-                "ephemeral_text": "Lệnh không còn ở trạng thái chờ duyệt (đã xử lý hoặc hết hạn).",
+                "ephemeral_text": (
+                    "Lệnh không còn ở trạng thái chờ duyệt (đã xử lý hoặc hết hạn)."
+                ),
             }
         if outcome == "rejected" and cmd:
             # Audit best-effort: lỗi ghi log không được làm fail cả callback.

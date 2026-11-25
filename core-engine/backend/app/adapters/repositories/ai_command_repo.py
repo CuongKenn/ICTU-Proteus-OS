@@ -57,7 +57,7 @@ def _to_json_str(value) -> str | None:
 
 
 def _parse_jsonb(value):
-    if value is None or isinstance(value, (dict, list)):
+    if value is None or isinstance(value, dict | list):
         return value
     if isinstance(value, str):
         try:
@@ -185,6 +185,32 @@ class SQLAlchemyAICommandRepository(AbstractAICommandRepository):
         """)
         await self._session.execute(
             sql_update, {"status": status.value, "cmd_id": cmd_id}
+        )
+
+    async def update_execution_result(
+        self,
+        cmd_id: uuid.UUID,
+        result: dict | None,
+        status: AICommandStatus = AICommandStatus.COMPLETED,
+    ) -> None:
+        status_val = (
+            status.value if isinstance(status, AICommandStatus) else str(status)
+        )
+        sql_update = text("""
+            UPDATE ai_commands
+            SET execution_result = :res,
+                status = :status,
+                executed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :cmd_id
+        """)
+        await self._session.execute(
+            sql_update,
+            {
+                "res": _to_json_str(result),
+                "status": status_val,
+                "cmd_id": cmd_id,
+            },
         )
 
     async def create_command(self, command_data: dict) -> uuid.UUID:

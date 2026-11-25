@@ -612,9 +612,18 @@ export function createLiveStore(client: BffClient): HrStore {
         `${A}/wf_application_received`,
         { payload: { ...i } },
       );
-      if (res && res.application_id) {
+      const payload = (
+        res &&
+        typeof res === 'object' &&
+        'result' in res &&
+        res.result &&
+        typeof res.result === 'object'
+          ? res.result
+          : res
+      ) as Record<string, unknown> | null;
+      if (payload && payload.application_id) {
         const all = await this.listApplications();
-        const found = all.find((a) => a.id === String(res.application_id));
+        const found = all.find((a) => a.id === String(payload.application_id));
         if (found) return found;
       }
       const all = await this.listApplications();
@@ -632,13 +641,26 @@ export function createLiveStore(client: BffClient): HrStore {
         `${A}/wf_application_screen`,
         { payload: { application_id: id } },
       );
-      if (res && typeof res.score === 'number') {
-        return { score: res.score };
+      const payload = (
+        res &&
+        typeof res === 'object' &&
+        'result' in res &&
+        res.result &&
+        typeof res.result === 'object'
+          ? res.result
+          : res
+      ) as Record<string, unknown> | null;
+      if (payload && payload.score !== null && payload.score !== undefined && payload.score !== '') {
+        const parsedScore = Number(payload.score);
+        if (Number.isFinite(parsedScore)) {
+          return { score: parsedScore };
+        }
       }
       try {
-        const app = await client.get<Record<string, unknown>>(`${R}/hr_applications/${id}`);
-        if (app && typeof app.score === 'number') {
-          return { score: app.score };
+        const all = await this.listApplications();
+        const found = all.find((a) => a.id === id);
+        if (found && typeof found.score === 'number') {
+          return { score: found.score };
         }
       } catch {
         // ignore
@@ -658,9 +680,18 @@ export function createLiveStore(client: BffClient): HrStore {
         `${A}/wf_interview_schedule`,
         { payload: { ...i } },
       );
-      if (res && res.interview_id) {
+      const payload = (
+        res &&
+        typeof res === 'object' &&
+        'result' in res &&
+        res.result &&
+        typeof res.result === 'object'
+          ? res.result
+          : res
+      ) as Record<string, unknown> | null;
+      if (payload && payload.interview_id) {
         const all = await this.listInterviews();
-        const found = all.find((x) => x.id === String(res.interview_id));
+        const found = all.find((x) => x.id === String(payload.interview_id));
         if (found) return found;
       }
       const all = await this.listInterviews();

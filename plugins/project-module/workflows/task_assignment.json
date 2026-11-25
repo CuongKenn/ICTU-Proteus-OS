@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.project_tasks (project_id, title, description, assignee_id, priority, status, due_date) VALUES ($1,$2,$3,$4,$5,'TODO',$6) RETURNING id;",
+        "query": "WITH ins AS (INSERT INTO {{TENANT_SCHEMA}}.project_tasks (project_id, title, description, assignee_id, priority, status, due_date, milestone_id) SELECT NULLIF($1::text, '')::uuid, COALESCE(NULLIF($2::text, ''), 'Công việc mới'), $3, NULLIF($4::text, '')::uuid, COALESCE(NULLIF($5::text, ''), 'MEDIUM'), 'TODO', NULLIF($6::text, '')::date, NULLIF($7::text, '')::uuid WHERE NULLIF($1::text, '') IS NOT NULL RETURNING id), unassign AS (UPDATE {{TENANT_SCHEMA}}.project_tasks SET assignee_id = NULL, updated_at = NOW() WHERE NULLIF($1::text, '') IS NULL AND NULLIF($8::text, '') IS NOT NULL AND assignee_id = NULLIF($8::text, '')::uuid AND status != 'DONE' RETURNING id) SELECT id FROM ins UNION ALL SELECT id FROM unassign;",
         "options": {
-          "queryReplacement": "={{$json.body.project_id}},={{$json.body.title}},={{$json.body.description}},={{$json.body.assignee_id}},={{$json.body.priority || 'MEDIUM'}},={{$json.body.due_date}}"
+          "queryReplacement": "={{$json.body.project_id || ''}},={{$json.body.title || ''}},={{$json.body.description || ''}},={{$json.body.assignee_id || ''}},={{$json.body.priority || 'MEDIUM'}},={{$json.body.due_date || ''}},={{$json.body.milestone_id || ''}},={{$json.body.employee_id || ''}}"
         }
       },
       "name": "Create Task",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -37,14 +38,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.mattermost_user_id, p.name as project_name FROM users u, {{TENANT_SCHEMA}}.project_projects p WHERE u.id = $1 AND p.id = $2;",
+        "query": "SELECT u.mattermost_user_id, p.name as project_name FROM users u, {{TENANT_SCHEMA}}.project_projects p WHERE u.id = NULLIF($1::text, '')::uuid AND p.id = NULLIF($2::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Task Assigned').item.json.body.assignee_id}},={{$('Webhook - Task Assigned').item.json.body.project_id}}"
+          "queryReplacement": "={{$('Webhook - Task Assigned').item.json.body.assignee_id || ''}},={{$('Webhook - Task Assigned').item.json.body.project_id || ''}}"
         }
       },
       "name": "Get Assignee Info",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         650,
         300
@@ -58,6 +60,7 @@
       "name": "Notify Assignee",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         850,
         300
@@ -66,7 +69,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": true, \"task_id\": \"{{$('Create Task').item.json.id}}\"}"
+        "responseBody": "={\"success\": true, \"task_id\": \"{{$('Create Task').item.json.id || ''}}\"}"
       },
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",

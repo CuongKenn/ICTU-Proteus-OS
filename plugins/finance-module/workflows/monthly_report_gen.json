@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT SUM(CASE WHEN type='CREDIT' THEN amount ELSE 0 END) as total_income, SUM(CASE WHEN type='DEBIT' THEN amount ELSE 0 END) as total_expense, COUNT(DISTINCT id) as transaction_count, TO_CHAR(NOW() - INTERVAL '1 month', 'YYYY-MM') as report_month FROM {{TENANT_SCHEMA}}.finance_transactions WHERE transaction_date >= CURRENT_DATE - INTERVAL '1 month';",
+        "query": "SELECT COALESCE(SUM(CASE WHEN type='CREDIT' THEN amount ELSE 0 END), 0) as total_income, COALESCE(SUM(CASE WHEN type='DEBIT' THEN amount ELSE 0 END), 0) as total_expense, COUNT(DISTINCT id) as transaction_count, TO_CHAR(NOW() - INTERVAL '1 month', 'YYYY-MM') as report_month FROM {{TENANT_SCHEMA}}.finance_transactions WHERE transaction_date >= CURRENT_DATE - INTERVAL '1 month';",
         "additionalFields": {}
       },
       "name": "Aggregate Last Month",
@@ -51,9 +51,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_budgets (month, category, allocated_amount, spent_amount) VALUES ($1,'Monthly Report',$2,$3) RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_budgets (month, category, allocated_amount, spent_amount) VALUES ($1, 'Monthly Report', COALESCE(NULLIF($2::text, '')::numeric, 0), COALESCE(NULLIF($3::text, '')::numeric, 0)) RETURNING id;",
         "options": {
-          "queryReplacement": "={{$json.report_month}},={{$json.total_income}},={{$json.total_expense}}"
+          "queryReplacement": "={{$json.report_month}},={{$json.total_income ?? 0}},={{$json.total_expense ?? 0}}"
         }
       },
       "name": "Save Report",
@@ -75,6 +75,7 @@
       "name": "Get Report Channel",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         1050,
         300
@@ -88,6 +89,7 @@
       "name": "Send Report Summary",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1250,
         300

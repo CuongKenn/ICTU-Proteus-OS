@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1::uuid AND is_active = true AND NOT EXISTS (SELECT 1 FROM {{TENANT_SCHEMA}}.meeting_bookings b WHERE b.room_id = $1::uuid AND b.status != 'CANCELLED' AND ($4::text = '' OR b.id::text != $4::text) AND tstzrange(b.start_time, b.end_time) && tstzrange($2::timestamptz, $3::timestamptz));",
+        "query": "WITH cancel_deactivated AS (UPDATE {{TENANT_SCHEMA}}.meeting_bookings SET status = 'CANCELLED', updated_at = NOW() WHERE NULLIF($1::text, '') IS NULL AND NULLIF($5::text, '') IS NOT NULL AND organizer_id = NULLIF($5::text, '')::uuid AND start_time > NOW() AND status = 'SCHEDULED' RETURNING id) SELECT id FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE NULLIF($1::text, '') IS NOT NULL AND NULLIF($2::text, '') IS NOT NULL AND NULLIF($3::text, '') IS NOT NULL AND id = NULLIF($1::text, '')::uuid AND is_active = true AND NOT EXISTS (SELECT 1 FROM {{TENANT_SCHEMA}}.meeting_bookings b WHERE b.room_id = NULLIF($1::text, '')::uuid AND b.status != 'CANCELLED' AND ($4::text = '' OR b.id::text != $4::text) AND tstzrange(b.start_time, b.end_time) && tstzrange(NULLIF($2::text, '')::timestamptz, NULLIF($3::text, '')::timestamptz));",
         "options": {
-          "queryReplacement": "={{$json.body.room_id}},={{$json.body.start_time}},={{$json.body.end_time}},={{$json.body.id || ''}}"
+          "queryReplacement": "={{$json.body.room_id || ''}},={{$json.body.start_time || ''}},={{$json.body.end_time || ''}},={{$json.body.id || ''}},={{$json.body.employee_id || ''}}"
         }
       },
       "name": "Check Room Available",
@@ -57,9 +57,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.meeting_bookings (id, room_id, organizer_id, title, start_time, end_time, status, description) VALUES (COALESCE(NULLIF($7::text, '')::uuid, uuid_generate_v4()), $1::uuid, $2::uuid, $3, $4::timestamptz, $5::timestamptz, 'SCHEDULED', $6) ON CONFLICT (id) DO UPDATE SET updated_at = NOW() RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.meeting_bookings (id, room_id, organizer_id, title, start_time, end_time, status, description) VALUES (COALESCE(NULLIF($7::text, '')::uuid, uuid_generate_v4()), NULLIF($1::text, '')::uuid, NULLIF($2::text, '')::uuid, COALESCE(NULLIF($3::text, ''), 'Cuộc họp'), NULLIF($4::text, '')::timestamptz, NULLIF($5::text, '')::timestamptz, 'SCHEDULED', $6) ON CONFLICT (id) DO UPDATE SET updated_at = NOW() RETURNING id;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id}},={{$('Webhook - Book Meeting').item.json.body.organizer_id || '00000000-0000-0000-0000-000000000001'}},={{$('Webhook - Book Meeting').item.json.body.title}},={{$('Webhook - Book Meeting').item.json.body.start_time}},={{$('Webhook - Book Meeting').item.json.body.end_time}},={{$('Webhook - Book Meeting').item.json.body.agenda || $('Webhook - Book Meeting').item.json.body.description || ''}},={{$('Webhook - Book Meeting').item.json.body.id || ''}}"
+          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id || ''}},={{$('Webhook - Book Meeting').item.json.body.organizer_id || '00000000-0000-0000-0000-000000000001'}},={{$('Webhook - Book Meeting').item.json.body.title || ''}},={{$('Webhook - Book Meeting').item.json.body.start_time || ''}},={{$('Webhook - Book Meeting').item.json.body.end_time || ''}},={{$('Webhook - Book Meeting').item.json.body.agenda || $('Webhook - Book Meeting').item.json.body.description || ''}},={{$('Webhook - Book Meeting').item.json.body.id || ''}}"
         }
       },
       "name": "Create Booking",
@@ -73,14 +73,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT name, capacity FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = $1::uuid;",
+        "query": "SELECT name, capacity FROM {{TENANT_SCHEMA}}.meeting_rooms WHERE id = NULLIF($1::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id}}"
+          "queryReplacement": "={{$('Webhook - Book Meeting').item.json.body.room_id || ''}}"
         }
       },
       "name": "Get Room Info",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         1050,
         200
@@ -116,7 +117,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": false, \"error\": \"Phòng họp không khả dụng trong khung giờ này.\"}"
+        "responseBody": "={\"success\": {{$('Webhook - Book Meeting').item.json.body.employee_id ? 'true' : 'false'}}, \"error\": \"Phòng họp không khả dụng trong khung giờ này.\"}"
       },
       "name": "Room Busy Response",
       "type": "n8n-nodes-base.respondToWebhook",

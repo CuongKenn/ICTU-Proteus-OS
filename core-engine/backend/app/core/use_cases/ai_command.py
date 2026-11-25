@@ -164,7 +164,7 @@ class AICommandUseCase:
         """Dựng webhook URL cho action 3-part classic hoặc 2-part workflow."""
         from app.core.use_cases.action_catalog import split_plugin_action
 
-        split = split_plugin_action(action)
+        split = split_plugin_action(action, manifest_parser=self.manifest_parser)
         if split is not None:
             if self.manifest_parser is None:
                 raise ValueError(
@@ -346,6 +346,139 @@ class AICommandUseCase:
                 "status": "success",
                 "collection_id": collection_id,
                 "message": "Quá trình nạp tri thức đã hoàn tất.",
+            }
+
+        if action == "core.knowledge.save":
+            from app.adapters.external.outline_adapter import OutlineAdapter
+            from app.core.use_cases.rag_ingestion import (
+                RAGIngestionUseCase,
+                infer_para_space,
+            )
+
+            title = str(
+                params.get("title")
+                or params.get("doc_title")
+                or params.get("name")
+                or "Tài liệu tri thức mới"
+            ).strip()
+            content = str(
+                params.get("content")
+                or params.get("text")
+                or params.get("body")
+                or params.get("markdown")
+                or params.get("raw_input")
+                or title
+            ).strip()
+            raw_coll = params.get("collection_id")
+            req_collection_id = (
+                str(raw_coll).strip()
+                if raw_coll is not None and str(raw_coll).strip()
+                else None
+            )
+            resolved_para_space = infer_para_space(
+                title=title,
+                collection_id=req_collection_id or str(tenant_id),
+                explicit_para_space=params.get("para_space"),
+            )
+            outline = getattr(self, "outline_adapter", None) or OutlineAdapter()
+            doc_id = f"local:{tenant_id}:{uuid.uuid4()}"
+            doc_url = ""
+            target_collection = (
+                req_collection_id or f"{tenant_id}:para:{resolved_para_space}"
+            )
+            mode = "local_para"
+
+            if getattr(outline, "api_key", None):
+                try:
+                    outline_coll = req_collection_id
+                    if not outline_coll or ":para:" in outline_coll:
+                        spaces = await outline.get_para_spaces(tenant_id=str(tenant_id))
+                        matched = next(
+                            (
+                                s
+                                for s in (spaces or [])
+                                if s.get("key") == resolved_para_space
+                                and s.get("mode") == "outline"
+                                and s.get("collection_id")
+                            ),
+                            None,
+                        )
+                        if matched is None:
+                            spaces = await outline.bootstrap_para_collections(
+                                tenant_id=str(tenant_id)
+                            )
+                            matched = next(
+                                (
+                                    s
+                                    for s in (spaces or [])
+                                    if s.get("key") == resolved_para_space
+                                    and s.get("mode") == "outline"
+                                    and s.get("collection_id")
+                                ),
+                                None,
+                            )
+                        outline_coll = (
+                            str(matched["collection_id"]) if matched else str(tenant_id)
+                        )
+                    pub = await outline.publish_document(
+                        title=title,
+                        text=content,
+                        collection_id=outline_coll,
+                    )
+                    doc_id = str(pub.get("id") or doc_id)
+                    doc_url = str(pub.get("url") or "")
+                    target_collection = outline_coll
+                    mode = "outline"
+                except Exception as out_err:
+                    logger.warning(
+                        "core.knowledge.save fallback sang local_para do lỗi Outline",
+                        error=str(out_err),
+                    )
+
+            if self.qdrant_adapter is not None and content:
+                try:
+                    chunker = RAGIngestionUseCase(
+                        document_source_port=outline,
+                        vector_db_port=self.qdrant_adapter,
+                    )
+                    chunks = chunker._chunk_text(content)
+                    if chunks:
+                        metadatas = [
+                            {
+                                "doc_title": title,
+                                "title": title,
+                                "source_url": doc_url,
+                                "document_id": doc_id,
+                                "chunk_index": idx,
+                                "para_space": resolved_para_space,
+                                "collection_id": target_collection,
+                            }
+                            for idx, _ in enumerate(chunks)
+                        ]
+                        await self.qdrant_adapter.upsert_vectors(
+                            tenant_id=str(tenant_id),
+                            chunks=chunks,
+                            metadatas=metadatas,
+                        )
+                except Exception as q_err:
+                    logger.warning(
+                        "core.knowledge.save không thể index Qdrant (best-effort)",
+                        error=str(q_err),
+                    )
+
+            return True, {
+                "saved": True,
+                "status": "success",
+                "mode": mode,
+                "title": title,
+                "document_id": doc_id,
+                "url": doc_url,
+                "para_space": resolved_para_space,
+                "collection_id": target_collection,
+                "message": (
+                    f"Đã lưu tài liệu '{title}' vào không gian tri thức "
+                    f"({resolved_para_space})."
+                ),
             }
 
         return False, None
@@ -857,7 +990,10 @@ class AICommandUseCase:
             if has_wildcard_permission(perms):
                 pass
             elif len(parts) == 2 and all(parts):
-                if not any(p.startswith(f"{parts[0]}:") for p in perms):
+                if not any(
+                    p.startswith(f"{parts[0]}:") or p.startswith(f"{parts[0]}.")
+                    for p in perms
+                ):
                     return False, f"thiếu quyền '{parts[0]}:*'"
             elif len(parts) >= 3:
                 req = f"{parts[0]}:{parts[1]}:{parts[2]}"
@@ -950,6 +1086,37 @@ class AICommandUseCase:
             status="success",
         )
         return "cancelled"
+
+    async def _complete_approved_command(
+        self,
+        cmd_id: uuid.UUID | str,
+        result: Any,
+        status: AICommandStatus = AICommandStatus.COMPLETED,
+    ) -> None:
+        """Cập nhật execution_result + status COMPLETED (tương thích mock cũ)."""
+        wrapped = self._wrap_execution_result(result)
+        try:
+            parsed_id: Any = (
+                cmd_id if isinstance(cmd_id, uuid.UUID) else uuid.UUID(str(cmd_id))
+            )
+        except (ValueError, TypeError):
+            parsed_id = cmd_id
+
+        update_exec_fn = getattr(self.ai_command_repo, "update_execution_result", None)
+        if callable(update_exec_fn):
+            try:
+                maybe_coro = update_exec_fn(parsed_id, wrapped, status=status)
+            except TypeError:
+                maybe_coro = update_exec_fn(parsed_id, wrapped)
+            if inspect.isawaitable(maybe_coro):
+                await maybe_coro
+            return
+
+        update_status_fn = getattr(self.ai_command_repo, "update_status", None)
+        if callable(update_status_fn):
+            maybe_coro = update_status_fn(parsed_id, status)
+            if inspect.isawaitable(maybe_coro):
+                await maybe_coro
 
     async def process_approval(
         self, cmd_id: str, approver_id: str, action_taken: str
@@ -1068,7 +1235,6 @@ class AICommandUseCase:
             # Race lost: luồng khác đã duyệt/hủy/hết hạn trước.
             await self.ai_command_repo.rollback()
             return "invalid"
-        await self.ai_command_repo.commit()
         await self._audit(
             tenant_id,
             "HUMAN",
@@ -1079,26 +1245,58 @@ class AICommandUseCase:
         )
 
         params = self._extract_parameters(cmd) or {}
-        # Xử lý nội bộ cho core.* actions không qua n8n (#735)
+        # Xử lý nội bộ cho core.* actions không qua n8n (#735, #882)
         if cmd.get("action", "").startswith("core."):
-            core_handled, core_res = await self._execute_core_write_action(
-                cmd["action"],
-                tenant_id,
-                uuid.UUID(
-                    str(
-                        cmd.get("issued_by_user_id")
-                        or cmd.get("user_id")
-                        or approver.id
-                    )
-                ),
-                params,
-            )
-            if core_handled:
-                await self.ai_command_repo.update_execution_result(cmd_id, core_res)
+            try:
+                raw_uid = (
+                    cmd.get("issued_by_user_id") or cmd.get("user_id") or approver.id
+                )
+                actor_uuid = (
+                    raw_uid
+                    if isinstance(raw_uid, uuid.UUID)
+                    else uuid.UUID(str(raw_uid))
+                )
+                core_handled, core_res = await self._execute_core_write_action(
+                    cmd["action"],
+                    tenant_id,
+                    actor_uuid,
+                    params,
+                )
+            except Exception as core_err:
+                logger.error(
+                    "Core write action failed after approval",
+                    command_id=str(cmd_id),
+                    error=str(core_err),
+                )
+                await self.ai_command_repo.update_status(cmd_id, AICommandStatus.FAILED)
                 await self.ai_command_repo.commit()
+                await self._audit(
+                    tenant_id,
+                    "SYSTEM",
+                    "ai.command.failed",
+                    cmd_id,
+                    payload={"action": cmd.get("action"), "error": str(core_err)},
+                    status="failed",
+                )
+                raise
+            if core_handled:
+                await self._complete_approved_command(
+                    cmd_id, core_res, status=AICommandStatus.COMPLETED
+                )
+                await self.ai_command_repo.commit()
+                await self._audit(
+                    tenant_id,
+                    "SYSTEM",
+                    "ai.command.executed",
+                    cmd_id,
+                    payload={"action": cmd.get("action")},
+                    result=self._wrap_execution_result(core_res),
+                    status="success",
+                )
                 return "approved"
 
         last_err = None
+        n8n_response: Any = None
         for attempt in range(3):
             try:
                 webhook_url = self._resolve_action_url(
@@ -1120,7 +1318,7 @@ class AICommandUseCase:
                     "action": cmd["action"],
                     "idempotency_key": str(cmd_id),
                 }
-                await self.n8n_adapter.trigger_webhook(
+                n8n_response = await self.n8n_adapter.trigger_webhook(
                     webhook_url=webhook_url, payload=envelope
                 )
                 last_err = None
@@ -1162,4 +1360,8 @@ class AICommandUseCase:
             )
             raise
 
+        await self._complete_approved_command(
+            cmd_id, n8n_response, status=AICommandStatus.COMPLETED
+        )
+        await self.ai_command_repo.commit()
         return "approved"

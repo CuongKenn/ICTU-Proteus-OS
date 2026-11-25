@@ -121,6 +121,35 @@ export function createMockRepo(): DocumentRepo {
       const row = s.outgoing.find((d) => d.id === id);
       if (!row) throw new Error('Không tìm thấy văn bản đi');
       Object.assign(row, patch);
+      if (patch.status === 'pending') {
+        const existing = s.approvals.filter((a) => a.document_id === id && a.document_type === 'outgoing');
+        if (existing.length === 0) {
+          s.approvals = [
+            {
+              id: uid(),
+              document_id: id,
+              document_type: 'outgoing',
+              approver_id: row.nguoi_ky || 'Ban Giám đốc',
+              order_no: 1,
+              status: 'pending',
+              signed_at: null,
+              note: '',
+            },
+            ...s.approvals,
+          ];
+        } else if (!existing.some((a) => a.status === 'pending')) {
+          for (const a of existing) {
+            if (a.status === 'rejected') {
+              a.status = 'pending';
+              a.signed_at = null;
+            }
+          }
+          if (!existing.some((a) => a.status === 'pending')) {
+            existing[existing.length - 1].status = 'pending';
+            existing[existing.length - 1].signed_at = null;
+          }
+        }
+      }
       save(s);
       return row;
     },
@@ -132,6 +161,21 @@ export function createMockRepo(): DocumentRepo {
       req.status = status;
       req.note = note;
       req.signed_at = status === 'pending' ? null : new Date().toISOString();
+      if (req.document_type === 'outgoing') {
+        const doc = s.outgoing.find((d) => d.id === req.document_id);
+        if (doc) {
+          if (status === 'rejected') {
+            doc.status = 'draft';
+          } else if (status === 'approved') {
+            const docApprovals = s.approvals.filter(
+              (a) => a.document_id === req.document_id && a.document_type === 'outgoing',
+            );
+            if (docApprovals.length > 0 && docApprovals.every((a) => a.status === 'approved')) {
+              doc.status = 'signed';
+            }
+          }
+        }
+      }
       save(s);
     },
     listDistributions: () => load().distributions,
@@ -159,6 +203,7 @@ export interface DocumentStore {
   listOutgoing(): Promise<OutgoingDoc[]>;
   createOutgoing(input: Omit<OutgoingDoc, 'id'>): Promise<OutgoingDoc>;
   updateOutgoing(id: string, patch: Partial<OutgoingDoc>): Promise<OutgoingDoc>;
+  submitForApproval(id: string): Promise<OutgoingDoc>;
   listApprovals(document_id?: string): Promise<ApprovalItem[]>;
   reviewApproval(id: string, status: ApprovalStatus, note: string): Promise<void>;
   listDistributions(): Promise<DistributionItem[]>;
@@ -223,6 +268,7 @@ export function createDemoStore(): DocumentStore {
     async listOutgoing() { return m.listOutgoing(); },
     async createOutgoing(i) { return m.createOutgoing(i); },
     async updateOutgoing(id, p) { return m.updateOutgoing(id, p); },
+    async submitForApproval(id) { return m.updateOutgoing(id, { status: 'pending' }); },
     async listApprovals(doc) {
       const all = m.listApprovals();
       return doc ? all.filter((a) => a.document_id === doc) : all;
@@ -385,7 +431,58 @@ export function createLiveStore(client: BffClient): DocumentStore {
         body.nguoi_ky = isUuid(body.nguoi_ky as string) ? body.nguoi_ky : null;
       }
       const res = await client.patch<any>(`${R}/document_outgoing/${id}`, body);
-      return toOutgoing(res?.data ?? res);
+      const updated = toOutgoing(res?.data ?? res);
+      if (p.status === 'pending') {
+        const approverUuid = isUuid(updated.nguoi_ky)
+          ? updated.nguoi_ky!.trim()
+          : '00000000-0000-0000-0000-000000000001';
+        try {
+          const existing = await this.listApprovals(id);
+          const outgoingSteps = existing.filter((a) => a.document_type === 'outgoing');
+          if (outgoingSteps.length === 0) {
+            await client.post(`${R}/document_approvals`, {
+              document_id: id,
+              document_type: 'outgoing',
+              approver_id: approverUuid,
+              order_no: 1,
+              status: 'pending',
+              note: null,
+            });
+          } else if (!outgoingSteps.some((a) => a.status === 'pending')) {
+            const rejectedSteps = outgoingSteps.filter((a) => a.status === 'rejected');
+            if (rejectedSteps.length > 0) {
+              for (const step of rejectedSteps) {
+                await client.patch(`${R}/document_approvals/${step.id}`, {
+                  status: 'pending',
+                  signed_at: null,
+                });
+              }
+            } else {
+              await client.post(`${R}/document_approvals`, {
+                document_id: id,
+                document_type: 'outgoing',
+                approver_id: approverUuid,
+                order_no: outgoingSteps.length + 1,
+                status: 'pending',
+                note: null,
+              });
+            }
+          }
+        } catch {
+          // best-effort đảm bảo bước ký duyệt tồn tại
+        }
+        try {
+          await client.post(`${A}/wf_document_approval`, {
+            payload: { document_id: id },
+          });
+        } catch {
+          // best-effort kích hoạt workflow thông báo người duyệt
+        }
+      }
+      return updated;
+    },
+    async submitForApproval(id) {
+      return this.updateOutgoing(id, { status: 'pending' });
     },
     async listApprovals(document_id) {
       const all = (await rows<Record<string, unknown>>('document_approvals')).map(toApproval);

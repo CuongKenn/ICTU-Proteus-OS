@@ -38,6 +38,7 @@ from app.entrypoints.dependencies import (
     get_plugin_repo,
     get_qdrant_adapter,
     get_rag_ingestion_use_case,
+    get_role_repo,
     require_permission,
 )
 from app.entrypoints.schemas.ai_command import (
@@ -234,30 +235,89 @@ async def submit_ai_command(
 async def trigger_rag_ingestion(
     request: Request,
     collection_id: str | None = None,
+    body: dict[str, Any] | None = Body(default=None),
     ctx: TenantContext = Depends(get_current_tenant_context),
     use_case: RAGIngestionUseCase = Depends(get_rag_ingestion_use_case),
 ):
     """
     Kích hoạt thủ công quá trình Ingestion tài liệu từ Outline vào Qdrant
-    cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734).
+    cho tenant hiện tại. Bắt buộc giới hạn theo collection của tenant (#734, #883).
     """
+    from app.adapters.external.outline_adapter import OutlineAdapter
+
+    raw_coll = (
+        collection_id
+        if collection_id is not None
+        else (body or {}).get("collection_id")
+    )
+    req_collection_id = (
+        str(raw_coll).strip()
+        if raw_coll is not None and str(raw_coll).strip()
+        else None
+    )
     tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
         ctx.tenant_id
     )
     local_para_prefix = f"{ctx.tenant_id}:para:"
+
+    doc_source = (
+        use_case.document_source_port
+        if isinstance(use_case, RAGIngestionUseCase)
+        and hasattr(use_case.document_source_port, "get_para_spaces")
+        else OutlineAdapter(client=getattr(request.app.state, "http_client", None))
+    )
+    para_spaces = await doc_source.get_para_spaces(tenant_id=tenant_collection)
+    allowed_para_ids = {
+        str(s.get("collection_id"))
+        for s in (para_spaces or [])
+        if s.get("collection_id")
+    }
+    para_map = {
+        str(s["collection_id"]): str(s["key"])
+        for s in (para_spaces or [])
+        if s.get("collection_id") and s.get("key") in VALID_PARA_SPACES
+    }
+
     if (
-        collection_id
-        and collection_id != tenant_collection
-        and not collection_id.startswith(local_para_prefix)
+        req_collection_id
+        and req_collection_id != tenant_collection
+        and not req_collection_id.startswith(local_para_prefix)
+        and req_collection_id not in allowed_para_ids
         and "superadmin" not in (ctx.roles or [])
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Không có quyền ingest collection của tổ chức khác.",
         )
-    target_collection = collection_id or tenant_collection
-    result = await use_case.execute(str(ctx.tenant_id), collection_id=target_collection)
-    return result
+
+    if req_collection_id:
+        matched_space = para_map.get(req_collection_id)
+        if matched_space:
+            try:
+                return await use_case.execute(
+                    str(ctx.tenant_id),
+                    collection_id=req_collection_id,
+                    para_space=matched_space,
+                )
+            except TypeError:
+                pass
+        return await use_case.execute(
+            str(ctx.tenant_id), collection_id=req_collection_id
+        )
+
+    all_collection_ids = list(
+        dict.fromkeys([tenant_collection, *sorted(allowed_para_ids)])
+    )
+    try:
+        return await use_case.execute(
+            str(ctx.tenant_id),
+            collection_ids=all_collection_ids,
+            collection_para_map=para_map,
+        )
+    except TypeError:
+        return await use_case.execute(
+            str(ctx.tenant_id), collection_id=tenant_collection
+        )
 
 
 @router.post(
@@ -297,11 +357,13 @@ async def transmit_kv_cache_ipc(
     if redis_publisher is None:
         redis_publisher = RedisEventBusPublisher()
 
+    state_qdrant_client = getattr(request.app.state, "qdrant_client", None)
     qdrant_adapter = getattr(request.app.state, "qdrant_adapter", None)
-    if qdrant_adapter is None:
-        qdrant_adapter = QdrantAdapter(
-            qdrant_client=getattr(request.app.state, "qdrant_client", None)
-        )
+    if qdrant_adapter is None or (
+        state_qdrant_client is not None
+        and getattr(qdrant_adapter, "client", None) is not state_qdrant_client
+    ):
+        qdrant_adapter = QdrantAdapter(qdrant_client=state_qdrant_client)
         request.app.state.qdrant_adapter = qdrant_adapter
 
     manager = KVCacheIPCManager(
@@ -609,6 +671,47 @@ async def list_para_knowledge_spaces(
     }
 
 
+async def _require_knowledge_bootstrap_permission(
+    context: TenantContext = Depends(get_current_tenant_context),
+    role_repo=Depends(get_role_repo),
+) -> TenantContext:
+    """RBAC cho P.A.R.A bootstrap: cho phép admin hoặc quyền knowledge (#883)."""
+    from app.core.domain.exceptions import InsufficientPermissionsError
+    from app.core.domain.permissions import has_admin_role, has_wildcard_permission
+
+    if has_admin_role(context.roles):
+        return context
+    user_permissions = (
+        await role_repo.get_user_permissions(
+            context.user_id, tenant_id=context.tenant_id
+        )
+        if role_repo is not None
+        else []
+    )
+    if has_wildcard_permission(user_permissions):
+        return context
+    normalized: set[str] = set()
+    for p in user_permissions or []:
+        s = str(p)
+        normalized.add(s)
+        normalized.add(s.replace(":", "."))
+        normalized.add(s.replace(".", ":"))
+    allowed = {
+        "ai.knowledge.ingest",
+        "ai:knowledge:ingest",
+        "ai.knowledge.write",
+        "ai:knowledge:write",
+        "plugins.install",
+        "plugins:install",
+    }
+    if not (normalized & allowed):
+        raise InsufficientPermissionsError(
+            "Cần quyền 'ai.knowledge.ingest' hoặc 'plugins:install' "
+            "để khởi tạo không gian tri thức."
+        )
+    return context
+
+
 @router.post(
     "/knowledge/para/bootstrap",
     status_code=status.HTTP_200_OK,
@@ -618,7 +721,7 @@ async def list_para_knowledge_spaces(
 async def bootstrap_para_knowledge_spaces(
     request: Request,
     body: dict[str, Any] | None = Body(default=None),
-    ctx: TenantContext = Depends(get_current_tenant_context),
+    ctx: TenantContext = Depends(_require_knowledge_bootstrap_permission),
 ):
     from app.adapters.external.outline_adapter import OutlineAdapter
 
@@ -685,16 +788,23 @@ async def sync_knowledge(
         ctx.tenant_id
     )
     local_para_prefix = f"{ctx.tenant_id}:para:"
+    source = OutlineAdapter(client=getattr(request.app.state, "http_client", None))
     if (
         req_collection_id
         and req_collection_id != tenant_collection
         and not req_collection_id.startswith(local_para_prefix)
         and "superadmin" not in (ctx.roles or [])
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Không có quyền thao tác trên collection của tổ chức khác.",
-        )
+        allowed_para_ids = {
+            str(s.get("collection_id"))
+            for s in await source.get_para_spaces(tenant_id=tenant_collection)
+            if s.get("collection_id")
+        }
+        if req_collection_id not in allowed_para_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Không có quyền thao tác trên collection của tổ chức khác.",
+            )
     target_collection = req_collection_id or tenant_collection
 
     connector_name = str(payload.get("connector") or "http_feed")
@@ -705,7 +815,6 @@ async def sync_knowledge(
             detail=f"Connector '{connector_name}' không tồn tại.",
         )
     connector = connector_cls()
-    source = OutlineAdapter(client=getattr(request.app.state, "http_client", None))
     use_case = KnowledgeSyncUseCase(connector=connector, document_source=source)
     result = await use_case.execute(
         config=payload.get("config") or {},
@@ -727,6 +836,7 @@ async def upload_knowledge(
     collection_id: str | None = Form(None),
     para_space: str | None = Form(default=None),
     ctx: TenantContext = Depends(require_permission("plugins:install")),
+    qdrant: QdrantAdapter = Depends(get_qdrant_adapter),
 ):
     """Nhận 1 file upload → trích văn bản → publish tài liệu Wiki kèm nhãn P.A.R.A.
 
@@ -779,7 +889,7 @@ async def upload_knowledge(
     ):
         allowed_para_ids = {
             str(s.get("collection_id"))
-            for s in await source.get_para_spaces(tenant_id=str(ctx.tenant_id))
+            for s in await source.get_para_spaces(tenant_id=tenant_collection)
             if s.get("collection_id")
         }
         if req_collection_id not in allowed_para_ids:
@@ -794,6 +904,34 @@ async def upload_knowledge(
         explicit_para_space=explicit_para,
     )
     target_collection = req_collection_id or tenant_collection
+    if (
+        not req_collection_id or req_collection_id.startswith(local_para_prefix)
+    ) and source.api_key:
+        spaces = await source.get_para_spaces(tenant_id=tenant_collection)
+        matched = next(
+            (
+                s
+                for s in (spaces or [])
+                if s.get("key") == resolved_para_space
+                and s.get("mode") == "outline"
+                and s.get("collection_id")
+            ),
+            None,
+        )
+        if matched is None:
+            spaces = await source.ensure_para_spaces(tenant_id=tenant_collection)
+            matched = next(
+                (
+                    s
+                    for s in (spaces or [])
+                    if s.get("key") == resolved_para_space
+                    and s.get("mode") == "outline"
+                    and s.get("collection_id")
+                ),
+                None,
+            )
+        if matched is not None:
+            target_collection = str(matched["collection_id"])
 
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
@@ -818,28 +956,63 @@ async def upload_knowledge(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         ) from e
-    except OutlineAdapterError:
+    except OutlineAdapterError as e:
         if source.api_key:
-            raise
-        # Fallback an toàn khi môi trường local chưa cấu hình OUTLINE_API_KEY
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
+        # Fallback an toàn khi môi trường local chưa cấu hình OUTLINE_API_KEY (#883)
         try:
             extracted = extract_text(file.filename or "tai-lieu.txt", content)
-        except UnsupportedFileError as e:
+        except UnsupportedFileError as parse_err:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-            ) from e
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(parse_err)
+            ) from parse_err
+        doc_title = title_from_filename(file.filename or "tai-lieu")
         local_coll = (
             req_collection_id
             if req_collection_id and req_collection_id.startswith(local_para_prefix)
             else f"{ctx.tenant_id}:para:{resolved_para_space}"
         )
+        upserted_chunks = 0
+        try:
+            chunker = RAGIngestionUseCase(
+                document_source_port=source, vector_db_port=qdrant
+            )
+            chunks = chunker._chunk_text(extracted)
+            if chunks:
+                doc_id = f"local:{local_coll}:{doc_title}"
+                metadatas = [
+                    {
+                        "doc_title": doc_title,
+                        "title": doc_title,
+                        "source_url": "",
+                        "document_id": doc_id,
+                        "chunk_index": idx,
+                        "para_space": resolved_para_space,
+                        "collection_id": local_coll,
+                    }
+                    for idx, _ in enumerate(chunks)
+                ]
+                await qdrant.upsert_vectors(
+                    tenant_id=str(ctx.tenant_id),
+                    chunks=chunks,
+                    metadatas=metadatas,
+                )
+                upserted_chunks = len(chunks)
+        except Exception as q_err:
+            logger.warning(
+                "Local P.A.R.A upload không thể index vào Qdrant (best-effort): %s",
+                q_err,
+            )
         return {
             "status": "success",
             "mode": "local_para",
             "filename": file.filename or "tai-lieu",
-            "title": title_from_filename(file.filename or "tai-lieu"),
+            "title": doc_title,
             "url": "",
             "chars": len(extracted),
+            "upserted_chunks": upserted_chunks,
             "para_space": resolved_para_space,
             "collection_id": local_coll,
         }

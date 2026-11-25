@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS procurement_requests (
 
 CREATE TABLE IF NOT EXISTS procurement_contracts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    contract_number VARCHAR(100),
+    title VARCHAR(255),
     vendor_id UUID REFERENCES procurement_vendors(id),
     value DECIMAL(15, 2) NOT NULL,
     start_date DATE NOT NULL,
@@ -52,4 +54,10 @@ CREATE TABLE IF NOT EXISTS procurement_deliveries (
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS procurement_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_id VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

@@ -80,11 +80,11 @@ function trackBusy(delta: number) {
 
 
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, timeoutMs = 120000): Promise<T> {
 
   const ctrl = new AbortController();
 
-  const timer = setTimeout(() => ctrl.abort(), 30000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   trackBusy(1);
 

@@ -21,9 +21,11 @@ class KeycloakWebhookUseCase:
         self,
         user_repo: AbstractUserRepository,
         mattermost_adapter: AbstractChatOpsPort,
+        session=None,
     ):
         self.user_repo = user_repo
         self.mattermost_adapter = mattermost_adapter
+        self.session = session
 
     async def handle_user_disabled(self, keycloak_user_id: uuid.UUID) -> None:
         """
@@ -31,6 +33,16 @@ class KeycloakWebhookUseCase:
         Thực hiện soft delete trong DB và thông báo qua Mattermost.
         """
         logger.info("Processing USER_DISABLED event for %s", keycloak_user_id)
+
+        sess = (
+            self.session
+            or getattr(self.user_repo, "_session", None)
+            or getattr(self.user_repo, "session", None)
+        )
+        if sess is not None:
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(sess, "__system__")
 
         # 1. Tìm user trong DB
         user = await self.user_repo.get_by_keycloak_id(keycloak_user_id)

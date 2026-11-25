@@ -31,6 +31,8 @@ export interface PurchaseRequest {
 
 export interface Contract {
   id: string;
+  contract_number: string;
+  title: string;
   vendor_id: string;
   value: number; // VND
   start_date: string; // YYYY-MM-DD

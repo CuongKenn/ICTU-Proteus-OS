@@ -8,6 +8,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Proteus OS — Enterprise Modules</title>
+    <script>
+      (function () {
+        var t = null;
+        try {
+          var q = new URLSearchParams(window.location.search).get('theme');
+          if (q === 'dark' || q === 'light') t = q;
+        } catch (e) {}
+        if (!t) {
+          try {
+            var s = localStorage.getItem('proteus-theme');
+            if (s === 'dark' || s === 'light') t = s;
+          } catch (e) {}
+        }
+        if (!t) {
+          try {
+            t =
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          } catch (e) {
+            t = 'light';
+          }
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.classList.toggle('dark', t === 'dark');
+        document.documentElement.style.backgroundColor =
+          t === 'dark' ? '#0B1120' : '#F8FAFC';
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

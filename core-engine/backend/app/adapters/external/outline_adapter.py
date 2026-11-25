@@ -142,18 +142,29 @@ class OutlineAdapter(AbstractDocumentSourcePort):
         tenant_id: str,
         space_name: str,
     ) -> dict[str, Any] | None:
-        tenant_tag = f"[tenant:{tenant_id}]"
-        # Ưu tiên khớp chính xác tag tenant trong description
+        tid = str(tenant_id or "").strip()
+        if not tid:
+            for coll in collections:
+                desc = str(coll.get("description") or "")
+                cname = str(coll.get("name") or "").strip()
+                if "[tenant:" not in desc and cname == space_name:
+                    return coll
+            return None
+
+        tenant_tag = f"[tenant:{tid}]"
+        # Chỉ khớp collection mang định danh của đúng tenant (chống rò rỉ #883)
         for coll in collections:
             desc = str(coll.get("description") or "")
             cname = str(coll.get("name") or "").strip()
-            if tenant_tag in desc and cname.startswith(space_name):
-                return coll
-        # Nếu collection không mang tag của tenant khác và trùng tên chuẩn P.A.R.A
-        for coll in collections:
-            desc = str(coll.get("description") or "")
-            cname = str(coll.get("name") or "").strip()
-            if "[tenant:" not in desc and cname == space_name:
+            has_marker = tenant_tag in desc or tenant_tag in cname
+            if not has_marker and len(tid) >= 4 and "[tenant:" not in desc:
+                has_marker = (
+                    f"tenant:{tid}" in desc
+                    or f"tenant:{tid}" in cname
+                    or f"({tid})" in cname
+                    or f"— {tid}" in desc
+                )
+            if has_marker and cname.startswith(space_name):
                 return coll
         return None
 
@@ -268,6 +279,14 @@ class OutlineAdapter(AbstractDocumentSourcePort):
             )
             return self._build_local_para_spaces(tid, tenant_name)
 
+    async def ensure_para_spaces(
+        self, tenant_id: str, tenant_name: str = ""
+    ) -> list[dict[str, Any]]:
+        """Đảm bảo idempotent 4 không gian P.A.R.A trên Outline / Local (#883)."""
+        return await self.bootstrap_para_collections(
+            tenant_id=tenant_id, tenant_name=tenant_name
+        )
+
     async def publish_document(
         self,
         title: str,
@@ -312,6 +331,8 @@ class OutlineAdapter(AbstractDocumentSourcePort):
         """
         if not self.api_key:
             logger.warning("OUTLINE_API_KEY is not set. Skipping document fetch.")
+            return []
+        if collection_id and ":para:" in str(collection_id):
             return []
 
         url = f"{self.base_url}/api/documents.list"

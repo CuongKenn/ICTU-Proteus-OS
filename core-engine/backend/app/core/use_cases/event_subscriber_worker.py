@@ -29,20 +29,41 @@ class EventSubscriberWorker:
         self.n8n_adapter = n8n_adapter
 
     def _resolve_handler_webhook_url(
-        self, plugin_code: str, handler_workflow: str
+        self,
+        plugin_code: str,
+        handler_workflow: str,
+        tenant_id: uuid.UUID | str | None = None,
     ) -> str:
-        """Resolve webhook URL cho handler_workflow của event subscription (#729)."""
+        """Resolve webhook URL cho handler_workflow của subscription (#729, #884)."""
         import json
         from pathlib import Path
 
         from app.infrastructure.config import settings
 
-        # Nếu là action name (vd plugin.resource.method), n8n_adapter.build_webhook_url xử lý được
+        # Nếu là action name (vd plugin.resource.method), dùng build_webhook_url
         if not (
             "/" in handler_workflow
             or "\\" in handler_workflow
             or handler_workflow.endswith(".json")
         ):
+            if tenant_id is not None:
+                try:
+                    return self.n8n_adapter.build_webhook_url(
+                        handler_workflow, tenant_id=tenant_id
+                    )
+                except TypeError:
+                    base_action_url = self.n8n_adapter.build_webhook_url(
+                        handler_workflow
+                    )
+                    marker = "/webhook/"
+                    if marker in base_action_url:
+                        head, tail = base_action_url.split(marker, 1)
+                        t_short = str(tenant_id).replace("-", "")[:8]
+                        clean_tail = tail.lstrip("/")
+                        if not clean_tail.startswith(f"t_{t_short}_"):
+                            clean_tail = f"t_{t_short}_{clean_tail}"
+                        return f"{head}{marker}{clean_tail}"
+                    return base_action_url
             return self.n8n_adapter.build_webhook_url(handler_workflow)
 
         # Chặn path traversal
@@ -61,7 +82,7 @@ class EventSubscriberWorker:
         wf_path = (plugins_dir / plugin_code / handler_workflow).resolve()
         if not wf_path.is_relative_to(plugins_dir) or not wf_path.is_file():
             raise ValueError(
-                f"Workflow file '{handler_workflow}' not found in plugin '{plugin_code}'"
+                f"Workflow file '{handler_workflow}' not found in '{plugin_code}'"
             )
 
         with open(wf_path, encoding="utf-8-sig") as f:
@@ -79,8 +100,14 @@ class EventSubscriberWorker:
             prefix = plugin_code.replace("-module", "")
             webhook_path = f"{prefix}/{stem}"
 
+        raw_path = str(webhook_path).lstrip("/")
+        if tenant_id:
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            if not raw_path.startswith(f"t_{tenant_short}_"):
+                raw_path = f"t_{tenant_short}_{raw_path}"
+
         base_url = settings.N8N_URL.rstrip("/")
-        return f"{base_url}/webhook/{str(webhook_path).lstrip('/')}"
+        return f"{base_url}/webhook/{raw_path}"
 
     async def handle_event(self, envelope: dict[str, Any]) -> None:
         """Hàm xử lý một event đến từ Redis."""
@@ -129,7 +156,9 @@ class EventSubscriberWorker:
                             # TÌM THẤY MATCH! Trigger workflow.
                             try:
                                 webhook_url = self._resolve_handler_webhook_url(
-                                    p.code_name, sub.handler_workflow
+                                    p.code_name,
+                                    sub.handler_workflow,
+                                    tenant_id=tenant_id,
                                 )
 
                                 # Đẩy thêm metadata vào payload để n8n biết source
@@ -157,7 +186,9 @@ class EventSubscriberWorker:
                                 )
                             except Exception as trigger_err:
                                 logger.error(
-                                    f"Failed to trigger subscriber workflow {sub.handler_workflow}: {trigger_err}",
+                                    "Failed to trigger subscriber workflow %s: %s",
+                                    sub.handler_workflow,
+                                    trigger_err,
                                     exc_info=True,
                                 )
 
@@ -165,7 +196,7 @@ class EventSubscriberWorker:
                     logger.warning(
                         f"Failed to parse manifest for active plugin {p.code_name}"
                     )
-                except Exception as e:
+                except Exception:
                     logger.error(
                         f"Error checking subscriptions for {p.code_name}", exc_info=True
                     )

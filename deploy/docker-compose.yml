@@ -584,7 +584,7 @@ services:
       MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN}
       MATTERMOST_WEBHOOK_SECRET: ${MATTERMOST_WEBHOOK_SECRET}
       MATTERMOST_SYSTEM_CHANNEL_ID: ${MATTERMOST_SYSTEM_CHANNEL_ID}
-      PLUGINS_MFE_URL: ${PLUGINS_MFE_URL:-http://plugins.proteus.local}
+      PLUGINS_MFE_URL: ${PLUGINS_MFE_URL:-${PUBLIC_SCHEME:-http}://${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}/plugins-mfe}
       PLUGINS_DIR: /plugins
       OUTLINE_URL: http://outline:3000
       OUTLINE_PUBLIC_URL: ${PUBLIC_SCHEME:-http}://wiki.${DOMAIN}${PUBLIC_URL_SUFFIX}
@@ -631,7 +631,9 @@ services:
         NEXT_PUBLIC_N8N_URL: ${PUBLIC_SCHEME:-http}://workflow.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
         NEXT_PUBLIC_METABASE_URL: ${PUBLIC_SCHEME:-http}://analytics.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
         NEXT_PUBLIC_APPSMITH_URL: ${PUBLIC_SCHEME:-http}://apps.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
+        NEXT_PUBLIC_PLUGINS_MFE_URL: ${PLUGINS_MFE_URL:-${PUBLIC_SCHEME:-http}://${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}/plugins-mfe}
         NEXT_PUBLIC_KEYCLOAK_URL: ${PUBLIC_SCHEME:-http}://auth.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
+        NEXT_PUBLIC_HASURA_WS_URL: ${NEXT_PUBLIC_HASURA_WS_URL:-}
     container_name: proteus-frontend
     restart: unless-stopped
     mem_limit: 512m
@@ -659,7 +661,9 @@ services:
       NEXT_PUBLIC_N8N_URL: ${PUBLIC_SCHEME:-http}://workflow.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
       NEXT_PUBLIC_METABASE_URL: ${PUBLIC_SCHEME:-http}://analytics.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
       NEXT_PUBLIC_APPSMITH_URL: ${PUBLIC_SCHEME:-http}://apps.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
+      NEXT_PUBLIC_PLUGINS_MFE_URL: ${PLUGINS_MFE_URL:-${PUBLIC_SCHEME:-http}://${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}/plugins-mfe}
       NEXT_PUBLIC_KEYCLOAK_URL: ${PUBLIC_SCHEME:-http}://auth.${DOMAIN:-proteus.local}${PUBLIC_URL_SUFFIX}
+      NEXT_PUBLIC_HASURA_WS_URL: ${NEXT_PUBLIC_HASURA_WS_URL:-}
       PYTHONDONTWRITEBYTECODE: "1"
     depends_on:
       - backend

@@ -212,33 +212,83 @@ class RAGIngestionUseCase:
         tenant_id: str,
         collection_id: str | None = None,
         para_space: str | None = None,
+        *,
+        collection_ids: list[str] | None = None,
+        collection_para_map: dict[str, str] | None = None,
+        allow_empty_replace: bool = False,
     ) -> dict[str, Any]:
         """
         Thực thi quy trình RAG Ingestion cho một tenant cụ thể.
-        Bắt buộc lọc theo collection của tenant (#734) và gắn nhãn P.A.R.A (#875).
+        Bắt buộc lọc theo collection của tenant (#734), hỗ trợ 4 không gian
+        P.A.R.A (#875, #883) và không xóa trắng vector khi tài liệu rỗng.
         """
         logger.info(
-            "Starting RAG Ingestion for tenant: %s, collection: %s",
+            "Starting RAG Ingestion for tenant: %s, collection: %s, collections: %s",
             tenant_id,
             collection_id,
+            collection_ids,
         )
 
         try:
-            # 1. Fetch documents từ Outline có filter collection (#734)
-            target_collection = collection_id or tenant_id
-            try:
-                documents = await self.document_source_port.list_documents(
-                    collection_id=target_collection
-                )
-            except TypeError:
-                documents = await self.document_source_port.list_documents()
+            is_single_collection = bool(collection_id) and not collection_ids
+            para_map: dict[str, str] = dict(collection_para_map or {})
 
-            if target_collection:
-                documents = [
-                    d
-                    for d in documents
-                    if str(d.get("collectionId")) == str(target_collection)
-                ]
+            if collection_ids:
+                target_collections = list(
+                    dict.fromkeys(
+                        str(c).strip()
+                        for c in collection_ids
+                        if c is not None and str(c).strip()
+                    )
+                )
+            elif collection_id:
+                target_collections = [str(collection_id).strip()]
+            else:
+                target_collections = [str(tenant_id).strip()]
+                from app.adapters.external.outline_adapter import OutlineAdapter
+
+                if isinstance(self.document_source_port, OutlineAdapter) and getattr(
+                    self.document_source_port, "api_key", None
+                ):
+                    try:
+                        spaces = await self.document_source_port.get_para_spaces(
+                            tenant_id=str(tenant_id)
+                        )
+                        for sp in spaces or []:
+                            cid = str(sp.get("collection_id") or "").strip()
+                            if cid and sp.get("mode") == "outline":
+                                if cid not in target_collections:
+                                    target_collections.append(cid)
+                                if sp.get("key") in VALID_PARA_SPACES:
+                                    para_map[cid] = str(sp["key"])
+                    except Exception as sp_err:
+                        logger.warning(
+                            "Could not auto-resolve Outline P.A.R.A spaces for %s: %s",
+                            tenant_id,
+                            sp_err,
+                        )
+
+            # 1. Fetch documents từ Outline có filter collection (#734, #883)
+            documents: list[dict[str, Any]] = []
+            seen_doc_ids: set[str] = set()
+            for cid in target_collections:
+                try:
+                    batch = await self.document_source_port.list_documents(
+                        collection_id=cid
+                    )
+                except TypeError:
+                    batch = await self.document_source_port.list_documents()
+
+                for d in batch or []:
+                    if str(d.get("collectionId")) != str(cid):
+                        continue
+                    doc_id = d.get("id")
+                    if doc_id is not None:
+                        doc_key = str(doc_id)
+                        if doc_key in seen_doc_ids:
+                            continue
+                        seen_doc_ids.add(doc_key)
+                    documents.append(d)
 
             total_docs = len(documents)
             all_chunks: list[str] = []
@@ -255,10 +305,12 @@ class RAGIngestionUseCase:
                 if not chunks:
                     continue
 
+                doc_coll = str(doc.get("collectionId") or collection_id or tenant_id)
+                explicit_or_mapped = para_space or para_map.get(doc_coll)
                 doc_para_space = self._infer_para_space(
                     doc=doc,
-                    collection_id=target_collection,
-                    explicit_para_space=para_space,
+                    collection_id=doc_coll,
+                    explicit_para_space=explicit_or_mapped,
                 )
 
                 metadatas = [
@@ -268,6 +320,7 @@ class RAGIngestionUseCase:
                         "document_id": doc.get("id"),
                         "chunk_index": idx,
                         "para_space": doc_para_space,
+                        "collection_id": doc_coll,
                     }
                     for idx, _ in enumerate(chunks)
                 ]
@@ -276,18 +329,31 @@ class RAGIngestionUseCase:
 
             total_chunks = len(all_chunks)
 
-            # 3. Upsert / Replace Qdrant
-            # QdrantAdapter sử dụng FastEmbed (Hybrid Search Dense+BM25) bên dưới,
-            # thay thế cho việc gọi thẳng OpenAI API, tối ưu cho RRF.
+            # 3. Upsert / Replace Qdrant (#883: không xóa trắng khi all_chunks rỗng;
+            # khi nạp 1 collection đơn lẻ thì dùng upsert_vectors bảo toàn 3 spaces).
             replace_fn = getattr(self.vector_db_port, "replace_tenant_vectors", None)
-            if callable(replace_fn):
-                await replace_fn(
-                    tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
-                )
-            elif all_chunks:
-                await self.vector_db_port.upsert_vectors(
-                    tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
-                )
+            upsert_fn = getattr(self.vector_db_port, "upsert_vectors", None)
+            if not all_chunks:
+                if allow_empty_replace and callable(replace_fn):
+                    await replace_fn(tenant_id=tenant_id, chunks=[], metadatas=[])
+            elif is_single_collection:
+                if callable(upsert_fn):
+                    await upsert_fn(
+                        tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
+                    )
+                elif callable(replace_fn):
+                    await replace_fn(
+                        tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
+                    )
+            else:
+                if callable(replace_fn):
+                    await replace_fn(
+                        tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
+                    )
+                elif callable(upsert_fn):
+                    await upsert_fn(
+                        tenant_id=tenant_id, chunks=all_chunks, metadatas=all_metadatas
+                    )
 
             logger.info(
                 "RAG Ingestion completed: %s docs, %s chunks.", total_docs, total_chunks

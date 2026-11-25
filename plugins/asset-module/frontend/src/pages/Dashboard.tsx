@@ -57,7 +57,7 @@ export function Dashboard() {
     return acc;
   }, {});
   const upcoming = [...maintenance]
-    .sort((a, b) => a.next_due.localeCompare(b.next_due))
+    .sort((a, b) => (a.next_due || '').localeCompare(b.next_due || ''))
     .slice(0, 5);
   const pendingDisposals = disposals.filter((d) => d.status === 'PENDING').length;
 
@@ -112,7 +112,7 @@ export function Dashboard() {
                 return (
                   <tr key={m.id}>
                     <td style={td}>{item?.code ?? '—'}</td>
-                    <td style={td}>{m.next_due}</td>
+                    <td style={td}>{m.next_due || '—'}</td>
                     <td style={td}>{m.type}</td>
                   </tr>
                 );

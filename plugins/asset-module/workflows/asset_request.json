@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_requests (asset_id, asset_type, requester_name, description, priority, status) VALUES ($1,$2,$3,$4,$5,'PENDING') RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_requests (asset_id, asset_type, requester_name, description, priority, status) VALUES (NULLIF($1::text, '')::uuid, $2, $3, $4, COALESCE(NULLIF($5::text, ''), 'P3'), 'PENDING') RETURNING id;",
         "options": {
-          "queryReplacement": "={{$json.body.asset_id}},={{$json.body.asset_type}},={{$json.body.requester_name || $json.body.requester_id}},={{$json.body.description}},={{$json.body.priority || 'P3'}}"
+          "queryReplacement": "={{$json.body.asset_id || ''}},={{$json.body.asset_type || ($json.body._event_metadata?.event_type || 'GENERAL')}},={{$json.body.requester_name || $json.body.requester_id || $json.body.employee_id || 'System'}},={{$json.body.description || $json.body.reason || ($json.body._event_metadata?.event_type ? 'Auto event: ' + $json.body._event_metadata.event_type : '')}},={{$json.body.priority || 'P3'}}"
         }
       },
       "name": "Create Asset Request",
@@ -43,14 +43,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, code, name FROM {{TENANT_SCHEMA}}.asset_items WHERE id = $1 AND status = 'AVAILABLE';",
+        "query": "SELECT id, code, name FROM {{TENANT_SCHEMA}}.asset_items WHERE id = NULLIF($1::text, '')::uuid AND status = 'AVAILABLE';",
         "options": {
-          "queryReplacement": "={{$('Webhook - Asset Request').item.json.body.asset_id}}"
+          "queryReplacement": "={{$('Webhook - Asset Request').item.json.body.asset_id || ''}}"
         }
       },
       "name": "Check Available Asset",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         650,
         300
@@ -96,9 +97,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.asset_items SET status = 'ASSIGNED', updated_at = NOW() WHERE id = $1;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.asset_items SET status = 'ASSIGNED', updated_at = NOW() WHERE id = NULLIF($1::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$('Check Available Asset').item.json.id}}"
+          "queryReplacement": "={{$('Check Available Asset').item.json.id || ''}}"
         }
       },
       "name": "Assign Item",
@@ -118,9 +119,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_assignments (asset_id, requester_name, dept_name, notes) VALUES ($1,$2,$3,$4);",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_assignments (asset_id, requester_name, dept_name, notes) VALUES (NULLIF($1::text, '')::uuid, $2, $3, $4);",
         "options": {
-          "queryReplacement": "={{$('Check Available Asset').item.json.id}},={{$('Webhook - Asset Request').item.json.body.requester_name || $('Webhook - Asset Request').item.json.body.requester_id}},={{$('Webhook - Asset Request').item.json.body.dept_name}},={{$('Webhook - Asset Request').item.json.body.description}}"
+          "queryReplacement": "={{$('Check Available Asset').item.json.id || ''}},={{$('Webhook - Asset Request').item.json.body.requester_name || $('Webhook - Asset Request').item.json.body.requester_id || $('Webhook - Asset Request').item.json.body.employee_id || 'Nhân viên'}},={{$('Webhook - Asset Request').item.json.body.dept_name || ''}},={{$('Webhook - Asset Request').item.json.body.description || ''}}"
         }
       },
       "name": "Record Assignment",
@@ -140,9 +141,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.asset_requests SET status = 'APPROVED', assigned_asset_id = $1 WHERE id = $2;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.asset_requests SET status = 'APPROVED', assigned_asset_id = NULLIF($1::text, '')::uuid WHERE id = NULLIF($2::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$('Check Available Asset').item.json.id}},={{$('Create Asset Request').item.json.id}}"
+          "queryReplacement": "={{$('Check Available Asset').item.json.id || ''}},={{$('Create Asset Request').item.json.id || ''}}"
         }
       },
       "name": "Approve Request",

@@ -149,21 +149,51 @@ class CredentialFieldEntry(BaseModel):
 # NGSI ENTRIES (Lớp 3 — Issue #828, #829)
 # ─────────────────────────────────────────────────────────────
 
-_PROHIBITED_NGSI_COLUMNS: frozenset[str] = frozenset(
+PROHIBITED_NGSI_COLUMNS: frozenset[str] = frozenset(
     {
-        "password",
-        "hashed_password",
-        "secret",
+        "cccd",
+        "cmnd",
+        "citizen_id",
+        "national_id",
+        "identity_card",
+        "id_card_number",
+        "ssn",
         "salary",
         "base_salary",
+        "net_salary",
+        "gross_salary",
+        "bonus",
+        "allowance",
+        "deduction",
+        "tax",
         "tax_id",
+        "tax_code",
         "bank_account",
-        "ssn",
-        "identity_card",
+        "bank_name",
+        "bank_number",
+        "iban",
+        "credit_card",
+        "credit_card_info",
+        "password",
+        "password_hash",
+        "hashed_password",
+        "secret",
         "token",
         "api_key",
+        "private_key",
+        "access_pin_code",
+        "dob",
+        "date_of_birth",
+        "phone",
+        "personal_email",
+        "address_detail",
+        "medical_record",
+        "fingerprint",
+        "biometric",
     }
 )
+
+_PROHIBITED_NGSI_COLUMNS: frozenset[str] = PROHIBITED_NGSI_COLUMNS
 
 
 class NGSIFieldEntry(BaseModel):
@@ -530,19 +560,28 @@ class ManifestValidator:
                                     )
                                     continue
                                 col = attr.get("column")
+                                target = attr.get("target") or attr.get("name")
                                 if not col:
                                     errors.append(
                                         f"ngsi.entities[{e_idx}].attributes[{a_idx}]: thiếu 'column'"
                                     )
-                                elif col.lower() in _PROHIBITED_NGSI_COLUMNS:
+                                elif str(col).lower() in _PROHIBITED_NGSI_COLUMNS:
                                     errors.append(
                                         f"ngsi.entities[{e_idx}]: column nhạy cảm '{col}' bị cấm chia sẻ qua NGSI-LD (L3-004)"
                                     )
-                                if not attr.get("target"):
+                                if not target:
                                     errors.append(
                                         f"ngsi.entities[{e_idx}].attributes[{a_idx}]: thiếu 'target'"
                                     )
-                                parsed_attrs.append(NGSIFieldEntry(**attr))
+                                elif str(target).lower() in _PROHIBITED_NGSI_COLUMNS:
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}]: target nhạy cảm '{target}' bị cấm chia sẻ qua NGSI-LD (L3-004)"
+                                    )
+                                if col and target:
+                                    attr_norm = dict(attr)
+                                    attr_norm.setdefault("target", target)
+                                    attr_norm.pop("name", None)
+                                    parsed_attrs.append(NGSIFieldEntry(**attr_norm))
 
                         # Validate relationships
                         parsed_rels = []
@@ -554,13 +593,21 @@ class ManifestValidator:
                                         f"ngsi.entities[{e_idx}].relationships[{r_idx}]: phải là object"
                                     )
                                     continue
-                                if (
-                                    not rel.get("column")
-                                    or not rel.get("target")
-                                    or not rel.get("entity_type")
-                                ):
+                                rel_col = rel.get("column")
+                                rel_target = rel.get("target")
+                                rel_etype = rel.get("entity_type")
+                                if not rel_col or not rel_target or not rel_etype:
                                     errors.append(
                                         f"ngsi.entities[{e_idx}].relationships[{r_idx}]: yêu cầu đủ 'column', 'target' và 'entity_type'"
+                                    )
+                                    continue
+                                if (
+                                    str(rel_col).lower() in _PROHIBITED_NGSI_COLUMNS
+                                    or str(rel_target).lower()
+                                    in _PROHIBITED_NGSI_COLUMNS
+                                ):
+                                    errors.append(
+                                        f"ngsi.entities[{e_idx}]: relationship chứa trường nhạy cảm '{rel_col}'/'{rel_target}' bị cấm chia sẻ qua NGSI-LD (L3-004)"
                                     )
                                 parsed_rels.append(NGSIRelationshipEntry(**rel))
 

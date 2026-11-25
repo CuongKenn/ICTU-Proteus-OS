@@ -71,9 +71,9 @@ export function MaintenancePage() {
                 <div style={{ color: C.muted }}>{new Intl.NumberFormat('vi-VN').format(m.cost)} đ</div>
               </td>
               <td style={td}>
-                {String(m.done_at).slice(0, 10)}
-                <div style={{ color: m.next_due < new Date().toISOString().slice(0, 10) ? C.red : C.muted }}>
-                  Hạn: {m.next_due}
+                {m.performed_at || String(m.done_at ?? '').slice(0, 10) || '—'}
+                <div style={{ color: m.next_due && m.next_due < new Date().toISOString().slice(0, 10) ? C.red : C.muted }}>
+                  Hạn: {m.next_due || '—'}
                 </div>
               </td>
               <td style={td}>{m.notes}</td>

@@ -54,6 +54,13 @@ async def handle_keycloak_event(
     # Xử lý event
     logger.info("Received Keycloak event: %s for user %s", event.type, event.user_id)
     if event.type in ["USER_DISABLED", "user.disabled", "DELETE"]:
+        sess = getattr(use_case, "session", None) or getattr(
+            getattr(use_case, "user_repo", None), "_session", None
+        )
+        if sess is not None:
+            from app.infrastructure.database import set_session_tenant
+
+            await set_session_tenant(sess, "__system__")
         await use_case.handle_user_disabled(event.user_id)
 
     return {"status": "ok"}

@@ -5,7 +5,15 @@
 // Supports seamless embed mode (?embed=1) hiding redundant topbar while preserving sub-tabs & postMessage theme sync.
 import React, { useCallback, useEffect, useState } from 'react';
 import { registry } from './plugins/registry';
-import { applyTheme, resolveInitialTheme, toggleTheme, type Theme } from './theme';
+import {
+  applyTheme,
+  isThemeMessage,
+  isTrustedThemeOrigin,
+  resolveInitialTheme,
+  syncThemeUrlParam,
+  toggleTheme,
+  type Theme,
+} from './theme';
 
 const BASE = '/plugins-mfe';
 
@@ -28,27 +36,6 @@ function detectEmbedMode(): boolean {
   } catch {
     return false;
   }
-}
-
-function isTrustedThemeOrigin(origin: string): boolean {
-  if (!origin || origin === window.location.origin) return true;
-  try {
-    const incomingHost = new URL(origin).hostname;
-    const currentHost = window.location.hostname;
-    if (incomingHost === currentHost) return true;
-    if (
-      (incomingHost === 'localhost' || incomingHost === '127.0.0.1') &&
-      (currentHost === 'localhost' || currentHost === '127.0.0.1')
-    ) {
-      return true;
-    }
-    if (incomingHost.endsWith('.proteus.local') || incomingHost === 'proteus.local') {
-      return true;
-    }
-  } catch {
-    return false;
-  }
-  return false;
 }
 
 /* Crisp inline SVG icons (zero emojis) */
@@ -103,9 +90,14 @@ const App = () => {
     };
     const onMessage = (e: MessageEvent) => {
       if (!isTrustedThemeOrigin(e.origin)) return;
-      const d = e.data as { type?: string; theme?: unknown } | null;
-      if (d?.type === 'proteus-theme' && (d.theme === 'dark' || d.theme === 'light')) {
-        setThemeState(d.theme);
+      if (isThemeMessage(e.data)) {
+        setThemeState(e.data.theme);
+        try {
+          localStorage.setItem('proteus-theme', e.data.theme);
+        } catch {
+          /* ignore */
+        }
+        syncThemeUrlParam(e.data.theme);
       }
     };
     window.addEventListener('storage', onStorage);
@@ -124,13 +116,50 @@ const App = () => {
 
   const navigate = useCallback(
     (to: string) => {
-      const baseTarget = to.startsWith(BASE)
-        ? to
-        : `${BASE}${to.startsWith('/') ? '' : '/'}${to}`;
-      const targetWithQuery = isEmbedded
-        ? `${baseTarget}${baseTarget.includes('?') ? '&' : '?'}embed=1`
-        : baseTarget;
-      window.history.pushState(null, '', targetWithQuery);
+      const useBasePrefix =
+        window.location.pathname === BASE ||
+        window.location.pathname.startsWith(`${BASE}/`);
+
+      const parsedTarget = new URL(to, window.location.origin);
+      let targetPathname = parsedTarget.pathname;
+
+      if (useBasePrefix) {
+        if (targetPathname === '/') {
+          targetPathname = `${BASE}/`;
+        } else if (
+          targetPathname !== BASE &&
+          !targetPathname.startsWith(`${BASE}/`)
+        ) {
+          targetPathname = `${BASE}${targetPathname.startsWith('/') ? '' : '/'}${targetPathname}`;
+        }
+      } else if (targetPathname === BASE || targetPathname === `${BASE}/`) {
+        targetPathname = '/';
+      } else if (targetPathname.startsWith(`${BASE}/`)) {
+        targetPathname = targetPathname.slice(BASE.length);
+      }
+
+      const currentParams = new URLSearchParams(window.location.search);
+      const nextParams = new URLSearchParams(parsedTarget.search);
+
+      if (isEmbedded || currentParams.get('embed') === '1') {
+        nextParams.set('embed', '1');
+      }
+
+      const attrTheme = document.documentElement.getAttribute('data-theme');
+      const urlTheme = currentParams.get('theme');
+      const activeTheme =
+        attrTheme === 'dark' || attrTheme === 'light'
+          ? attrTheme
+          : urlTheme === 'dark' || urlTheme === 'light'
+            ? urlTheme
+            : null;
+      if (activeTheme && (isEmbedded || currentParams.has('theme'))) {
+        nextParams.set('theme', activeTheme);
+      }
+
+      const queryStr = nextParams.toString();
+      const finalUrl = `${targetPathname}${queryStr ? `?${queryStr}` : ''}${parsedTarget.hash}`;
+      window.history.pushState(null, '', finalUrl);
       setRoute(parsePath());
     },
     [isEmbedded],

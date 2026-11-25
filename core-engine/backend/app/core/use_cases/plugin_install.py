@@ -195,10 +195,13 @@ def _validate_seed_statement(stmt: str) -> None:
     stripped = no_comments.rstrip(";").strip()
     if not stripped:
         return
+    # Strip single-quoted string literals (kể cả escaped '') trước khi quét denylist
+    # để chuỗi tiếng Việt như 'reset mật khẩu' không bị chặn nhầm (#885).
+    no_literals = re.sub(r"'(?:''|[^'])*'", "''", stripped)
     scan = re.sub(
         r"\bON\s+CONFLICT\b.*?\bDO\s+(?:NOTHING|UPDATE\s+SET)\b.*$",
         "",
-        stripped,
+        no_literals,
         flags=re.IGNORECASE | re.DOTALL,
     )
     if _SEED_FORBIDDEN.search(scan):
@@ -206,7 +209,7 @@ def _validate_seed_statement(stmt: str) -> None:
             "Seed file chứa từ khóa/kênh không được phép "
             "(public./pg_/information_schema/COPY/DO/TRIGGER/VIEW/RULE...)."
         )
-    if not _SEED_ALLOWED_STMT.match(stripped):
+    if not _SEED_ALLOWED_STMT.match(no_literals):
         raise PluginInstallError(
             "Seed file chỉ cho phép CREATE TABLE / CREATE INDEX / INSERT. "
             f"Statement bị chặn: {stripped[:80]}"
@@ -778,13 +781,16 @@ class PluginInstallUseCase:
                                 f'tenant_isolation_policy ON "{table}"'
                             )
                         )
+                        rls_cond = (
+                            "current_setting('app.current_tenant_id', true) "
+                            "= '__system__' OR tenant_id = NULLIF("
+                            "current_setting('app.current_tenant_id', true), "
+                            "'')::uuid"
+                        )
                         policy_sql = (
                             f'CREATE POLICY tenant_isolation_policy ON "{table}" '
-                            "FOR ALL TO public "
-                            "USING (tenant_id = "
-                            "current_setting('app.current_tenant_id')::uuid) "
-                            "WITH CHECK (tenant_id = "
-                            "current_setting('app.current_tenant_id')::uuid)"
+                            f"FOR ALL TO public USING ({rls_cond}) "
+                            f"WITH CHECK ({rls_cond})"
                         )
                         await self.session.execute(text(policy_sql))
                         await self.session.execute(text(f"RELEASE SAVEPOINT {sp}"))

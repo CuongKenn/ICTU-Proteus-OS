@@ -26,19 +26,12 @@ export function CustomersPage() {
       setLoading(true);
       setError(null);
       try {
-        const [c, o, t] = await Promise.all([
+        const [c, o, t, ct] = await Promise.all([
           store.listCustomers(),
           store.listOpportunities(),
           store.listTickets(),
+          store.listContacts().catch(() => [] as Contact[]),
         ]);
-        let ct: Contact[] = [];
-        // Gom contacts theo từng customer (endpoint records chưa hỗ trợ filter).
-        for (const cust of c.slice(0, 50)) {
-          try {
-            const list = await store.listContacts(cust.id);
-            ct.push(...list);
-          } catch { /* bỏ qua customer lỗi lẻ */ }
-        }
         if (!cancelled) {
           setCustomers(c);
           setOpps(o);
@@ -58,7 +51,7 @@ export function CustomersPage() {
 
   const filtered = customers.filter((c) => {
     const q = search.trim().toLowerCase();
-    return !q || c.name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q);
+    return !q || (c.name || '').toLowerCase().includes(q) || (c.industry || '').toLowerCase().includes(q);
   });
   const sel = filtered.find((c) => c.id === selected) ?? null;
 

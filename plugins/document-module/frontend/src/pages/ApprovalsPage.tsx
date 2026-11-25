@@ -87,7 +87,7 @@ export function ApprovalsPage() {
             <tr key={a.id}>
               <td style={td}>{nameOf(a.document_id)}</td>
               <td style={td}>
-                {a.approver_id}
+                {a.approver_id === '00000000-0000-0000-0000-000000000001' ? 'Ban Giám đốc / Người ký duyệt' : a.approver_id}
                 <div style={{ color: C.muted, fontSize: '.78rem' }}>Bước {a.order_no} · {a.document_type}</div>
               </td>
               <td style={td}>

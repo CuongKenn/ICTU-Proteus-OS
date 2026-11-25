@@ -121,6 +121,8 @@ export const seedRequests: PurchaseRequest[] = [
 export const seedContracts: Contract[] = [
   {
     id: 'b1111111-1111-1111-1111-111111111111',
+    contract_number: 'HĐ-2026-001',
+    title: 'Cung cấp thiết bị CNTT & bản quyền phần mềm năm 2026',
     vendor_id: '11111111-1111-1111-1111-111111111111',
     value: 1200000000,
     start_date: '2026-01-01',
@@ -130,6 +132,8 @@ export const seedContracts: Contract[] = [
   },
   {
     id: 'b2222222-2222-2222-2222-222222222222',
+    contract_number: 'HĐ-2026-002',
+    title: 'Nâng cấp hạ tầng mạng & đường truyền chuyên dụng',
     vendor_id: '22222222-2222-2222-2222-222222222222',
     value: 850000000,
     start_date: '2026-04-01',
@@ -139,6 +143,8 @@ export const seedContracts: Contract[] = [
   },
   {
     id: 'b3333333-3333-3333-3333-333333333333',
+    contract_number: 'HĐ-2025-018',
+    title: 'Dịch vụ bảo trì hệ thống máy chủ & lưu trữ',
     vendor_id: '33333333-3333-3333-3333-333333333333',
     value: 320000000,
     start_date: '2025-06-01',
@@ -148,6 +154,8 @@ export const seedContracts: Contract[] = [
   },
   {
     id: 'b4444444-4444-4444-4444-444444444444',
+    contract_number: 'HĐ-2026-009',
+    title: 'Mua sắm máy trạm phòng thực hành CNTT',
     vendor_id: '44444444-4444-4444-4444-444444444444',
     value: 265000000,
     start_date: '2026-09-10',

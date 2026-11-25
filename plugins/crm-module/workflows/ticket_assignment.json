@@ -21,17 +21,18 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.crm_tickets (customer_id, title, description, priority, status, sla_deadline) VALUES ($1,$2,$3,$4,'OPEN', NOW() + INTERVAL '2 days') RETURNING id;",
+        "query": "WITH ins AS (INSERT INTO {{TENANT_SCHEMA}}.crm_tickets (customer_id, title, description, priority, status, sla_deadline) SELECT NULLIF($1::text, '')::uuid, COALESCE(NULLIF($2::text, ''), 'Hỗ trợ khách hàng'), $3, COALESCE(NULLIF($4::text, ''), 'P3'), 'OPEN', NOW() + INTERVAL '2 days' WHERE NULLIF($1::text, '') IS NOT NULL RETURNING id), unassign AS (UPDATE {{TENANT_SCHEMA}}.crm_tickets SET assignee_id = NULL, assignee_name = 'Chưa gán', updated_at = NOW() WHERE NULLIF($1::text, '') IS NULL AND NULLIF($5::text, '') IS NOT NULL AND assignee_id = NULLIF($5::text, '')::uuid AND status NOT IN ('RESOLVED', 'CLOSED') RETURNING id) SELECT id FROM ins UNION ALL SELECT id FROM unassign;",
         "options": {
-          "queryReplacement": "={{$json.body.customer_id}},={{$json.body.title}},={{$json.body.description}},={{$json.body.priority}}"
+          "queryReplacement": "={{$json.body.customer_id || ''}},={{$json.body.title || ''}},={{$json.body.description || $json.body.reason || ''}},={{$json.body.priority || 'P3'}},={{$json.body.employee_id || ''}}"
         }
       },
       "name": "Create Ticket",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
-        850,
-        200
+        450,
+        300
       ],
       "credentials": {
         "postgres": {
@@ -43,7 +44,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": true, \"ticket_id\": \"{{$('Create Ticket').item.json.id}}\"}"
+        "responseBody": "={\"success\": true, \"ticket_id\": \"{{$('Create Ticket').item.json.id || ''}}\"}"
       },
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",

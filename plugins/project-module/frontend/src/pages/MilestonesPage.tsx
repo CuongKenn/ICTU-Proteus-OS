@@ -104,10 +104,18 @@ export function MilestonesPage() {
                 </div>
               </td>
               <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                <button onClick={() => mutate(() => store!.updateMilestoneProgress(m.id, m.completion_pct + 25))} style={link}>
+                <button
+                  disabled={m.completion_pct >= 100}
+                  onClick={() => mutate(() => store!.updateMilestoneProgress(m.id, Math.min(100, m.completion_pct + 25)))}
+                  style={{ ...link, opacity: m.completion_pct >= 100 ? 0.45 : 1, cursor: m.completion_pct >= 100 ? 'not-allowed' : 'pointer' }}
+                >
                   +25%
                 </button>{' '}
-                <button onClick={() => mutate(() => store!.updateMilestoneProgress(m.id, 100))} style={link}>
+                <button
+                  disabled={m.completion_pct >= 100}
+                  onClick={() => mutate(() => store!.updateMilestoneProgress(m.id, 100))}
+                  style={{ ...link, opacity: m.completion_pct >= 100 ? 0.45 : 1, cursor: m.completion_pct >= 100 ? 'not-allowed' : 'pointer' }}
+                >
                   Xong
                 </button>{' '}
                 <button

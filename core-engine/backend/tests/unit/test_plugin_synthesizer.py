@@ -23,7 +23,7 @@ async def test_mock_synthesize(tmp_path):
     assert plugin_path.exists()
     assert (plugin_path / "manifest.yaml").exists()
     assert (plugin_path / "db" / "seed_data.sql").exists()
-    assert (plugin_path / "main.py").exists()
+    assert not (plugin_path / "main.py").exists()
 
 
 @pytest.mark.asyncio

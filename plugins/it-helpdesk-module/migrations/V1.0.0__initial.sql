@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS it_knowledge_base (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS it_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    channel_id VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_it_tickets_status ON it_tickets(status);
 CREATE INDEX IF NOT EXISTS idx_it_tickets_assignee ON it_tickets(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_it_tickets_sla ON it_tickets(sla_deadline, escalated) WHERE status NOT IN ('RESOLVED', 'CLOSED');

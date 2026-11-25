@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH upd AS (UPDATE {{TENANT_SCHEMA}}.document_incoming SET assignee_id = CASE WHEN COALESCE($1::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN ($1::text)::uuid ELSE assignee_id END, status = CASE WHEN status = 'received' THEN 'processing' ELSE status END, updated_at = NOW() WHERE id = $2::uuid RETURNING id, so_van_ban as doc_code, trich_yeu as title), dist AS (INSERT INTO {{TENANT_SCHEMA}}.document_distributions (document_id, document_type, recipient_dept) SELECT id, 'incoming', LEFT(TRIM($3::text), 100) FROM upd WHERE COALESCE(TRIM($3::text), '') <> '' RETURNING recipient_dept) SELECT upd.doc_code, upd.title, (SELECT recipient_dept FROM dist LIMIT 1) AS recipient_dept FROM upd;",
+        "query": "WITH upd AS (UPDATE {{TENANT_SCHEMA}}.document_incoming SET assignee_id = CASE WHEN NULLIF($2::text, '') IS NULL THEN NULL WHEN COALESCE($1::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN ($1::text)::uuid ELSE assignee_id END, status = CASE WHEN NULLIF($2::text, '') IS NOT NULL AND status = 'received' THEN 'processing' ELSE status END, updated_at = NOW() WHERE (NULLIF($2::text, '') IS NOT NULL AND id = NULLIF($2::text, '')::uuid) OR (NULLIF($2::text, '') IS NULL AND NULLIF($4::text, '') IS NOT NULL AND assignee_id = NULLIF($4::text, '')::uuid AND status != 'done') RETURNING id, so_van_ban as doc_code, trich_yeu as title), dist AS (INSERT INTO {{TENANT_SCHEMA}}.document_distributions (document_id, document_type, recipient_dept) SELECT id, 'incoming', LEFT(TRIM($3::text), 100) FROM upd WHERE COALESCE(TRIM($3::text), '') <> '' RETURNING recipient_dept) SELECT upd.doc_code, upd.title, (SELECT recipient_dept FROM dist LIMIT 1) AS recipient_dept FROM upd;",
         "options": {
-          "queryReplacement": "={{$json.body.new_assignee_id || $json.body.assignee_id || ''}},={{$json.body.document_id}},={{$json.body.recipient_dept || ''}}"
+          "queryReplacement": "={{$json.body.new_assignee_id || $json.body.assignee_id || ''}},={{$json.body.document_id || ''}},={{$json.body.recipient_dept || ''}},={{$json.body.employee_id || ''}}"
         }
       },
       "name": "Reassign Document",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -37,7 +38,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE COALESCE($1::text, '') <> '' AND id::text = $1::text;",
+        "query": "SELECT mattermost_user_id FROM users WHERE COALESCE($1::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND id = ($1::text)::uuid;",
         "options": {
           "queryReplacement": "={{$('Webhook - Reassign').item.json.body.new_assignee_id || $('Webhook - Reassign').item.json.body.assignee_id || ''}}"
         }

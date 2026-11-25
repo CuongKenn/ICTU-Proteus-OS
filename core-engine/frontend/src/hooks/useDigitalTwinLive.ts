@@ -42,23 +42,24 @@ export interface DigitalTwinEntity {
 }
 
 export interface EntitiesResponse {
-  items: DigitalTwinEntity[];
+  entities?: DigitalTwinEntity[];
+  items?: DigitalTwinEntity[];
   total: number;
   source: string;
+  tenant_id?: string;
+  center?: unknown;
 }
 
 const LIVE_POLL_INTERVAL_MS = 4_000;
 
-const HASURA_ENTITY_SUBSCRIPTION = `
-  subscription WatchDigitalTwinEntities($tenant_id: uuid!) {
+export const HASURA_ENTITY_SUBSCRIPTION = `
+  subscription WatchDigitalTwinEntities {
     context_entity_state(
-      where: { tenant_id: { _eq: $tenant_id } }
       order_by: { updated_at: desc }
       limit: 250
     ) {
       entity_id
       type
-      tenant_id
       payload
       updated_at
     }
@@ -749,11 +750,13 @@ export function useDigitalTwinLive(): UseDigitalTwinLiveReturn {
       try {
         const res = await api.get("/v1/context/entities");
         const rawData = res.data ?? {};
-        const rawItems: Record<string, any>[] = Array.isArray(rawData.items)
-          ? rawData.items
-          : Array.isArray(rawData)
-            ? rawData
-            : [];
+        const rawItems: Record<string, any>[] = Array.isArray(rawData.entities)
+          ? rawData.entities
+          : Array.isArray(rawData.items)
+            ? rawData.items
+            : Array.isArray(rawData)
+              ? rawData
+              : [];
 
         const normalized = rawItems
           .map((item) => normalizeTwinEntity(item, tenantId))
@@ -855,7 +858,7 @@ export function useDigitalTwinLive(): UseDigitalTwinLiveReturn {
       }>({
         id: "digital_twin_live",
         query: HASURA_ENTITY_SUBSCRIPTION,
-        variables: tenantId ? { tenant_id: tenantId } : {},
+        variables: {},
         onNext: (data) => {
           const rows = data?.context_entity_state;
           if (!Array.isArray(rows)) return;
@@ -885,7 +888,11 @@ export function useDigitalTwinLive(): UseDigitalTwinLiveReturn {
           setLastUpdatedAt(new Date().toISOString());
         },
         onError: (wsErr) => {
-          logger.warn("Hasura subscription reported error", wsErr);
+          logger.warn("Hasura subscription reported error, falling back to live polling", wsErr);
+          wsConnectedRef.current = false;
+          setConnectionMode("live_poll");
+          unsubscribe?.();
+          client?.dispose();
         },
       });
     } catch (initErr) {

@@ -32,6 +32,7 @@
       "name": "Get All Assets",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -46,16 +47,16 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.asset_inventory_snapshots (total_assets, by_status) VALUES ($1, $2::jsonb);",
+        "query": "WITH counts AS (SELECT status, COUNT(*)::int AS cnt FROM {{TENANT_SCHEMA}}.asset_items GROUP BY status) INSERT INTO {{TENANT_SCHEMA}}.asset_inventory_snapshots (total_assets, by_status) SELECT COALESCE((SELECT SUM(cnt)::int FROM counts), 0), COALESCE((SELECT jsonb_object_agg(status, cnt) FROM counts), '{}'::jsonb) RETURNING id, total_assets, by_status;",
         "options": {
-          "queryReplacement": "={{$json.total_assets}},={{$json.by_status}}"
+          "queryReplacement": ""
         }
       },
       "name": "Save Inventory Snapshot",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
       "position": [
-        650,
+        850,
         300
       ],
       "credentials": {
@@ -67,7 +68,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $items().map(i => i.json);\nconst byStatus = {};\nfor (const r of rows) { byStatus[r.status] = (byStatus[r.status] || 0) + 1; }\nreturn [{json: {total_assets: rows.length, by_status: JSON.stringify(byStatus)}}];"
+        "jsCode": "const rows = $items().map(i => i.json).filter(r => r && r.id);\nconst byStatus = {};\nfor (const r of rows) { byStatus[r.status] = (byStatus[r.status] || 0) + 1; }\nreturn [{json: {total_assets: rows.length, by_status: byStatus}}];"
       },
       "name": "Build Snapshot",
       "type": "n8n-nodes-base.code",

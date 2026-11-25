@@ -153,4 +153,33 @@ describe("MarketplaceClient", () => {
       expect(installBtn.closest("button")).toBeDisabled();
     }
   });
+
+  it("generates SDK-compliant local blueprint without calling /synthesize when user lacks plugins:install (#880)", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy;
+
+    (useSession as any).mockReturnValue({
+      user: { name: "Viewer", roles: ["hr_manager"] },
+      status: "authenticated",
+      isLoading: false,
+      hasRole: () => false,
+    });
+    (useRBAC as any).mockReturnValue({
+      hasPermission: () => false,
+      isLoading: false,
+    });
+
+    render(<MarketplaceClient />);
+
+    fireEvent.click(screen.getByText("AI Plugin Studio"));
+    fireEvent.click(screen.getByText("Tổng hợp Blueprint Plugin"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/plugins\.install/)).toBeInTheDocument();
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByText(/quan_items/)).toBeInTheDocument();
+    expect(screen.getByText(/items-sync/)).toBeInTheDocument();
+  });
 });
