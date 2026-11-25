@@ -12,9 +12,10 @@ import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { Modal } from "@/components/ui/Modal";
 import { InstallPreviewDialog } from "./InstallPreviewDialog";
 import { InstallProgressModal } from "@/components/marketplace/InstallProgressModal";
+import { AIPluginStudioModal } from "@/components/marketplace/AIPluginStudioModal";
 import { useMarketplace } from "@/hooks/useMarketplace";
 import { usePlugins } from "@/hooks/usePlugins";
-import { PackageOpen, AlertTriangle } from "lucide-react";
+import { PackageOpen, AlertTriangle, Sparkles } from "lucide-react";
 import type { CredentialFieldSchema, CredentialInput } from "@/types";
 
 const CATEGORIES = ["HR", "CRM", "Finance", "IT", "Operations", "Utilities", "Analytics", "Communication"];
@@ -47,6 +48,7 @@ export const MarketplaceClient: React.FC = () => {
   const [previewCredSchema, setPreviewCredSchema] = useState<CredentialFieldSchema[]>([]);
   const [isInstallPreviewOpen, setIsInstallPreviewOpen] = useState(false);
   const [isProgressModalHidden, setIsProgressModalHidden] = useState(false);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
 
   const [uninstallPluginData, setUninstallPluginData] = useState<{ id: string; name: string } | null>(null);
   const [isUninstallConfirmOpen, setIsUninstallConfirmOpen] = useState(false);
@@ -230,17 +232,28 @@ export const MarketplaceClient: React.FC = () => {
               Mở rộng năng lực quản trị tổ chức với các phân hệ nghiệp vụ tiêu chuẩn, tự động cài đặt bảng dữ liệu, quy trình và báo cáo.
             </p>
           </div>
-          {!isLoading && (
-            <div className="flex items-center gap-3 text-xs text-muted tabular-nums shrink-0">
-              <span>
-                <strong className="text-ink font-semibold">{installedPlugins.length}</strong> đã cài
-              </span>
-              <span className="text-ghost">/</span>
-              <span>
-                <strong className="text-ink font-semibold">{allPlugins.length}</strong> tổng phân hệ
-              </span>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {!isLoading && (
+              <div className="flex items-center gap-3 text-xs text-muted tabular-nums">
+                <span>
+                  <strong className="text-ink font-semibold">{installedPlugins.length}</strong> đã cài
+                </span>
+                <span className="text-ghost">/</span>
+                <span>
+                  <strong className="text-ink font-semibold">{allPlugins.length}</strong> tổng phân hệ
+                </span>
+              </div>
+            )}
+            <button
+              id="marketplace-ai-plugin-studio-btn"
+              type="button"
+              onClick={() => setIsStudioOpen(true)}
+              className="btn-accent text-xs px-3.5 py-2"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              AI Plugin Studio
+            </button>
+          </div>
         </div>
 
         <div className="pt-5 w-full">
@@ -377,6 +390,11 @@ export const MarketplaceClient: React.FC = () => {
           </div>
         </div>
       </Modal>
+      {/* AI Plugin Studio Modal (#876) */}
+      <AIPluginStudioModal
+        isOpen={isStudioOpen}
+        onClose={() => setIsStudioOpen(false)}
+      />
     </div>
   );
 };
