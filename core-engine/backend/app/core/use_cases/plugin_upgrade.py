@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -532,12 +531,18 @@ class PluginUpgradeUseCase:
         manifest: PluginManifest,
         from_version: str,
     ) -> int:
-        """Chạy migration DB trong 1 transaction (atomic)."""
+        """Chạy migration DB atomic + gắn trigger Outbox NGSI-LD."""
         applied = await self.plugin_repo.list_applied_migrations(
             context.tenant_id, plugin_id
         )
         pending = self._discover_migrations(plugin_code_name, from_version, applied)
-        if not pending:
+        ngsi_obj = getattr(manifest, "ngsi", None)
+        ngsi_entities = (
+            list(getattr(ngsi_obj, "entities", None) or [])
+            if ngsi_obj is not None
+            else []
+        )
+        if not pending and not ngsi_entities:
             logger.info("Không có migration DB nào cần chạy.")
             return 0
 
@@ -563,6 +568,61 @@ class PluginUpgradeUseCase:
                 await self.plugin_repo.record_applied_migration(
                     context.tenant_id, plugin_id, version, fname, checksum
                 )
+
+            # Hook #862: Tự động gắn trigger Outbox cho các bảng manifest.ngsi.entities
+            for ent in ngsi_entities:
+                ent_table = getattr(ent, "table", "") or ""
+                ent_type = getattr(ent, "type", "") or ""
+                if not (
+                    re.match(r"^[a-zA-Z0-9_]+$", schema_name)
+                    and re.match(r"^[a-zA-Z0-9_]+$", ent_table)
+                    and re.match(r"^[a-zA-Z0-9_]+$", ent_type)
+                ):
+                    raise PluginUpgradeError(
+                        "Invalid NGSI entity table/type identifier: "
+                        f"{ent_table}/{ent_type}"
+                    )
+                trg_name = f"trg_outbox_{ent_table}"
+                outbox_sql = (
+                    "DO $$ BEGIN\n"
+                    "  IF EXISTS (\n"
+                    "    SELECT 1 FROM pg_proc p\n"
+                    "    JOIN pg_namespace n ON p.pronamespace = n.oid\n"
+                    "    WHERE n.nspname = 'context' "
+                    "AND p.proname = 'fn_generic_outbox_notify'\n"
+                    "  ) AND EXISTS (\n"
+                    "    SELECT 1 FROM information_schema.tables\n"
+                    f"    WHERE table_schema = '{schema_name}' "
+                    f"AND table_name = '{ent_table}'\n"
+                    "  ) THEN\n"
+                    f'    EXECUTE $trig$DROP TRIGGER IF EXISTS "{trg_name}" '
+                    f'ON "{schema_name}"."{ent_table}";$trig$;\n'
+                    f'    EXECUTE $trig$CREATE TRIGGER "{trg_name}" '
+                    "AFTER INSERT OR UPDATE OR DELETE "
+                    f'ON "{schema_name}"."{ent_table}" '
+                    "FOR EACH ROW EXECUTE FUNCTION "
+                    f"context.fn_generic_outbox_notify('{ent_type}');$trig$;\n"
+                    "  END IF;\n"
+                    "END $$;"
+                )
+                sp_trg = f"outbox_{ent_table}"
+                try:
+                    await self.session.execute(text(f"SAVEPOINT {sp_trg}"))
+                    await self.session.execute(text(outbox_sql))
+                    await self.session.execute(text(f"RELEASE SAVEPOINT {sp_trg}"))
+                except Exception as trg_err:
+                    logger.warning(
+                        "Outbox trigger setup skipped during upgrade for %s.%s: %s",
+                        schema_name,
+                        ent_table,
+                        trg_err,
+                    )
+                    try:
+                        await self.session.execute(
+                            text(f"ROLLBACK TO SAVEPOINT {sp_trg}")
+                        )
+                    except Exception:
+                        pass
         finally:
             await self.session.execute(text("SET search_path TO public"))
         return len(pending)
@@ -865,7 +925,7 @@ class PluginUpgradeUseCase:
                             "tenant_id": context.tenant_id,
                             "plugin_code_name": plugin_code_name,
                             "name": role.name,
-                            # Fallback như _step_5 install (manifest thiếu display_name).
+                            # Fallback như _step_5 install (khi thiếu display_name).
                             "display_name": role.display_name
                             or role.description
                             or role.name,
@@ -992,7 +1052,7 @@ class PluginUpgradeUseCase:
                     node["credentials"]["ollamaApi"]["id"] = proteus_ollama_cred_id
                     node["credentials"]["ollamaApi"]["name"] = proteus_ollama_cred_name
             if "credentials" in node:
-                for cred_key, cred_val in node["credentials"].items():
+                for cred_key, _cred_val in node["credentials"].items():
                     if (
                         node.get("type") == "n8n-nodes-base.postgres"
                         and cred_key == "postgres"
@@ -1005,9 +1065,11 @@ class PluginUpgradeUseCase:
                             cred_key
                         ]
                         if context and plugin_code_name:
-                            node["credentials"][cred_key][
-                                "name"
-                            ] = f"tenant_{context.tenant_id}_{plugin_code_name}_{cred_key}"
+                            cred_name = (
+                                f"tenant_{context.tenant_id}_"
+                                f"{plugin_code_name}_{cred_key}"
+                            )
+                            node["credentials"][cred_key]["name"] = cred_name
 
     async def _compensate(
         self,

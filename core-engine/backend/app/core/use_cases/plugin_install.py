@@ -4,9 +4,8 @@
 # Core Domain — Plugin Install Use Case
 # Xử lý 6 bước cài đặt Plugin theo mô hình Saga (Compensating Transaction).
 
-import asyncio
+import asyncio  # noqa: F401
 import json
-import random
 import re
 import uuid
 from datetime import UTC, datetime
@@ -316,7 +315,7 @@ class PluginInstallUseCase:
         # 2. Chống double-install (M10) bằng advisory lock + guard trạng thái.
         # Lock theo (tenant, plugin) để 2 request cài đồng thời phải serialize:
         # request thứ 2 đợi lock, sau đó thấy ACTIVE/INSTALLING và bị chặn.
-        # Best-effort: mock session trong unit-test không hỗ trợ cũng không fail install.
+        # Best-effort: mock session trong unit-test không hỗ trợ vẫn không fail.
         try:
             await self.session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
@@ -349,11 +348,13 @@ class PluginInstallUseCase:
             context.tenant_id, plugin.id, install_task_id
         ):
             raise PluginInstallError(
-                f"Plugin '{plugin_code_name}' đang trong quá trình cài đặt, vui lòng thử lại sau."
+                f"Plugin '{plugin_code_name}' đang trong quá trình cài đặt, "
+                "vui lòng thử lại sau."
             )
         if status == PluginStatus.UNINSTALLING:
             raise PluginInstallError(
-                f"Plugin '{plugin_code_name}' đang trong quá trình gỡ cài đặt, vui lòng thử lại sau."
+                f"Plugin '{plugin_code_name}' đang trong quá trình gỡ cài đặt, "
+                "vui lòng thử lại sau."
             )
 
         # 3-5. Load manifest, check compatibility, mark INSTALLING inside try (#792)
@@ -411,7 +412,7 @@ class PluginInstallUseCase:
             # BƯỚC 2: n8n Import (thu thập id dần vào created_assets
             # để fail giữa chừng vẫn rollback được partial imports)
             self._log_step("n8n", "RUNNING")
-            n8n_ids = await self._step_2_n8n(
+            await self._step_2_n8n(
                 context,
                 plugin_code_name,
                 manifest,
@@ -424,7 +425,7 @@ class PluginInstallUseCase:
 
             # BƯỚC 3: Metabase Import (thu thập dần như bước n8n)
             self._log_step("metabase", "RUNNING")
-            mb_ids = await self._step_3_metabase(
+            await self._step_3_metabase(
                 context,
                 plugin_code_name,
                 manifest,
@@ -436,7 +437,7 @@ class PluginInstallUseCase:
 
             # BƯỚC 4: Appsmith Import (thu thập dần như bước n8n)
             self._log_step("appsmith", "RUNNING")
-            app_ids = await self._step_4_appsmith(
+            await self._step_4_appsmith(
                 context,
                 plugin_code_name,
                 manifest,
@@ -600,8 +601,14 @@ class PluginInstallUseCase:
         plugin_code_name: str,
         manifest: PluginManifest,
     ) -> None:
-        """Thực thi seed_file của plugin và setup RLS."""
-        if not manifest.database:
+        """Thực thi seed_file của plugin, setup RLS và gắn trigger Outbox NGSI-LD."""
+        ngsi_obj = getattr(manifest, "ngsi", None)
+        ngsi_entities = (
+            list(getattr(ngsi_obj, "entities", None) or [])
+            if ngsi_obj is not None
+            else []
+        )
+        if not manifest.database and not ngsi_entities:
             return
 
         has_schema = False
@@ -610,7 +617,7 @@ class PluginInstallUseCase:
             if not re.match(r"^[a-zA-Z0-9_]+$", schema_name):
                 raise PluginInstallError("Invalid schema name.")
 
-            if manifest.database.seed_file:
+            if manifest.database and manifest.database.seed_file:
                 # Chặn path traversal: plugin_code + seed_file đều phải sạch,
                 # resolve cuối cùng phải nằm trong plugins_dir.
                 if not _PLUGIN_CODE_PATTERN.match(plugin_code_name):
@@ -637,14 +644,14 @@ class PluginInstallUseCase:
                     if plugins_base not in seed_path.parents:
                         raise PluginInstallError(
                             "Seed file path vượt ngoài plugins_dir."
-                        )
+                        ) from None
                 if seed_path.exists():
                     with open(seed_path, encoding="utf-8-sig") as f:
                         sql = f.read()
 
                     # Sandbox policy (C4): allowlist CREATE TABLE/INDEX + INSERT,
                     # denylist public./pg_/information_schema/COPY/DO/TRIGGER/VIEW/RULE.
-                    # Split an toàn tôn trọng $$ dollar-quoting (sqlparse hoặc fallback).
+                    # Split an toàn tôn trọng $$ dollar-quoting (sqlparse/fallback).
                     statements = _split_seed_statements_safe(sql)
                     if not statements:
                         raise PluginInstallError("Seed file rỗng hoặc không hợp lệ.")
@@ -666,18 +673,19 @@ class PluginInstallUseCase:
                     )
                     await self.session.execute(
                         text(
-                            f"SET LOCAL statement_timeout TO '{_SEED_STATEMENT_TIMEOUT}'"
+                            "SET LOCAL statement_timeout TO "
+                            f"'{_SEED_STATEMENT_TIMEOUT}'"
                         )
                     )
                     has_schema = True
 
-                    # app.current_tenant_id được set tự động bởi after_begin event listener
-                    # khi current_tenant_id contextvar được thiết lập trong background task.
-                    # KHÔNG dùng set_config('role', ...) vì role 'tenant_admin' không tồn tại.
+                    # app.current_tenant_id được set tự động bởi after_begin listener
+                    # khi current_tenant_id contextvar được thiết lập ở background task.
+                    # KHÔNG dùng set_config('role', ...) vì 'tenant_admin' chưa có.
 
                     # asyncpg không hỗ trợ nhiều statement trong một execute().
                     # Execute từng câu đã validate allowlist.
-                    # Dùng SAVEPOINT cho từng câu để seed data fail không làm hỏng transaction.
+                    # Dùng SAVEPOINT cho từng câu để lỗi seed không hỏng transaction.
                     for i, stmt in enumerate(statements):
                         sp_name = f"seed_stmt_{i}"
                         if not re.match(r"^[a-zA-Z0-9_]+$", sp_name):
@@ -702,7 +710,8 @@ class PluginInstallUseCase:
                                     text(f"ROLLBACK TO SAVEPOINT {sp_name}")
                                 )
                                 raise PluginInstallError(
-                                    f"DDL execution failed in seed statement: {stmt_err}"
+                                    "DDL execution failed in seed statement: "
+                                    f"{stmt_err}"
                                 ) from stmt_err
                             logger.warning(
                                 "Seed statement %d failed (skipped): %s — %s",
@@ -715,7 +724,7 @@ class PluginInstallUseCase:
                             )
 
             # Tự động tạo RLS cho các bảng (best-effort — table có thể chưa tồn tại)
-            if manifest.database.tables:
+            if manifest.database and manifest.database.tables:
                 # BẮT BUỘC set search_path mọi lần: seed block đã reset về public,
                 # nếu bỏ qua (chỉ set khi not has_schema) thì ALTER TABLE tìm sai
                 # schema → "relation does not exist" và RLS không bao giờ được bật.
@@ -765,15 +774,18 @@ class PluginInstallUseCase:
                         )
                         await self.session.execute(
                             text(
-                                f'DROP POLICY IF EXISTS tenant_isolation_policy ON "{table}"'
+                                "DROP POLICY IF EXISTS "
+                                f'tenant_isolation_policy ON "{table}"'
                             )
                         )
-                        policy_sql = f"""
-                                CREATE POLICY tenant_isolation_policy ON "{table}"
-                                FOR ALL TO public
-                                USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                                WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid)
-                            """
+                        policy_sql = (
+                            f'CREATE POLICY tenant_isolation_policy ON "{table}" '
+                            "FOR ALL TO public "
+                            "USING (tenant_id = "
+                            "current_setting('app.current_tenant_id')::uuid) "
+                            "WITH CHECK (tenant_id = "
+                            "current_setting('app.current_tenant_id')::uuid)"
+                        )
                         await self.session.execute(text(policy_sql))
                         await self.session.execute(text(f"RELEASE SAVEPOINT {sp}"))
                     except Exception as rls_err:
@@ -783,6 +795,62 @@ class PluginInstallUseCase:
                             rls_err,
                         )
                         await self.session.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+
+            # Hook #862: Tự động gắn trigger Outbox cho các bảng manifest.ngsi.entities
+            if ngsi_entities:
+                for ent in ngsi_entities:
+                    ent_table = getattr(ent, "table", "") or ""
+                    ent_type = getattr(ent, "type", "") or ""
+                    if not (
+                        re.match(r"^[a-zA-Z0-9_]+$", schema_name)
+                        and re.match(r"^[a-zA-Z0-9_]+$", ent_table)
+                        and re.match(r"^[a-zA-Z0-9_]+$", ent_type)
+                    ):
+                        raise PluginInstallError(
+                            "Invalid NGSI entity table/type identifier: "
+                            f"{ent_table}/{ent_type}"
+                        )
+                    trg_name = f"trg_outbox_{ent_table}"
+                    outbox_sql = (
+                        "DO $$ BEGIN\n"
+                        "  IF EXISTS (\n"
+                        "    SELECT 1 FROM pg_proc p\n"
+                        "    JOIN pg_namespace n ON p.pronamespace = n.oid\n"
+                        "    WHERE n.nspname = 'context' "
+                        "AND p.proname = 'fn_generic_outbox_notify'\n"
+                        "  ) AND EXISTS (\n"
+                        "    SELECT 1 FROM information_schema.tables\n"
+                        f"    WHERE table_schema = '{schema_name}' "
+                        f"AND table_name = '{ent_table}'\n"
+                        "  ) THEN\n"
+                        f'    EXECUTE $trig$DROP TRIGGER IF EXISTS "{trg_name}" '
+                        f'ON "{schema_name}"."{ent_table}";$trig$;\n'
+                        f'    EXECUTE $trig$CREATE TRIGGER "{trg_name}" '
+                        "AFTER INSERT OR UPDATE OR DELETE "
+                        f'ON "{schema_name}"."{ent_table}" '
+                        "FOR EACH ROW EXECUTE FUNCTION "
+                        f"context.fn_generic_outbox_notify('{ent_type}');$trig$;\n"
+                        "  END IF;\n"
+                        "END $$;"
+                    )
+                    sp_trg = f"outbox_{ent_table}"
+                    try:
+                        await self.session.execute(text(f"SAVEPOINT {sp_trg}"))
+                        await self.session.execute(text(outbox_sql))
+                        await self.session.execute(text(f"RELEASE SAVEPOINT {sp_trg}"))
+                    except Exception as trg_err:
+                        logger.warning(
+                            "Outbox trigger setup skipped for %s.%s: %s",
+                            schema_name,
+                            ent_table,
+                            trg_err,
+                        )
+                        try:
+                            await self.session.execute(
+                                text(f"ROLLBACK TO SAVEPOINT {sp_trg}")
+                            )
+                        except Exception:
+                            pass
         finally:
             if has_schema:
                 await self.session.execute(
@@ -807,7 +875,8 @@ class PluginInstallUseCase:
         if self.session:
             res = await self.session.execute(
                 text(
-                    "SELECT id FROM n8n.credentials_entity WHERE name = 'ProteusDB_Real' LIMIT 1"
+                    "SELECT id FROM n8n.credentials_entity "
+                    "WHERE name = 'ProteusDB_Real' LIMIT 1"
                 )
             )
             row = res.fetchone()
@@ -823,7 +892,8 @@ class PluginInstallUseCase:
             try:
                 res = await self.session.execute(
                     text(
-                        "SELECT id FROM n8n.credentials_entity WHERE name = 'ProteusMM' LIMIT 1"
+                        "SELECT id FROM n8n.credentials_entity "
+                        "WHERE name = 'ProteusMM' LIMIT 1"
                     )
                 )
                 row = res.fetchone()
@@ -855,7 +925,8 @@ class PluginInstallUseCase:
             try:
                 res = await self.session.execute(
                     text(
-                        "SELECT id FROM n8n.credentials_entity WHERE name = 'ProteusOllama' LIMIT 1"
+                        "SELECT id FROM n8n.credentials_entity "
+                        "WHERE name = 'ProteusOllama' LIMIT 1"
                     )
                 )
                 row = res.fetchone()
@@ -943,7 +1014,7 @@ class PluginInstallUseCase:
                                 "{{TENANT_SCHEMA}}", tenant_schema
                             )
 
-                    # Standardize queryParams -> options.queryReplacement for Postgres nodes
+                    # Standardize queryParams -> options.queryReplacement (Postgres)
                     if node.get("type") == "n8n-nodes-base.postgres":
                         params = node.setdefault("parameters", {})
                         if isinstance(params, dict):
@@ -1016,7 +1087,7 @@ class PluginInstallUseCase:
                                 "name"
                             ] = proteus_ollama_cred_name
                     if isinstance(node.get("credentials"), dict):
-                        for cred_key, cred_val in node["credentials"].items():
+                        for cred_key, _cred_val in node["credentials"].items():
                             # Internal DB (Proteus)
                             if (
                                 node.get("type") == "n8n-nodes-base.postgres"
@@ -1030,9 +1101,11 @@ class PluginInstallUseCase:
                                 node["credentials"][cred_key]["id"] = (
                                     credential_mapping[cred_key]
                                 )
-                                node["credentials"][cred_key][
-                                    "name"
-                                ] = f"tenant_{context.tenant_id}_{plugin_code_name}_{cred_key}"
+                                cred_name = (
+                                    f"tenant_{context.tenant_id}_"
+                                    f"{plugin_code_name}_{cred_key}"
+                                )
+                                node["credentials"][cred_key]["name"] = cred_name
 
                 wid = await self.n8n_adapter.import_workflow(wf_json)
                 workflow_ids.append(wid)
@@ -1122,7 +1195,8 @@ class PluginInstallUseCase:
             ).resolve()
             if not app_path.is_relative_to(plugins_base):
                 raise PluginInstallError(
-                    f"Appsmith app path '{manifest.ui.appsmith_app}' vượt khỏi thư mục plugin."
+                    f"Appsmith app path '{manifest.ui.appsmith_app}' "
+                    "vượt khỏi thư mục plugin."
                 )
             if app_path.exists():
                 with open(app_path, encoding="utf-8-sig") as f:
@@ -1240,7 +1314,8 @@ class PluginInstallUseCase:
         created_asset_ids: list[str] = []
 
         for cred_type, data in grouped_creds.items():
-            safe_name = f"tenant_{str(context.tenant_id).replace('-', '_')}_{plugin_code_name}_{cred_type}"
+            tenant_clean = str(context.tenant_id).replace("-", "_")
+            safe_name = f"tenant_{tenant_clean}_{plugin_code_name}_{cred_type}"
             try:
                 result = await self.n8n_adapter.create_credential(
                     credential_type=cred_type,
