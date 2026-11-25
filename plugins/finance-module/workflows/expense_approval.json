@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_expense_requests (requester_id, amount, category, reason, status) VALUES ($1,$2,$3,$4,'PENDING') RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.finance_expense_requests (requester_id, amount, category, reason, status) VALUES (COALESCE(NULLIF($1::text, '')::uuid, NULLIF($5::text, '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), COALESCE(NULLIF($2::text, '')::numeric, 0), COALESCE(NULLIF($3::text, ''), 'GENERAL'), COALESCE(NULLIF($4::text, ''), 'Đề xuất chi phí'), 'PENDING') RETURNING id;",
         "options": {
-          "queryReplacement": "={{$json.body.requester_id}},={{$json.body.amount}},={{$json.body.category}},={{$json.body.description || $json.body.reason}}"
+          "queryReplacement": "={{$json.body.requester_id || ''}},={{$json.body.amount ?? 0}},={{$json.body.category || ($json.body._event_metadata?.event_type || 'GENERAL')}},={{$json.body.description || $json.body.reason || ($json.body.full_name ? 'Nhân sự: ' + $json.body.full_name : 'Đề xuất chi phí')}},={{$json.body.employee_id || ''}}"
         }
       },
       "name": "Create Expense Request",
@@ -39,7 +39,7 @@
         "conditions": {
           "number": [
             {
-              "value1": "={{$('Webhook - Expense Request').item.json.body.amount}}",
+              "value1": "={{Number($('Webhook - Expense Request').item.json.body.amount ?? 0)}}",
               "operation": "largerEqual",
               "value2": 5000000
             }
@@ -57,9 +57,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
+        "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = NULLIF($1::text, '')::uuid AND u.mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
+          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || $('Webhook - Expense Request').item.json.body._event_metadata?.tenant_id || ''}}"
         }
       },
       "name": "Get Director Approver",
@@ -74,9 +74,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = $1::uuid LIMIT 1;",
+        "query": "SELECT u.mattermost_user_id FROM users u WHERE u.tenant_id = NULLIF($1::text, '')::uuid AND u.mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
-          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || '00000000-0000-0000-0000-000000000000'}}"
+          "queryReplacement": "={{$('Webhook - Expense Request').item.json.body.tenant_id || $('Webhook - Expense Request').item.json.body._event_metadata?.tenant_id || ''}}"
         }
       },
       "name": "Get Manager Approver",
@@ -96,6 +96,7 @@
       "name": "Notify Director",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1050,
         200
@@ -109,6 +110,7 @@
       "name": "Notify Manager",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1050,
         400

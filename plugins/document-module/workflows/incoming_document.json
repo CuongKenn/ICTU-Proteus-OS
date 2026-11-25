@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body;\nconst docType = body.doc_type || 'GENERAL';\nconst docDate = new Date().toISOString().split('T')[0].replace(/-/g,'');\nconst seq = Math.floor(Math.random() * 9000) + 1000;\nconst docCode = `${docType.substring(0,3).toUpperCase()}-${docDate}-${seq}`;\nreturn [{json: {...body, doc_code: docCode, received_at: new Date().toISOString()}}];"
+        "jsCode": "const body = $json.body || $json || {};\nconst docType = body.doc_type || 'GENERAL';\nconst docDate = new Date().toISOString().split('T')[0].replace(/-/g, '');\nconst seq = Math.floor(Math.random() * 9000) + 1000;\nconst fallbackCode = `${docType.substring(0, 3).toUpperCase()}-${docDate}-${seq}`;\nconst docCode = String(body.so_van_ban || body.doc_code || fallbackCode).trim();\nconst senderName = String(body.noi_gui || body.sender_name || body.source || 'Ngoại bộ').trim();\nconst title = String(body.trich_yeu || body.title || 'Văn bản đến').trim();\nconst assignee = String(body.assignee_id || body.assigned_to || '').trim();\nconst receivedAt = String(body.ngay_nhan || new Date().toISOString().slice(0, 10)).slice(0, 10);\nreturn [{json: {...body, id: body.id || '', doc_code: docCode, so_van_ban: docCode, sender_name: senderName, noi_gui: senderName, title, trich_yeu: title, assigned_to: assignee, received_at: receivedAt}}];"
       },
       "name": "Generate Doc Code",
       "type": "n8n-nodes-base.code",
@@ -33,14 +33,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.document_incoming (so_van_ban, noi_gui, ngay_nhan, trich_yeu, file_url, assignee_id, status) VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,'received') RETURNING id;",
+        "query": "WITH ins AS (INSERT INTO {{TENANT_SCHEMA}}.document_incoming (id, so_van_ban, noi_gui, ngay_nhan, trich_yeu, file_url, assignee_id, status) VALUES (COALESCE(NULLIF($1::text, '')::uuid, gen_random_uuid()), COALESCE(NULLIF($2::text, ''), 'VB-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD')), COALESCE(NULLIF($3::text, ''), 'Ngoại bộ'), COALESCE(NULLIF($4::text, '')::date, CURRENT_DATE), COALESCE(NULLIF($5::text, ''), 'Văn bản đến'), NULLIF($6::text, ''), CASE WHEN COALESCE($7::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN ($7::text)::uuid ELSE NULL END, 'received') ON CONFLICT (id) DO NOTHING RETURNING id) SELECT COALESCE((SELECT id FROM ins), NULLIF($1::text, '')::uuid) AS id;",
         "options": {
-          "queryReplacement": "={{$json.doc_code}},={{$json.sender_name || $json.source || 'Ngoại bộ'}},={{$json.title}},={{$json.file_url || ''}},={{$json.assigned_to}}"
+          "queryReplacement": "={{$json.id || ''}},={{$json.so_van_ban || $json.doc_code || ''}},={{$json.noi_gui || $json.sender_name || 'Ngoại bộ'}},={{$json.received_at || ''}},={{$json.trich_yeu || $json.title || 'Văn bản đến'}},={{$json.file_url || ''}},={{$json.assigned_to || ''}}"
         }
       },
       "name": "Save Document",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         650,
         300
@@ -49,14 +50,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE id = $1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE COALESCE($1::text, '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND id = ($1::text)::uuid;",
         "options": {
-          "queryReplacement": "={{$('Generate Doc Code').item.json.assigned_to}}"
+          "queryReplacement": "={{$('Generate Doc Code').item.json.assigned_to || ''}}"
         }
       },
       "name": "Get Assignee",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         300
@@ -65,11 +67,12 @@
     {
       "parameters": {
         "userId": "={{$json.mattermost_user_id}}",
-        "message": "=📥 **Văn bản đến mới**\nMã số: {{$('Generate Doc Code').item.json.doc_code}}\nTiêu đề: {{$('Generate Doc Code').item.json.title}}\nLoại: {{$('Generate Doc Code').item.json.doc_type}}\nNguồn: {{$('Generate Doc Code').item.json.source}} — {{$('Generate Doc Code').item.json.sender_name}}\nNgày nhận: {{$('Generate Doc Code').item.json.received_at}}\n\nVui lòng xử lý văn bản này."
+        "message": "=📥 **Văn bản đến mới**\nMã số: {{$('Generate Doc Code').item.json.doc_code}}\nTiêu đề: {{$('Generate Doc Code').item.json.title}}\nLoại: {{$('Generate Doc Code').item.json.doc_type || 'Công văn'}}\nNguồn: {{$('Generate Doc Code').item.json.sender_name}}\nNgày nhận: {{$('Generate Doc Code').item.json.received_at}}\n\nVui lòng xử lý văn bản này."
       },
       "name": "Notify Assignee",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1050,
         300
@@ -78,7 +81,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": true, \"doc_id\": \"{{$('Save Document').item.json.id}}\", \"doc_code\": \"{{$('Generate Doc Code').item.json.doc_code}}\"}"
+        "responseBody": "={\"success\": true, \"doc_id\": \"{{$('Save Document').item.json.id || $('Generate Doc Code').item.json.id || ''}}\", \"doc_code\": \"{{$('Generate Doc Code').item.json.doc_code}}\"}"
       },
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",

@@ -51,7 +51,12 @@ export function ContractsPage() {
   const vendorName = (id: string) => vendors.find((v) => v.id === id)?.name ?? id.slice(0, 8);
   const filtered = rows.filter((c) => {
     const q = search.trim().toLowerCase();
-    return (!q || vendorName(c.vendor_id).toLowerCase().includes(q)) && (filter === ALL || c.status === filter);
+    const hit =
+      !q ||
+      vendorName(c.vendor_id).toLowerCase().includes(q) ||
+      (c.contract_number || '').toLowerCase().includes(q) ||
+      (c.title || '').toLowerCase().includes(q);
+    return hit && (filter === ALL || c.status === filter);
   });
 
   const daysLeft = (end: string) =>
@@ -63,7 +68,7 @@ export function ContractsPage() {
     <div>
       <DataSourceBar mode={mode} reasonText={reasonText(reason)} message={message} />
       <InlineError text={error} onClose={() => setError(null)} />
-      <Toolbar search={search} onSearch={setSearch} placeholder="Tìm theo nhà cung cấp...">
+      <Toolbar search={search} onSearch={setSearch} placeholder="Tìm theo số HĐ, tiêu đề, nhà cung cấp...">
         <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value={ALL}>Mọi trạng thái</option>
           <option value="draft">Nháp</option>
@@ -77,6 +82,7 @@ export function ContractsPage() {
       <TableWrap>
         <thead>
           <tr>
+            <th style={th}>Số HĐ / Tiêu đề</th>
             <th style={th}>Nhà cung cấp</th>
             <th style={th}>Giá trị / Thời hạn</th>
             <th style={th}>Còn lại</th>
@@ -90,8 +96,11 @@ export function ContractsPage() {
             return (
               <tr key={c.id}>
                 <td style={td}>
+                  <b style={{ color: C.text }}>{c.contract_number || `HĐ-${c.id.slice(0, 8)}`}</b>
+                  <div style={{ color: C.muted, fontSize: '.78rem' }}>{c.title || '—'}</div>
+                </td>
+                <td style={td}>
                   <b style={{ color: C.text }}>{vendorName(c.vendor_id)}</b>
-                  <div style={{ color: C.muted, fontSize: '.78rem' }}>HĐ {c.id.slice(0, 8)}…</div>
                 </td>
                 <td style={td}>
                   {formatVND(c.value)}
@@ -138,8 +147,10 @@ export function ContractsPage() {
 function CreateForm(props: {
   vendors: Array<{ id: string; name: string }>;
   onClose: () => void;
-  onSubmit: (v: { vendor_id: string; value: number; start_date: string; end_date: string; status: ContractStatus }) => Promise<void>;
+  onSubmit: (v: { contract_number: string; title: string; vendor_id: string; value: number; start_date: string; end_date: string; status: ContractStatus }) => Promise<void>;
 }) {
+  const [contract_number, setContractNumber] = useState('');
+  const [title, setTitle] = useState('');
   const [vendor_id, setVendor] = useState(props.vendors[0]?.id ?? '');
   const [value, setValue] = useState('0');
   const [start_date, setStart] = useState(new Date().toISOString().slice(0, 10));
@@ -147,6 +158,8 @@ function CreateForm(props: {
   return (
     <Modal title="Thêm hợp đồng" onClose={props.onClose}>
       <div style={{ display: 'grid', gap: '.6rem' }}>
+        <Input placeholder="Số hợp đồng (VD: HĐ-2026-010)" value={contract_number} onChange={(e) => setContractNumber(e.target.value)} />
+        <Input placeholder="Tiêu đề hợp đồng" value={title} onChange={(e) => setTitle(e.target.value)} />
         <Select value={vendor_id} onChange={(e) => setVendor(e.target.value)}>
           {props.vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </Select>
@@ -155,9 +168,11 @@ function CreateForm(props: {
         <Input type="date" value={end_date} onChange={(e) => setEnd(e.target.value)} />
         <Btn
           primary
-          disabled={!vendor_id || !end_date}
+          disabled={!vendor_id || !end_date || !title.trim()}
           onClick={() =>
             props.onSubmit({
+              contract_number: contract_number.trim(),
+              title: title.trim(),
               vendor_id,
               value: Number(value) || 0,
               start_date,

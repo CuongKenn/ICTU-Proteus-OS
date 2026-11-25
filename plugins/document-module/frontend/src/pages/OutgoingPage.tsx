@@ -107,7 +107,7 @@ export function OutgoingPage() {
               <td style={{ ...td, whiteSpace: 'nowrap' }}>
                 <button onClick={() => setEditing(d)} style={link}>Sửa</button>{' '}
                 {d.status === 'draft' && (
-                  <button onClick={() => mutate(() => store!.updateOutgoing(d.id, { status: 'pending' }))} style={link}>
+                  <button onClick={() => mutate(() => store!.submitForApproval(d.id))} style={link}>
                     Trình ký
                   </button>
                 )}{' '}

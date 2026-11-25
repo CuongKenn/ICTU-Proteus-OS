@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT a.id, a.full_name, a.cover_note, p.title, p.requirements FROM {{TENANT_SCHEMA}}.hr_applications a LEFT JOIN {{TENANT_SCHEMA}}.hr_job_postings p ON p.id = a.posting_id WHERE a.id = $1;",
+        "query": "SELECT a.id, a.full_name, a.cover_note, p.title, p.requirements FROM {{TENANT_SCHEMA}}.hr_applications a LEFT JOIN {{TENANT_SCHEMA}}.hr_job_postings p ON p.id = a.posting_id WHERE a.id = NULLIF($1::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$json.body.application_id}}"
+          "queryReplacement": "={{$json.body.application_id || ''}}"
         }
       },
       "name": "Fetch Application",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -74,7 +75,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const appId = $('Fetch Application').item.json.id;\nconst txt = ($input.first().json.text || '').trim();\nlet score = null, notes = txt.slice(0, 200);\ntry {\n  const m = txt.match(/\\{[\\s\\S]*\\}/);\n  if (m) { const o = JSON.parse(m[0]);\n    if (typeof o.score === 'number') score = Math.max(0, Math.min(100, Math.round(o.score)));\n    if (typeof o.notes === 'string') notes = o.notes.slice(0, 200); }\n} catch (e) {}\nreturn [{json: {application_id: appId, score, notes}}];"
+        "jsCode": "const appId = $('Fetch Application').item.json.id || $('Webhook - Screen Request').item.json.body.application_id || '';\nconst txt = ($input.first().json.text || '').trim();\nlet score = null, notes = txt.slice(0, 200);\ntry {\n  const m = txt.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    const o = JSON.parse(m[0]);\n    const num = Number(o.score);\n    if (o.score !== null && o.score !== undefined && Number.isFinite(num)) {\n      score = Math.max(0, Math.min(100, Math.round(num)));\n    }\n    if (typeof o.notes === 'string') notes = o.notes.slice(0, 200);\n  }\n} catch (e) {}\nreturn [{json: {application_id: appId, score, notes}}];"
       },
       "name": "Parse Score",
       "type": "n8n-nodes-base.code",
@@ -87,14 +88,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.hr_applications SET score = $1, screening_notes = $2, stage = 'SCREENING', updated_at = NOW() WHERE id = $3;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.hr_applications SET score = NULLIF($1::text, '')::int, screening_notes = $2, stage = 'SCREENING', updated_at = NOW() WHERE id = NULLIF($3::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$json.score}},={{$json.notes}},={{$json.application_id}}"
+          "queryReplacement": "={{$json.score ?? ''}},={{$json.notes || ''}},={{$json.application_id || ''}}"
         }
       },
       "name": "Save Score",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         1050,
         300
@@ -109,7 +111,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": true, \"score\": \"{{$('Parse Score').item.json.score}}\"}"
+        "responseBody": "={\"success\": true, \"score\": {{$('Parse Score').item.json.score ?? 'null'}}}"
       },
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",

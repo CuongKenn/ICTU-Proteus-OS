@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.it_tickets SET feedback_rating = $1, feedback_comment = $2, status = 'CLOSED', updated_at = NOW() WHERE id = $3 RETURNING assignee_id, assignee_id as assigned_to;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.it_tickets SET feedback_rating = COALESCE(NULLIF($1::text, '')::int, 5), feedback_comment = $2, status = 'CLOSED', updated_at = NOW() WHERE id = NULLIF($3::text, '')::uuid RETURNING assignee_id, assignee_id as assigned_to;",
         "options": {
-          "queryReplacement": "={{$json.body.score}},={{$json.body.comment}},={{$json.body.ticket_id}}"
+          "queryReplacement": "={{$json.body.score ?? 5}},={{$json.body.comment || ''}},={{$json.body.ticket_id || ''}}"
         }
       },
       "name": "Save Feedback & Close",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -39,7 +40,7 @@
         "conditions": {
           "number": [
             {
-              "value1": "={{$('Webhook - Feedback Submitted').item.json.body.score}}",
+              "value1": "={{Number($('Webhook - Feedback Submitted').item.json.body.score ?? 5)}}",
               "operation": "smaller",
               "value2": 3
             }
@@ -57,14 +58,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE mattermost_user_id IS NOT NULL LIMIT 1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE tenant_id = NULLIF($1::text, '')::uuid AND mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - Feedback Submitted').item.json.body.tenant_id || $('Webhook - Feedback Submitted').item.json.body._event_metadata?.tenant_id || ''}}"
         }
       },
       "name": "Get Manager",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         200
@@ -78,6 +80,7 @@
       "name": "Alert Manager Low Score",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1050,
         200

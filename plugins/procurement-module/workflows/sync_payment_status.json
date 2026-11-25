@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, id as po_number;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = COALESCE(NULLIF($1::text, ''), 'approved'), updated_at = NOW() WHERE id = NULLIF($2::text, '')::uuid RETURNING id, id as po_number;",
         "options": {
-          "queryReplacement": "={{$json.body.payment_status}},={{$json.body.po_id}}"
+          "queryReplacement": "={{$json.body.payment_status || 'approved'}},={{$json.body.po_id || ''}}"
         }
       },
       "name": "Update Payment Status",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -45,6 +46,7 @@
       "name": "Get Channel",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         650,
         300
@@ -53,11 +55,12 @@
     {
       "parameters": {
         "channelId": "={{$json.channel_id}}",
-        "message": "=💳 **Cập nhật thanh toán**\nSố PO: {{$('Update Payment Status').item.json.po_number}}\nTrạng thái: {{$('Webhook - Payment Update').item.json.body.payment_status}}\nNgày thanh toán: {{$('Webhook - Payment Update').item.json.body.payment_date}}\nSố tham chiếu: {{$('Webhook - Payment Update').item.json.body.payment_reference}}"
+        "message": "=💳 **Cập nhật thanh toán**\nSố PO: {{$('Update Payment Status').item.json.po_number || $('Webhook - Payment Update').item.json.body.expense_request_id || 'N/A'}}\nTrạng thái: {{$('Webhook - Payment Update').item.json.body.payment_status || 'approved'}}\nNgày thanh toán: {{$('Webhook - Payment Update').item.json.body.payment_date || ''}}\nSố tham chiếu: {{$('Webhook - Payment Update').item.json.body.payment_reference || ''}}"
       },
       "name": "Notify Channel",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         850,
         300

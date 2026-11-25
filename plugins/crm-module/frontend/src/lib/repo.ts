@@ -69,7 +69,7 @@ export const uid = () =>
 
 export interface CrmRepo {
   listCustomers(): Customer[];
-  listContacts(customer_id: string): import('../types').Contact[];
+  listContacts(customer_id?: string): import('../types').Contact[];
   listLeads(): Lead[];
   moveLead(id: string, stage: LeadStage): void;
   createLead(input: Omit<Lead, 'id' | 'stage'>): Lead;
@@ -90,7 +90,8 @@ export interface CrmRepo {
 export function createMockRepo(seedContactsList = seedContacts): CrmRepo {
   return {
     listCustomers: () => load().customers,
-    listContacts: (cid) => seedContactsList.filter((c) => c.customer_id === cid),
+    listContacts: (cid) =>
+      cid ? seedContactsList.filter((c) => c.customer_id === cid) : [...seedContactsList],
     listLeads: () => load().leads,
     moveLead(id, stage) {
       const s = load();
@@ -183,7 +184,7 @@ export type DemoReason = 'unauthenticated' | 'not-installed' | 'offline';
 
 export interface CrmStore {
   listCustomers(): Promise<Customer[]>;
-  listContacts(customer_id: string): Promise<Contact[]>;
+  listContacts(customer_id?: string): Promise<Contact[]>;
   listLeads(): Promise<Lead[]>;
   moveLead(id: string, stage: LeadStage): Promise<void>;
   createLead(input: Omit<Lead, 'id' | 'stage'>): Promise<Lead>;
@@ -201,6 +202,29 @@ export interface CrmStore {
 
 const R = '/v1/plugins/crm-module/records';
 const num = (v: unknown) => Number(v ?? 0);
+
+function toCustomer(r: Record<string, unknown>): Customer {
+  return {
+    id: String(r.id ?? ''),
+    name: String(r.name ?? ''),
+    type: String(r.type ?? 'B2B'),
+    industry: String(r.industry ?? ''),
+    company_size: String(r.company_size ?? ''),
+    status: String(r.status ?? 'ACTIVE'),
+  };
+}
+
+function toContact(r: Record<string, unknown>): Contact {
+  return {
+    id: String(r.id ?? ''),
+    customer_id: String(r.customer_id ?? ''),
+    name: String(r.name ?? ''),
+    email: String(r.email ?? ''),
+    phone: String(r.phone ?? ''),
+    position: String(r.position ?? ''),
+    is_primary: Boolean(r.is_primary),
+  };
+}
 
 function toLead(r: Record<string, unknown>): Lead {
   return {
@@ -281,11 +305,11 @@ export function createLiveStore(client: BffClient): CrmStore {
   };
   return {
     async listCustomers() {
-      return rows<Customer>('crm_customers');
+      return (await rows<Record<string, unknown>>('crm_customers')).map(toCustomer);
     },
     async listContacts(cid) {
-      const all = await rows<Contact>('crm_contacts');
-      return all.filter((c) => c.customer_id === cid);
+      const all = (await rows<Record<string, unknown>>('crm_contacts')).map(toContact);
+      return cid ? all.filter((c) => c.customer_id === cid) : all;
     },
     async listLeads() {
       return (await rows<Record<string, unknown>>('crm_leads')).map(toLead);

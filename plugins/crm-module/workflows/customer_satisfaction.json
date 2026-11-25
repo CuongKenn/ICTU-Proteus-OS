@@ -21,14 +21,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.crm_surveys (customer_id, opportunity_id, score, comment) VALUES ($1,$2,$3,$4);",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.crm_surveys (customer_id, opportunity_id, score, comment) VALUES (NULLIF($1::text, '')::uuid, NULLIF($2::text, '')::uuid, COALESCE(NULLIF($3::text, '')::int, 5), $4);",
         "options": {
-          "queryReplacement": "={{$json.body.customer_id}},={{$json.body.opportunity_id}},={{$json.body.score}},={{$json.body.comment}}"
+          "queryReplacement": "={{$json.body.customer_id || ''}},={{$json.body.opportunity_id || ''}},={{$json.body.score ?? 5}},={{$json.body.comment || ($json.body.contract_id ? 'Contract signed: ' + $json.body.contract_id : '')}}"
         }
       },
       "name": "Save Survey",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         450,
         300
@@ -45,7 +46,7 @@
         "conditions": {
           "number": [
             {
-              "value1": "={{$('Webhook - Survey Response').item.json.body.score}}",
+              "value1": "={{Number($('Webhook - Survey Response').item.json.body.score ?? 5)}}",
               "operation": "smaller",
               "value2": 3
             }

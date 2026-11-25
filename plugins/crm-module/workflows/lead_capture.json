@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO {{TENANT_SCHEMA}}.crm_leads (contact_name, company_name, email, phone, source, estimated_value, stage, assigned_to) VALUES ($1,$2,$3,$4,$5,$6,'NEW',$7) RETURNING id;",
+        "query": "INSERT INTO {{TENANT_SCHEMA}}.crm_leads (contact_name, company_name, email, phone, source, estimated_value, stage, assigned_to) VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6::text, '')::numeric, 0), 'NEW', NULLIF($7::text, '')::uuid) RETURNING id;",
         "options": {
-          "queryReplacement": "={{$json.body.contact_name || $json.body.full_name}},={{$json.body.company_name || $json.body.company}},={{$json.body.email}},={{$json.body.phone}},={{$json.body.source}},={{$json.body.estimated_value}},={{$json.body.assigned_to}}"
+          "queryReplacement": "={{$json.body.contact_name || $json.body.full_name || 'Khách hàng tiềm năng'}},={{$json.body.company_name || $json.body.company || ''}},={{$json.body.email || ''}},={{$json.body.phone || ''}},={{$json.body.source || 'WEBSITE'}},={{$json.body.estimated_value ?? 0}},={{$json.body.assigned_to || ''}}"
         }
       },
       "name": "Insert Lead to DB",

@@ -50,6 +50,7 @@ export interface MaintenanceLog {
   technician: string;
   cost: number; // VND
   done_at: string; // ISO
+  performed_at?: string; // YYYY-MM-DD
   next_due: string; // YYYY-MM-DD
   notes: string;
 }

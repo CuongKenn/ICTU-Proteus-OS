@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT b.id, b.title, b.start_time, b.end_time, b.organizer_id, r.name as room_name, COALESCE(r.location, 'Online') as location, ARRAY[b.organizer_id] as attendees FROM {{TENANT_SCHEMA}}.meeting_bookings b JOIN {{TENANT_SCHEMA}}.meeting_rooms r ON r.id = b.room_id WHERE b.status = 'SCHEDULED' AND b.start_time BETWEEN NOW() + INTERVAL '10 minutes' AND NOW() + INTERVAL '20 minutes';",
+        "query": "SELECT b.id, b.title, b.start_time, b.end_time, b.organizer_id, r.name as room_name, COALESCE(r.name || COALESCE(' (' || r.floor || ')', ''), 'Online') AS location FROM {{TENANT_SCHEMA}}.meeting_bookings b LEFT JOIN {{TENANT_SCHEMA}}.meeting_rooms r ON r.id = b.room_id WHERE b.status = 'SCHEDULED' AND b.start_time BETWEEN NOW() + INTERVAL '10 minutes' AND NOW() + INTERVAL '20 minutes';",
         "additionalFields": {}
       },
       "name": "Find Upcoming Meetings",
@@ -71,14 +71,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT STRING_AGG(u.mattermost_user_id, ',') as user_ids FROM users u WHERE u.id = ANY($1::uuid[]);",
+        "query": "SELECT STRING_AGG(u.mattermost_user_id, ',') as user_ids FROM users u WHERE u.id = NULLIF($1::text, '')::uuid AND u.mattermost_user_id IS NOT NULL;",
         "options": {
-          "queryReplacement": "={{$json.attendees}}"
+          "queryReplacement": "={{$json.organizer_id || ''}}"
         }
       },
       "name": "Get Attendee IDs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         1050,
         200
@@ -86,7 +87,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const userIds = $json.user_ids ? $json.user_ids.split(',') : [];\nconst meeting = $('Split Meetings').item.json;\nreturn userIds.map(uid => ({json: {user_id: uid.trim(), meeting}}));"
+        "jsCode": "const userIds = $json.user_ids ? $json.user_ids.split(',').filter(Boolean) : [];\nconst meeting = $('Split Meetings').item.json;\nreturn userIds.map(uid => ({json: {user_id: uid.trim(), meeting}}));"
       },
       "name": "Expand To Each Attendee",
       "type": "n8n-nodes-base.code",
@@ -104,6 +105,7 @@
       "name": "Notify Each Attendee",
       "type": "n8n-nodes-base.mattermost",
       "typeVersion": 1,
+      "continueOnFail": true,
       "position": [
         1450,
         200
@@ -112,9 +114,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.meeting_bookings SET status = 'SCHEDULED' WHERE id = $1;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.meeting_bookings SET status = 'SCHEDULED' WHERE id = NULLIF($1::text, '')::uuid;",
         "options": {
-          "queryReplacement": "={{$('Split Meetings').item.json.id}}"
+          "queryReplacement": "={{$('Split Meetings').item.json.id || ''}}"
         }
       },
       "name": "Mark Reminder Sent",
