@@ -73,6 +73,21 @@ const FEED_EXAMPLE = `{
   ]
 }`;
 
+/** Chỉ cho phép URL http://, https:// hoặc đường dẫn tương đối bắt đầu bằng 1 dấu / (chặn javascript:, data:, //...) */
+export function toSafeHttpUrl(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    (trimmed.startsWith("/") && !trimmed.startsWith("//"))
+  ) {
+    return trimmed;
+  }
+  return null;
+}
+
 function NoticeBox({ notice }: { notice: Notice | null }) {
   if (!notice) return null;
   const style =
@@ -405,9 +420,9 @@ export const KnowledgeTab: React.FC = () => {
             style={
               sub === t.id
                 ? {
-                    background: "var(--accent)",
+                    background: "var(--accent-solid)",
                     color: "#fff",
-                    borderColor: "var(--accent)",
+                    borderColor: "var(--accent-solid)",
                   }
                 : {
                     background: "transparent",
@@ -475,16 +490,19 @@ export const KnowledgeTab: React.FC = () => {
                         : c.document}
                     </p>
                   )}
-                  {c.source_url && (
-                    <a
-                      href={c.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[13px] text-primary inline-flex items-center gap-1 mt-2 font-medium"
-                    >
-                      Đọc đầy đủ <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
+                  {(() => {
+                    const safeUrl = toSafeHttpUrl(c.source_url);
+                    return safeUrl ? (
+                      <a
+                        href={safeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[13px] text-primary inline-flex items-center gap-1 mt-2 font-medium"
+                      >
+                        Đọc đầy đủ <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    ) : null;
+                  })()}
                 </li>
               ))}
             </ul>
@@ -556,16 +574,19 @@ export const KnowledgeTab: React.FC = () => {
                           : (d.title || d.filename)}
                       </span>
                     </span>
-                    {d.url && (
-                      <a
-                        href={d.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary inline-flex items-center gap-1 text-[13px] shrink-0"
-                      >
-                        Xem <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
+                    {(() => {
+                      const safeUrl = toSafeHttpUrl(d.url);
+                      return safeUrl ? (
+                        <a
+                          href={safeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary inline-flex items-center gap-1 text-[13px] shrink-0"
+                        >
+                          Xem <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      ) : null;
+                    })()}
                   </li>
                 ))}
               </ul>
@@ -646,16 +667,19 @@ export const KnowledgeTab: React.FC = () => {
                         <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
                         {d.title}
                       </span>
-                      {d.url && (
-                        <a
-                          href={d.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary inline-flex items-center gap-1 text-[13px] shrink-0"
-                        >
-                          Xem <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      {(() => {
+                        const safeUrl = toSafeHttpUrl(d.url);
+                        return safeUrl ? (
+                          <a
+                            href={safeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary inline-flex items-center gap-1 text-[13px] shrink-0"
+                          >
+                            Xem <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : null;
+                      })()}
                     </li>
                   ))}
                 </ul>

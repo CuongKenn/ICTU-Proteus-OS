@@ -55,7 +55,7 @@ const config: Config = {
         },
         // Legacy & semantic color aliases (with alpha modifier support for /10, /20, /50...)
         primary: {
-          DEFAULT: withOpacity("--accent-rgb"),
+          DEFAULT: withOpacity("--accent-solid-rgb"),
           hover: withOpacity("--accent-hover-rgb"),
           dark: withOpacity("--accent-hover-rgb"),
           light: "var(--accent-soft)",
@@ -63,11 +63,11 @@ const config: Config = {
           glow: "var(--accent-glow)",
           50: "var(--accent-soft)",
           100: "var(--accent-soft)",
-          500: withOpacity("--accent-rgb"),
+          500: withOpacity("--accent-solid-rgb"),
           600: withOpacity("--accent-hover-rgb"),
           700: withOpacity("--accent-hover-rgb"),
         },
-        "brand-primary": withOpacity("--accent-rgb"),
+        "brand-primary": withOpacity("--accent-solid-rgb"),
         "bg-base": withOpacity("--paper-rgb"),
         "bg-surface": withOpacity("--paper-raised-rgb"),
         "bg-hover": withOpacity("--hover-rgb"),

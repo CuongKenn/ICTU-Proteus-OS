@@ -99,4 +99,36 @@ describe("LoginForm", () => {
     expect(mockAddToast).toHaveBeenCalledWith("error", "Phiên làm việc hết hạn. Vui lòng đăng nhập lại.", 10000);
     expect(screen.getByText(/Phiên làm việc đã hết hạn/i)).toBeInTheDocument();
   });
+
+  it("shows success toast when signup_success=1 param is present (#868)", () => {
+    (useSearchParams as any).mockReturnValue({
+      get: (key: string) => {
+        if (key === "signup_success") return "1";
+        return null;
+      },
+    });
+
+    render(<LoginForm />);
+
+    expect(mockAddToast).toHaveBeenCalledWith(
+      "success",
+      "Đăng ký tổ chức thành công! Vui lòng đăng nhập."
+    );
+  });
+
+  it("shows warning toast when expired=true param is present (#868)", () => {
+    (useSearchParams as any).mockReturnValue({
+      get: (key: string) => {
+        if (key === "expired") return "true";
+        return null;
+      },
+    });
+
+    render(<LoginForm />);
+
+    expect(mockAddToast).toHaveBeenCalledWith(
+      "warning",
+      "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+    );
+  });
 });

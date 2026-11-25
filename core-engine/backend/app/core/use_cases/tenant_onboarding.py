@@ -20,6 +20,52 @@ from app.core.domain.ports import AbstractIdentityProviderPort
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_CONFIG_KEYS = (
+    "secret",
+    "password",
+    "passwd",
+    "token",
+    "api_key",
+    "apikey",
+    "private_key",
+    "privatekey",
+)
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(marker in lowered for marker in _SENSITIVE_CONFIG_KEYS)
+
+
+def _mask_secret_value(val: Any) -> str:
+    raw = str(val)
+    if not raw:
+        return ""
+    if len(raw) > 6:
+        return f"••••••••{raw[-4:]}"
+    return "••••••••"
+
+
+def mask_integration_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Trả bản sao config đã che giá trị nhạy cảm (#868), không sửa dict gốc."""
+    if not isinstance(config, dict):
+        return {}
+    masked: dict[str, Any] = {}
+    for k, v in config.items():
+        if isinstance(v, dict):
+            masked[k] = mask_integration_config(v)
+        elif v is not None and _is_sensitive_key(str(k)):
+            masked[k] = _mask_secret_value(v) if str(v) else v
+        else:
+            masked[k] = v
+    return masked
+
+
+def _mask_integration_entity(
+    entity: TenantIntegrationEntity,
+) -> TenantIntegrationEntity:
+    return entity.model_copy(update={"config": mask_integration_config(entity.config)})
+
 
 def mattermost_team_name(slug: str) -> str:
     """Slug hóa tên team MM: chữ thường, số, gạch ngang."""
@@ -175,7 +221,7 @@ class TenantOnboardingUseCase:
             )
         except Exception as e:
             logger.error("Không thể tạo Keycloak group cho tenant %s: %s", slug, e)
-            # Ở môi trường thực tế, nếu gọi KC lỗi, có thể cần rollback DB hoặc retry sau
+            # Ở môi trường thực tế, nếu gọi KC lỗi, có thể cần rollback hoặc retry sau
             # Ở đây ta rollback giao dịch (nếu dùng chung self.session)
             # Vì AbstractTenantRepository không tự commit, ta có thể không commit.
             msg = f"Lỗi tạo Tenant Group trên Keycloak: {e}"
@@ -219,7 +265,7 @@ class TenantOnboardingUseCase:
         if not tenant:
             raise TenantOnboardingError("Tenant không tồn tại.")
 
-        # Loại bỏ các trường không cho phép update: tenant_admin chỉ được đổi name (#733)
+        # Loại bỏ trường không cho phép: tenant_admin chỉ được đổi name (#733)
         allowed = ["name", "plan", "is_active"] if is_superadmin else ["name"]
         safe_data = {k: v for k, v in data.items() if k in allowed}
 
@@ -311,7 +357,7 @@ class TenantOnboardingUseCase:
                         timeout=5.0,
                     )
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Kiểm tra integrations timeout sau 5s.")
                 kc_active = mm_active = appsmith_active = n8n_active = mb_active = False
 
@@ -364,7 +410,10 @@ class TenantOnboardingUseCase:
             si for si in sys_integrations if si.provider not in db_providers
         ]
 
-        return filtered_sys_integrations + integrations
+        return [
+            _mask_integration_entity(item)
+            for item in (filtered_sys_integrations + integrations)
+        ]
 
     async def add_integration(
         self, context: TenantContext, provider: str, config: dict[str, Any]
@@ -377,7 +426,8 @@ class TenantOnboardingUseCase:
             id=uuid.uuid4(),
             tenant_id=context.tenant_id,
             provider=provider,
-            config=config,
+            config=dict(config) if isinstance(config, dict) else config,
             is_active=True,
         )
-        return await self.tenant_repo.add_integration(integration)
+        saved = await self.tenant_repo.add_integration(integration)
+        return _mask_integration_entity(saved)

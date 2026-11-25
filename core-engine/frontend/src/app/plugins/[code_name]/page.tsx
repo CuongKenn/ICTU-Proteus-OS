@@ -16,7 +16,7 @@ interface PluginPageProps {
 
 export default function PluginPage({ params }: PluginPageProps) {
   const { code_name } = params;
-  const { plugins } = usePlugins();
+  const { plugins, isLoading } = usePlugins();
 
   const plugin = useMemo(
     () => plugins.find((p) => p.code_name === code_name),
@@ -35,11 +35,20 @@ export default function PluginPage({ params }: PluginPageProps) {
   return (
     <AppShell>
       <div className="w-full h-full">
-        <SsoEmbed
-          baseUrl={targetUrl}
-          title={plugin?.display_name || code_name}
-          storageKey={`sso_plugin_${code_name}`}
-        />
+        {isLoading ? (
+          <div className="w-full h-full min-h-[420px] flex flex-col items-center justify-center gap-3 bg-paper">
+            <div className="w-8 h-8 border-2 border-line-hi border-t-accent rounded-full animate-spin" />
+            <p className="text-sm text-muted font-medium">
+              Đang tải phân hệ {code_name}…
+            </p>
+          </div>
+        ) : (
+          <SsoEmbed
+            baseUrl={targetUrl}
+            title={plugin?.display_name || code_name}
+            storageKey={`sso_plugin_${code_name}`}
+          />
+        )}
       </div>
     </AppShell>
   );
