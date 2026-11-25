@@ -56,7 +56,11 @@ from app.entrypoints.routers import (
     users,
 )
 from app.infrastructure.config import settings
-from app.infrastructure.database import AsyncSessionLocal, current_tenant_id
+from app.infrastructure.database import (
+    AsyncSessionLocal,
+    current_tenant_id,
+    set_session_tenant,
+)
 from app.infrastructure.logging_config import setup_logging
 from app.infrastructure.rate_limiter import limiter
 
@@ -88,6 +92,7 @@ async def lifespan(app: FastAPI):
         """Plugin cleanup job với error handling và alerting."""
         try:
             async with AsyncSessionLocal() as session:
+                await set_session_tenant(session, "__system__")
                 plugin_repo = SQLAlchemyPluginRepository(session=session)
                 agent = PluginCleanupAgent(
                     plugin_repo=plugin_repo,
@@ -119,6 +124,7 @@ async def lifespan(app: FastAPI):
         """AI timeout worker với error handling."""
         try:
             async with AsyncSessionLocal() as session:
+                await set_session_tenant(session, "__system__")
                 ai_command_repo = SQLAlchemyAICommandRepository(session=session)
                 audit_log_repo = SQLAlchemyAuditLogRepository(session=session)
                 mattermost_adapter = MattermostAdapter(client=app.state.http_client)
@@ -209,6 +215,7 @@ async def lifespan(app: FastAPI):
         """Proactive Monitor: Quét và cảnh báo 30 phút/lần."""
         try:
             async with AsyncSessionLocal() as session:
+                await set_session_tenant(session, "__system__")
                 plugin_repo = SQLAlchemyPluginRepository(session=session)
                 ai_command_repo = SQLAlchemyAICommandRepository(session=session)
                 hr_leave_repo = SQLAlchemyHRLeaveRepository(session=session)
@@ -231,6 +238,7 @@ async def lifespan(app: FastAPI):
         """Proactive Monitor: Báo cáo sáng 7:00 AM."""
         try:
             async with AsyncSessionLocal() as session:
+                await set_session_tenant(session, "__system__")
                 plugin_repo = SQLAlchemyPluginRepository(session=session)
                 ai_command_repo = SQLAlchemyAICommandRepository(session=session)
                 hr_leave_repo = SQLAlchemyHRLeaveRepository(session=session)

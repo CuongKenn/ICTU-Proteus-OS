@@ -22,7 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.adapters.external.n8n_adapter import N8nAdapter, N8nAdapterError
+from app.adapters.external.n8n_adapter import N8nAdapter
 from app.adapters.repositories.base import AbstractPluginRepository
 from app.adapters.repositories.role_repo import RoleRepository
 from app.core.domain.entities import PluginStatus, TenantContext
@@ -69,6 +69,22 @@ class PluginActionUseCase:
         self.role_repo = role_repo
 
     # ─── Helpers ──────────────────────────────────────────────
+
+    def _normalize_plugin_code(self, plugin_code: str) -> str:
+        """Chuẩn hoá prefix hoặc `<prefix>-module` về `manifest.name` (#884)."""
+        if not isinstance(plugin_code, str) or not _CODE_PATTERN.match(plugin_code):
+            raise PluginNotFoundError(f"Plugin '{plugin_code}' không tồn tại.")
+        raw_pdir = getattr(self.manifest_parser, "plugins_dir", None)
+        pdir = Path(raw_pdir) if isinstance(raw_pdir, str | Path) else None
+        if pdir is not None and (pdir / plugin_code).is_dir():
+            return plugin_code
+        from app.core.use_cases.action_catalog import resolve_plugin_code
+
+        stem = plugin_code.removesuffix("-module")
+        resolved = resolve_plugin_code(stem, manifest_parser=self.manifest_parser)
+        if resolved != plugin_code and (pdir is None or (pdir / resolved).is_dir()):
+            return resolved
+        return plugin_code
 
     def _resolve_workflow(self, plugin_code: str, action: str) -> tuple[Any, str]:
         """
@@ -121,7 +137,12 @@ class PluginActionUseCase:
 
         prefix = plugin_code.split("-")[0]
         prefix_colon = f"{prefix}:"
-        user_plugin_perms = [p for p in perms if p.startswith(prefix_colon)]
+        prefix_dot = f"{prefix}."
+        user_plugin_perms = [
+            p
+            for p in perms
+            if str(p).startswith(prefix_colon) or str(p).startswith(prefix_dot)
+        ]
         if not user_plugin_perms:
             raise InsufficientPermissionsError(
                 f"Cần quyền thuộc nhóm '{prefix}:*' để gọi action '{action}'."
@@ -129,7 +150,6 @@ class PluginActionUseCase:
 
         # Kiểm tra action có phải read-only không
         action_lower = action.lower()
-        wf_desc = (getattr(wf, "description", "") or "").lower()
         wf_name = (getattr(wf, "name", "") or "").lower()
         is_read_action = any(
             kw in action_lower or kw in wf_name
@@ -139,14 +159,20 @@ class PluginActionUseCase:
         if is_read_action:
             return
 
-        # Action ghi/duyệt/thay đổi: yêu cầu user phải có quyền ghi/action, không chỉ là read-only
+        # Action ghi/duyệt/thay đổi: yêu cầu user phải có quyền ghi, không chỉ read-only
         has_write_perm = any(
-            not p.endswith(":read") and not p.endswith(":view")
+            not (
+                str(p).endswith(":read")
+                or str(p).endswith(".read")
+                or str(p).endswith(":view")
+                or str(p).endswith(".view")
+            )
             for p in user_plugin_perms
         )
         if not has_write_perm:
             raise InsufficientPermissionsError(
-                f"User chỉ có quyền đọc (read-only), không được dispatch workflow ghi '{action}'."
+                "User chỉ có quyền đọc (read-only), không được dispatch "
+                f"workflow ghi '{action}'."
             )
 
     def _resolve_webhook_url(
@@ -186,6 +212,8 @@ class PluginActionUseCase:
                 path = (node.get("parameters", {}) or {}).get("path")
                 if path:
                     break
+        if not path and getattr(wf, "webhook_path", None):
+            path = getattr(wf, "webhook_path", None)
         if not path:
             raise DSLInvalidParametersError(
                 f"Workflow '{wf.file}' không có webhook node — "
@@ -205,8 +233,7 @@ class PluginActionUseCase:
         self, ctx: TenantContext, plugin_code: str
     ) -> list[dict[str, Any]]:
         """Liệt kê các webhook actions UI có thể gọi (để render nút động)."""
-        if not _CODE_PATTERN.match(plugin_code):
-            raise PluginNotFoundError(f"Plugin '{plugin_code}' không tồn tại.")
+        plugin_code = self._normalize_plugin_code(plugin_code)
         from app.adapters.external.local_manifest_parser import ManifestParserError
 
         try:
@@ -238,8 +265,7 @@ class PluginActionUseCase:
         Lỗi n8n (down/timeout/5xx) được propagate dưới dạng N8nAdapterError
         để tầng Entrypoint map sang 502 (không nuốt thành 400).
         """
-        if not _CODE_PATTERN.match(plugin_code):
-            raise PluginNotFoundError(f"Plugin '{plugin_code}' không tồn tại.")
+        plugin_code = self._normalize_plugin_code(plugin_code)
         if ".." in action or "/" in action or "\\" in action:
             raise DSLInvalidActionError(f"Action '{action}' không hợp lệ.")
         if not _ACTION_PATTERN.match(action):

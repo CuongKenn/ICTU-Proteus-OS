@@ -26,7 +26,7 @@ def worker():
 
 
 def test_resolve_handler_webhook_url_from_file(worker):
-    """EventSubscriberWorker trích xuất đúng path từ node webhook trong file workflow (#729)."""
+    """Trích xuất đúng path từ node webhook trong file workflow (#729)."""
     url = worker._resolve_handler_webhook_url(
         "document-module", "workflows/reassign_document.json"
     )
@@ -83,7 +83,10 @@ async def test_handle_event_triggers_subscriber_workflow(worker):
 
             worker.n8n_adapter.trigger_webhook.assert_called_once()
             call_kwargs = worker.n8n_adapter.trigger_webhook.call_args.kwargs
-            assert call_kwargs["webhook_url"].endswith("/webhook/document/reassign")
+            tenant_short = str(tenant_id).replace("-", "")[:8]
+            assert call_kwargs["webhook_url"].endswith(
+                f"/webhook/t_{tenant_short}_document/reassign"
+            )
             assert call_kwargs["payload"]["employee_id"] == "emp_123"
             assert (
                 call_kwargs["payload"]["_event_metadata"]["event_type"]

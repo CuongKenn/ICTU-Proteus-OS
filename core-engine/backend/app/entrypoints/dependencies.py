@@ -45,6 +45,7 @@ from app.core.domain.entities import TenantContext
 from app.core.domain.exceptions import InsufficientPermissionsError
 from app.core.domain.permissions import has_admin_role, has_wildcard_permission
 from app.core.domain.ports import AbstractLLMPort
+from app.core.use_cases.ai_chat import AIChatUseCase
 from app.core.use_cases.ai_command import AICommandUseCase
 from app.core.use_cases.conversation import ConversationUseCase
 from app.core.use_cases.keycloak_webhook import KeycloakWebhookUseCase
@@ -109,13 +110,12 @@ async def get_mattermost_adapter(request: Request) -> MattermostAdapter:
 
 async def get_qdrant_adapter(request: Request) -> QdrantAdapter:
     """Inject QdrantAdapter (cached on app.state as singleton)."""
-    if (
-        not hasattr(request.app.state, "qdrant_adapter")
-        or request.app.state.qdrant_adapter is None
+    state_client = getattr(request.app.state, "qdrant_client", None)
+    cached = getattr(request.app.state, "qdrant_adapter", None)
+    if cached is None or (
+        state_client is not None and getattr(cached, "client", None) is not state_client
     ):
-        request.app.state.qdrant_adapter = QdrantAdapter(
-            qdrant_client=getattr(request.app.state, "qdrant_client", None)
-        )
+        request.app.state.qdrant_adapter = QdrantAdapter(qdrant_client=state_client)
     return request.app.state.qdrant_adapter
 
 
@@ -176,7 +176,7 @@ async def get_plugin_install_use_case(
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginInstallUseCase:
-    """Inject Plugin Install Use Case (cùng transactional session chống lệch transaction #726)."""
+    """Inject Plugin Install Use Case (cùng transactional session #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginInstallUseCase(
@@ -202,7 +202,7 @@ async def get_plugin_uninstall_use_case(
     db: AsyncSession = Depends(get_db_transactional),
     event_bus: RedisEventBusPublisher = Depends(get_redis_event_bus),
 ) -> PluginUninstallUseCase:
-    """Inject Plugin Uninstall Use Case (cùng transactional session chống lệch transaction #726)."""
+    """Inject Plugin Uninstall Use Case (cùng transactional session #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUninstallUseCase(
@@ -224,7 +224,7 @@ async def get_plugin_toggle_use_case(
     n8n_adapter: N8nAdapter = Depends(get_n8n_adapter),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginToggleUseCase:
-    """Inject Plugin Toggle Use Case (cùng transactional session chống mất commit #726)."""
+    """Inject Plugin Toggle Use Case (cùng transactional session #726)."""
     event_bus = None
     if (
         request is not None
@@ -249,7 +249,7 @@ async def get_plugin_upgrade_use_case(
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginUpgradeUseCase:
-    """Inject Plugin Upgrade Use Case (cùng transactional session chống lệch transaction #726)."""
+    """Inject Plugin Upgrade Use Case (cùng transactional session #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginUpgradeUseCase(
@@ -423,7 +423,7 @@ async def get_tenant_onboarding_use_case(
 async def get_user_provisioning_use_case(
     db: AsyncSession = Depends(get_db_transactional),
 ) -> UserProvisioningUseCase:
-    """Inject User Provisioning Use Case với Transactional Session (upsert cần ghi DB)."""
+    """Inject User Provisioning Use Case với Transactional Session."""
     return UserProvisioningUseCase(user_repo=SQLAlchemyUserRepository(session=db))
 
 
@@ -442,13 +442,17 @@ async def get_conversation_use_case(
 
 
 async def get_keycloak_webhook_use_case(
-    user_repo: AbstractUserRepository = Depends(get_user_repo),
+    db: AsyncSession = Depends(get_db_transactional),
     mattermost_adapter: MattermostAdapter = Depends(get_mattermost_adapter),
 ) -> KeycloakWebhookUseCase:
-    """Inject KeycloakWebhookUseCase."""
+    """Inject KeycloakWebhookUseCase với transactional session và __system__ (#884)."""
+    from app.infrastructure.database import set_session_tenant
+
+    await set_session_tenant(db, "__system__")
     return KeycloakWebhookUseCase(
-        user_repo=user_repo,
+        user_repo=SQLAlchemyUserRepository(session=db),
         mattermost_adapter=mattermost_adapter,
+        session=db,
     )
 
 
@@ -479,7 +483,7 @@ async def get_plugin_records_use_case(
     role_repo: RoleRepository = Depends(get_role_repo),
     db: AsyncSession = Depends(get_db_transactional),
 ) -> PluginRecordsUseCase:
-    """Inject Plugin Records CRUD Use Case (cùng transactional session chống lệch transaction #726)."""
+    """Inject Plugin Records CRUD Use Case (cùng transactional session #726)."""
     from app.adapters.external.local_manifest_parser import LocalManifestParser
 
     return PluginRecordsUseCase(
@@ -604,9 +608,6 @@ async def get_llm_port() -> AbstractLLMPort | None:
         model_name=model_name,
         api_key=getattr(settings, "LLM_API_KEY", "dummy"),
     )
-
-
-from app.core.use_cases.ai_chat import AIChatUseCase
 
 
 async def get_ai_chat_use_case(

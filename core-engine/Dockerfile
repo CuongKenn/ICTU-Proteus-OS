@@ -36,9 +36,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" || exit 1
 
-# Không dùng --workers nhiều hơn 1 nếu chưa test throughput
+# Chạy 1 worker mỗi container để tránh nhân đôi APScheduler & Redis Pub/Sub consumers (#884);
+# mở rộng ngang bằng container replicas phía sau Traefik nếu cần tăng throughput.
 # --proxy-headers: tin tưởng X-Forwarded-* từ Traefik (đúng client IP/scheme khi qua proxy)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
 
 
 # ─────────────────────────────────────────────
@@ -66,6 +67,7 @@ ARG NEXT_PUBLIC_METABASE_URL=http://analytics.proteus.local
 ARG NEXT_PUBLIC_APPSMITH_URL=http://apps.proteus.local
 ARG NEXT_PUBLIC_PLUGINS_MFE_URL=http://plugins.proteus.local
 ARG NEXT_PUBLIC_KEYCLOAK_URL=http://auth.proteus.local
+ARG NEXT_PUBLIC_HASURA_WS_URL=
 # Mock AI fallback CHỈ dùng cho dev/preview local (.env.local).
 # Mặc định false để production không bao giờ trả mock data kể cả khi
 # backend lỗi (fail-loud thay vì fake). Bật ở dev bằng .env.local.
@@ -77,6 +79,7 @@ ENV NEXT_PUBLIC_METABASE_URL=$NEXT_PUBLIC_METABASE_URL
 ENV NEXT_PUBLIC_APPSMITH_URL=$NEXT_PUBLIC_APPSMITH_URL
 ENV NEXT_PUBLIC_PLUGINS_MFE_URL=$NEXT_PUBLIC_PLUGINS_MFE_URL
 ENV NEXT_PUBLIC_KEYCLOAK_URL=$NEXT_PUBLIC_KEYCLOAK_URL
+ENV NEXT_PUBLIC_HASURA_WS_URL=$NEXT_PUBLIC_HASURA_WS_URL
 ENV NEXT_PUBLIC_ENABLE_MOCKS=$NEXT_PUBLIC_ENABLE_MOCKS
 RUN npm run build
 # Verify Next.js standalone output (next.config.mjs: output "standalone")
