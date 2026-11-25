@@ -16,6 +16,30 @@ class OutlineAdapterError(Exception):
     pass
 
 
+PARA_SPACE_DEFINITIONS: tuple[dict[str, str], ...] = (
+    {
+        "key": "projects",
+        "name": "1. Projects",
+        "description": "Dự án & mục tiêu ngắn hạn đang triển khai",
+    },
+    {
+        "key": "areas",
+        "name": "2. Areas",
+        "description": "Quy trình chuẩn & trách nhiệm phòng ban thường trực",
+    },
+    {
+        "key": "resources",
+        "name": "3. Resources",
+        "description": "Tài liệu tham khảo, biểu mẫu & cẩm nang",
+    },
+    {
+        "key": "archives",
+        "name": "4. Archives",
+        "description": "Hồ sơ dự án & quy định cũ lưu trữ",
+    },
+)
+
+
 class OutlineAdapter(AbstractDocumentSourcePort):
     """
     Adapter để tương tác với Outline API.
@@ -63,6 +87,186 @@ class OutlineAdapter(AbstractDocumentSourcePort):
             return []
         data = await self._post("/api/collections.list", {"limit": 100})
         return data.get("data") or []
+
+    async def create_collection(
+        self, name: str, description: str = ""
+    ) -> dict[str, Any]:
+        """Tạo một collection mới trên Outline Wiki (`POST /api/collections.create`)."""
+        if not self.api_key:
+            raise OutlineAdapterError("OUTLINE_API_KEY chưa cấu hình.")
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise OutlineAdapterError("Tên collection không được để trống.")
+        payload: dict[str, Any] = {"name": clean_name}
+        if description:
+            payload["description"] = description
+        data = (await self._post("/api/collections.create", payload)).get("data") or {}
+        raw_url = data.get("url", "")
+        full_url = (
+            raw_url
+            if raw_url.startswith("http")
+            else (f"{self.public_base_url}{raw_url}" if raw_url else "")
+        )
+        return {
+            "id": data.get("id"),
+            "name": data.get("name", clean_name),
+            "description": data.get("description", description),
+            "url": full_url,
+        }
+
+    def _build_local_para_spaces(
+        self, tenant_id: str, tenant_name: str = ""
+    ) -> list[dict[str, Any]]:
+        """Trả danh sách 4 không gian P.A.R.A cục bộ khi Outline chưa cấu hình."""
+        tid = str(tenant_id).strip()
+        org_suffix = (
+            f" ({tenant_name.strip()})" if tenant_name and tenant_name.strip() else ""
+        )
+        return [
+            {
+                "key": spec["key"],
+                "name": spec["name"],
+                "description": f"{spec['description']}{org_suffix}",
+                "collection_id": f"{tid}:para:{spec['key']}",
+                "tenant_id": tid,
+                "mode": "local_para",
+                "url": "",
+            }
+            for spec in PARA_SPACE_DEFINITIONS
+        ]
+
+    @staticmethod
+    def _match_tenant_para_collection(
+        collections: list[dict[str, Any]],
+        *,
+        tenant_id: str,
+        space_name: str,
+    ) -> dict[str, Any] | None:
+        tenant_tag = f"[tenant:{tenant_id}]"
+        # Ưu tiên khớp chính xác tag tenant trong description
+        for coll in collections:
+            desc = str(coll.get("description") or "")
+            cname = str(coll.get("name") or "").strip()
+            if tenant_tag in desc and cname.startswith(space_name):
+                return coll
+        # Nếu collection không mang tag của tenant khác và trùng tên chuẩn P.A.R.A
+        for coll in collections:
+            desc = str(coll.get("description") or "")
+            cname = str(coll.get("name") or "").strip()
+            if "[tenant:" not in desc and cname == space_name:
+                return coll
+        return None
+
+    async def get_para_spaces(
+        self, tenant_id: str, tenant_name: str = ""
+    ) -> list[dict[str, Any]]:
+        """Lấy trạng thái 4 không gian P.A.R.A hiện tại của tenant."""
+        tid = str(tenant_id).strip()
+        if not self.api_key:
+            return self._build_local_para_spaces(tid, tenant_name)
+        try:
+            existing = await self.list_collections()
+        except Exception as exc:
+            logger.warning(
+                "Outline unavailable when listing P.A.R.A spaces for tenant %s: %s",
+                tid,
+                exc,
+            )
+            return self._build_local_para_spaces(tid, tenant_name)
+
+        matched_spaces: list[dict[str, Any]] = []
+        for spec in PARA_SPACE_DEFINITIONS:
+            found = self._match_tenant_para_collection(
+                existing, tenant_id=tid, space_name=spec["name"]
+            )
+            if not found or not found.get("id"):
+                return self._build_local_para_spaces(tid, tenant_name)
+            raw_url = str(found.get("url") or "")
+            full_url = (
+                raw_url
+                if raw_url.startswith("http")
+                else (f"{self.public_base_url}{raw_url}" if raw_url else "")
+            )
+            matched_spaces.append(
+                {
+                    "key": spec["key"],
+                    "name": spec["name"],
+                    "description": spec["description"],
+                    "collection_id": str(found["id"]),
+                    "tenant_id": tid,
+                    "mode": "outline",
+                    "url": full_url,
+                }
+            )
+        return matched_spaces
+
+    async def bootstrap_para_collections(
+        self, tenant_id: str, tenant_name: str = ""
+    ) -> list[dict[str, Any]]:
+        """Khởi tạo idempotent 4 không gian chuẩn P.A.R.A riêng cho tenant (#875).
+
+        Nếu chưa cấu hình OUTLINE_API_KEY hoặc Outline không phản hồi, trả fallback
+        `local_para` (`collection_id = "{tenant_id}:para:{key}"`) an toàn 100%.
+        """
+        tid = str(tenant_id).strip()
+        if not self.api_key:
+            return self._build_local_para_spaces(tid, tenant_name)
+
+        try:
+            existing = await self.list_collections()
+            org_label = (
+                f" — {tenant_name.strip()}"
+                if tenant_name and tenant_name.strip()
+                else ""
+            )
+            tenant_tag = f"[tenant:{tid}]"
+            results: list[dict[str, Any]] = []
+
+            for spec in PARA_SPACE_DEFINITIONS:
+                found = self._match_tenant_para_collection(
+                    existing, tenant_id=tid, space_name=spec["name"]
+                )
+                if found and found.get("id"):
+                    coll_id = str(found["id"])
+                    raw_url = str(found.get("url") or "")
+                    full_url = (
+                        raw_url
+                        if raw_url.startswith("http")
+                        else (f"{self.public_base_url}{raw_url}" if raw_url else "")
+                    )
+                else:
+                    coll_name = (
+                        f"{spec['name']} ({tenant_name.strip()})"
+                        if tenant_name and tenant_name.strip()
+                        else spec["name"]
+                    )
+                    coll_desc = f"{spec['description']}{org_label} {tenant_tag}"
+                    created = await self.create_collection(
+                        name=coll_name,
+                        description=coll_desc,
+                    )
+                    coll_id = str(created.get("id") or f"{tid}:para:{spec['key']}")
+                    full_url = str(created.get("url") or "")
+
+                results.append(
+                    {
+                        "key": spec["key"],
+                        "name": spec["name"],
+                        "description": spec["description"],
+                        "collection_id": coll_id,
+                        "tenant_id": tid,
+                        "mode": "outline",
+                        "url": full_url,
+                    }
+                )
+            return results
+        except Exception as exc:
+            logger.warning(
+                "Outline P.A.R.A bootstrap fallback to local_para for tenant %s: %s",
+                tid,
+                exc,
+            )
+            return self._build_local_para_spaces(tid, tenant_name)
 
     async def publish_document(
         self,
