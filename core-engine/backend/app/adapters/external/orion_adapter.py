@@ -8,7 +8,9 @@ Tham chiếu: ADR-003, Issue #831 [L3-304], ETSI GS CIM 009.
 """
 
 import logging
+import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -18,6 +20,22 @@ from app.infrastructure.config import settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT = "https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context.jsonld"
+_VALID_NGSI_TENANT_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _sanitize_ngsi_tenant(tenant_id: str) -> str:
+    """Chuẩn hoá NGSILD-Tenant theo quy ước FIWARE Orion-LD (`^[a-z0-9_]+$`)."""
+    raw = str(tenant_id).strip().lower()
+    if not raw:
+        return "default"
+    if _VALID_NGSI_TENANT_RE.match(raw):
+        return raw
+    sanitized = re.sub(r"[^a-z0-9_]", "_", raw).strip("_")
+    if not sanitized:
+        return "default"
+    if not sanitized[0].isalpha():
+        sanitized = f"t_{sanitized}"
+    return sanitized
 
 
 class OrionAdapterError(Exception):
@@ -39,12 +57,15 @@ class OrionAdapter(IContextBrokerPort):
     ) -> None:
         self.base_url = (base_url or settings.ORION_URL).rstrip("/")
         self._client = client
+        self._owns_client = False
         self._timeout = timeout
 
     async def aclose(self) -> None:
         """Đóng httpx client nếu do adapter tự tạo."""
-        if self._client is not None:
+        if self._client is not None and self._owns_client:
             await self._client.aclose()
+            self._client = None
+            self._owns_client = False
 
     def _get_headers(self, tenant_id: str | None = None) -> dict[str, str]:
         headers = {
@@ -52,8 +73,8 @@ class OrionAdapter(IContextBrokerPort):
             "Accept": "application/ld+json",
         }
         if tenant_id:
-            # FIWARE standard multi-tenancy header
-            headers["NGSILD-Tenant"] = str(tenant_id)
+            # FIWARE standard multi-tenancy header (chỉ chấp nhận [a-z0-9_])
+            headers["NGSILD-Tenant"] = _sanitize_ngsi_tenant(str(tenant_id))
         return headers
 
     async def _request(
@@ -66,19 +87,12 @@ class OrionAdapter(IContextBrokerPort):
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         try:
-            if self._client is not None:
-                resp = await self._client.request(
-                    method, url, headers=headers, json=json_data, timeout=self._timeout
-                )
-            else:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.request(
-                        method,
-                        url,
-                        headers=headers,
-                        json=json_data,
-                        timeout=self._timeout,
-                    )
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=self._timeout)
+                self._owns_client = True
+            resp = await self._client.request(
+                method, url, headers=headers, json=json_data, timeout=self._timeout
+            )
             return resp
         except httpx.RequestError as exc:
             logger.error(
@@ -116,21 +130,27 @@ class OrionAdapter(IContextBrokerPort):
             return True
 
         if resp.status_code == 409:
-            # Thực thể đã tồn tại -> cập nhật thuộc tính qua PATCH /attrs
-            # Loại bỏ 'id', 'type', '@context' khi update attrs
-            attrs_to_update = {
+            # Thực thể đã tồn tại -> cập nhật thuộc tính qua POST /attrs
+            real_attrs = {
                 k: v
                 for k, v in ngsi_payload.items()
                 if k not in ("id", "type", "@context")
             }
-            if not attrs_to_update:
+            if not real_attrs:
                 return True
 
             patch_headers = dict(headers)
-            # Thêm Link header cho context nếu dùng PATCH application/json
+            attrs_to_update = dict(real_attrs)
+            if (
+                patch_headers.get("Content-Type") == "application/ld+json"
+                and "@context" in ngsi_payload
+            ):
+                attrs_to_update["@context"] = ngsi_payload["@context"]
+
+            quoted_id = quote(str(entity_id), safe=":")
             patch_resp = await self._request(
                 "POST",
-                f"/ngsi-ld/v1/entities/{entity_id}/attrs",
+                f"/ngsi-ld/v1/entities/{quoted_id}/attrs",
                 headers=patch_headers,
                 json_data=attrs_to_update,
             )
@@ -169,8 +189,9 @@ class OrionAdapter(IContextBrokerPort):
     ) -> dict[str, Any] | None:
         """Lấy thông tin thực thể theo ID."""
         headers = self._get_headers(tenant_id)
+        quoted_id = quote(str(entity_id), safe=":")
         resp = await self._request(
-            "GET", f"/ngsi-ld/v1/entities/{entity_id}", headers=headers
+            "GET", f"/ngsi-ld/v1/entities/{quoted_id}", headers=headers
         )
 
         if resp.status_code == 404:
@@ -191,8 +212,9 @@ class OrionAdapter(IContextBrokerPort):
     ) -> bool:
         """Xoá một thực thể NGSI-LD (idempotent)."""
         headers = self._get_headers(tenant_id)
+        quoted_id = quote(str(entity_id), safe=":")
         resp = await self._request(
-            "DELETE", f"/ngsi-ld/v1/entities/{entity_id}", headers=headers
+            "DELETE", f"/ngsi-ld/v1/entities/{quoted_id}", headers=headers
         )
 
         if resp.status_code in (204, 404):
@@ -238,8 +260,9 @@ class OrionAdapter(IContextBrokerPort):
     ) -> bool:
         """Huỷ subscription theo ID (idempotent)."""
         headers = self._get_headers(tenant_id)
+        quoted_sub_id = quote(str(subscription_id), safe=":")
         resp = await self._request(
-            "DELETE", f"/ngsi-ld/v1/subscriptions/{subscription_id}", headers=headers
+            "DELETE", f"/ngsi-ld/v1/subscriptions/{quoted_sub_id}", headers=headers
         )
 
         if resp.status_code in (204, 404):
