@@ -15,8 +15,11 @@ import hmac
 import ipaddress
 import json
 import logging
+import math
+import re
 import socket
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -28,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.external.orion_adapter import OrionAdapter
 from app.adapters.repositories.outbox_repository import SQLAlchemyOutboxRepository
+from app.core.domain.entities import TenantContext
 from app.core.domain.geo_utils import parse_ngsi_ld_geoproperty
 from app.core.use_cases.manifest_validator import _PROHIBITED_NGSI_COLUMNS
 from app.entrypoints.dependencies import get_current_tenant_context, require_permission
@@ -272,6 +276,657 @@ async def receive_orion_notification(
             await redis_client.aclose()
 
     return {"status": "success", "processed_entities": updated_count}
+
+
+ICTU_CAMPUS_CENTER: list[float] = [105.8064, 21.5850]
+
+ETSI_NGSI_LD_CONTEXT: list[str] = [
+    "https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context.jsonld",
+    "https://uri.etsi.org/ngsi-ld/v1.6/ngsi-ld-core-context-v1.6.jsonld",
+]
+
+_FK_ENTITY_TYPE_MAP: dict[str, str] = {
+    "room": "Room",
+    "organizer": "Employee",
+    "employee": "Employee",
+    "assignee": "Employee",
+    "requester": "Employee",
+    "user": "Employee",
+    "manager": "Employee",
+    "issuer": "Employee",
+    "department": "Department",
+    "dept": "Department",
+    "asset": "Asset",
+    "project": "Project",
+    "customer": "Customer",
+    "vendor": "Supplier",
+    "supplier": "Supplier",
+    "category": "Category",
+    "building": "Building",
+    "facility": "Building",
+    "booking": "MeetingBooking",
+    "ticket": "Ticket",
+}
+
+_WKT_POINT_RE = re.compile(
+    r"POINT\s*\(\s*([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _parse_bbox_param(bbox: str) -> tuple[float, float, float, float]:
+    """Validate và parse tham số bbox='min_lon,min_lat,max_lon,max_lat'."""
+    parts = [p.strip() for p in bbox.split(",")]
+    if len(parts) != 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bbox format. Expected 'min_lon,min_lat,max_lon,max_lat'.",
+        )
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(x) for x in parts)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bbox coordinates: all 4 values must be valid numbers.",
+        ) from exc
+
+    if not all(math.isfinite(v) for v in (min_lon, min_lat, max_lon, max_lat)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bbox coordinates: values must be finite numbers.",
+        )
+    if not (-180.0 <= min_lon <= 180.0 and -180.0 <= max_lon <= 180.0):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bbox longitude: must be within [-180, 180].",
+        )
+    if not (-90.0 <= min_lat <= 90.0 and -90.0 <= max_lat <= 90.0):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bbox latitude: must be within [-90, 90].",
+        )
+    if min_lon > max_lon or min_lat > max_lat:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Invalid bbox bounds: min_lon <= max_lon "
+                "and min_lat <= max_lat required."
+            ),
+        )
+    return min_lon, min_lat, max_lon, max_lat
+
+
+def _extract_scalar_value(val: Any) -> Any:
+    if isinstance(val, dict) and "value" in val:
+        return val.get("value")
+    return val
+
+
+def _extract_coordinates(
+    payload: dict[str, Any], location_raw: Any = None
+) -> list[float] | None:
+    """Trích xuất tọa độ [lon, lat] từ payload.location hoặc cột PostGIS location."""
+    loc_prop = payload.get("location")
+    if isinstance(loc_prop, dict):
+        parsed = parse_ngsi_ld_geoproperty(loc_prop)
+        if parsed is not None:
+            return [parsed[0], parsed[1]]
+        if loc_prop.get("type") == "Point":
+            parsed_direct = parse_ngsi_ld_geoproperty(
+                {"type": "GeoProperty", "value": loc_prop}
+            )
+            if parsed_direct is not None:
+                return [parsed_direct[0], parsed_direct[1]]
+
+    if location_raw:
+        if isinstance(location_raw, dict):
+            parsed_raw = parse_ngsi_ld_geoproperty(
+                {"type": "GeoProperty", "value": location_raw}
+            )
+            if parsed_raw is not None:
+                return [parsed_raw[0], parsed_raw[1]]
+        elif isinstance(location_raw, str):
+            raw_str = location_raw.strip()
+            if raw_str.startswith("{"):
+                try:
+                    geo_obj = json.loads(raw_str)
+                    parsed_json = parse_ngsi_ld_geoproperty(
+                        {"type": "GeoProperty", "value": geo_obj}
+                    )
+                    if parsed_json is not None:
+                        return [parsed_json[0], parsed_json[1]]
+                except Exception:
+                    pass
+            wkt_match = _WKT_POINT_RE.search(raw_str)
+            if wkt_match:
+                lon, lat = float(wkt_match.group(1)), float(wkt_match.group(2))
+                if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0:
+                    return [lon, lat]
+    return None
+
+
+def _extract_relationships(
+    payload: dict[str, Any], tenant_id: str
+) -> list[dict[str, str]]:
+    """Trích xuất danh sách quan hệ NGSI-LD (cô lập cùng tenant_id)."""
+    rels: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add_rel(rel_name: str, target_urn: str, fallback_type: str = "Entity") -> None:
+        if target_urn.startswith("urn:ngsi-ld:"):
+            try:
+                urn_type, urn_tenant, _ = parse_urn_parts(target_urn)
+                if urn_tenant != tenant_id:
+                    return
+                target_type = urn_type
+            except ValueError:
+                target_type = fallback_type
+        else:
+            target_type = fallback_type
+            target_urn = f"urn:ngsi-ld:{target_type}:{tenant_id}:{target_urn}"
+
+        dedupe_key = (rel_name, target_urn)
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        rels.append(
+            {
+                "name": rel_name,
+                "object": target_urn,
+                "target": target_urn,
+                "target_type": target_type,
+            }
+        )
+
+    for key, val in payload.items():
+        if key in ("id", "type", "@context", "tenant_id", "entity_id"):
+            continue
+        if isinstance(val, dict) and val.get("type") == "Relationship":
+            raw_obj = val.get("object")
+            if isinstance(raw_obj, str) and raw_obj.strip():
+                _add_rel(key, raw_obj.strip())
+            elif isinstance(raw_obj, list):
+                for item in raw_obj:
+                    if isinstance(item, str) and item.strip():
+                        _add_rel(key, item.strip())
+        elif key.lower().endswith("_id"):
+            scalar = _extract_scalar_value(val)
+            if scalar is not None and str(scalar).strip():
+                prefix = key[:-3].lower()
+                inferred_type = _FK_ENTITY_TYPE_MAP.get(
+                    prefix,
+                    "".join(part.capitalize() for part in prefix.split("_") if part)
+                    or "Entity",
+                )
+                _add_rel(key, str(scalar).strip(), fallback_type=inferred_type)
+
+    return rels
+
+
+def _compute_status_indicator(payload: dict[str, Any]) -> str:
+    """Tính trạng thái Digital Twin: normal | busy | warning | critical."""
+    raw_status = _extract_scalar_value(
+        payload.get("status")
+        or payload.get("employmentStatus")
+        or payload.get("stage")
+        or ""
+    )
+    status_upper = str(raw_status or "").strip().upper()
+
+    raw_priority = _extract_scalar_value(payload.get("priority") or "")
+    priority_upper = str(raw_priority or "").strip().upper()
+
+    escalated = _extract_scalar_value(payload.get("escalated"))
+    is_active = _extract_scalar_value(payload.get("isActive"))
+
+    if (
+        escalated is True
+        or priority_upper in ("P1", "CRITICAL", "URGENT")
+        or status_upper
+        in (
+            "CRITICAL",
+            "OVERDUE",
+            "FAILED",
+            "ERROR",
+            "DOWN",
+            "OUT_OF_SERVICE",
+            "SLA_VIOLATED",
+        )
+    ):
+        return "critical"
+
+    if (
+        is_active is False
+        or priority_upper in ("P2", "HIGH")
+        or status_upper
+        in (
+            "WARNING",
+            "MAINTENANCE",
+            "PENDING",
+            "OPEN",
+            "WAITING_ON_USER",
+            "ON_HOLD",
+            "DEGRADED",
+        )
+    ):
+        return "warning"
+
+    if status_upper in (
+        "BUSY",
+        "IN_USE",
+        "OCCUPIED",
+        "IN_PROGRESS",
+        "BOOKED",
+        "ASSIGNED",
+        "RUNNING",
+    ):
+        return "busy"
+
+    return "normal"
+
+
+def _extract_display_name(
+    entity_id: str, entity_type: str, payload: dict[str, Any]
+) -> str:
+    for candidate_key in (
+        "name",
+        "title",
+        "fullName",
+        "companyName",
+        "invoiceNumber",
+        "assetCode",
+        "roomCode",
+        "projectCode",
+        "docCode",
+    ):
+        if candidate_key in payload:
+            val = _extract_scalar_value(payload[candidate_key])
+            if val is not None and str(val).strip():
+                return str(val).strip()
+    try:
+        _, _, short_id = parse_urn_parts(entity_id)
+        return f"{entity_type} ({short_id})"
+    except ValueError:
+        return entity_id
+
+
+def _serialize_entity_record(
+    *,
+    tenant_id: str,
+    entity_id: str,
+    entity_type: str,
+    payload: dict[str, Any],
+    location_raw: Any = None,
+    updated_at: str | None = None,
+) -> dict[str, Any]:
+    sanitized_payload = {
+        k: v
+        for k, v in (payload or {}).items()
+        if k.lower() not in _PROHIBITED_NGSI_COLUMNS
+    }
+    sanitized_payload.setdefault("id", entity_id)
+    sanitized_payload.setdefault("type", entity_type)
+    sanitized_payload.setdefault("@context", list(ETSI_NGSI_LD_CONTEXT))
+
+    coords = _extract_coordinates(sanitized_payload, location_raw=location_raw)
+    if coords is not None and "location" not in sanitized_payload:
+        sanitized_payload["location"] = {
+            "type": "GeoProperty",
+            "value": {"type": "Point", "coordinates": coords},
+        }
+
+    relationships = _extract_relationships(sanitized_payload, tenant_id=tenant_id)
+    status_indicator = _compute_status_indicator(sanitized_payload)
+    display_name = _extract_display_name(entity_id, entity_type, sanitized_payload)
+
+    return {
+        "id": entity_id,
+        "entity_id": entity_id,
+        "tenant_id": tenant_id,
+        "type": entity_type,
+        "name": display_name,
+        "coordinates": coords,
+        "longitude": coords[0] if coords else None,
+        "latitude": coords[1] if coords else None,
+        "status_indicator": status_indicator,
+        "relationships": relationships,
+        "payload": sanitized_payload,
+        "updated_at": updated_at,
+    }
+
+
+def _build_ictu_campus_demo_entities(tenant_id: str) -> list[dict[str, Any]]:
+    """Bộ thực thể mẫu Khuôn viên Đại học Số ICTU gắn đúng tenant_id hiện tại."""
+    now_iso = datetime.now(UTC).isoformat()
+
+    def _urn(etype: str, slug: str) -> str:
+        return f"urn:ngsi-ld:{etype}:{tenant_id}:{slug}"
+
+    def _prop(val: Any) -> dict[str, Any]:
+        return {"type": "Property", "value": val}
+
+    def _rel(target_urn: str) -> dict[str, Any]:
+        return {"type": "Relationship", "object": target_urn}
+
+    def _geo(lon: float, lat: float) -> dict[str, Any]:
+        return {
+            "type": "GeoProperty",
+            "value": {"type": "Point", "coordinates": [lon, lat]},
+        }
+
+    raw_specs: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            _urn("Building", "ictu-c1"),
+            "Building",
+            {
+                "name": _prop("Tòa nhà Điều hành C1"),
+                "buildingCode": _prop("ICTU-C1"),
+                "floors": _prop(7),
+                "status": _prop("ACTIVE"),
+                "address": _prop("Đường Z115, Quyết Thắng, TP. Thái Nguyên"),
+                "location": _geo(105.8064, 21.5850),
+            },
+        ),
+        (
+            _urn("Building", "ictu-c2"),
+            "Building",
+            {
+                "name": _prop("Giảng đường Đa năng C2"),
+                "buildingCode": _prop("ICTU-C2"),
+                "floors": _prop(5),
+                "status": _prop("IN_USE"),
+                "occupancyPct": _prop(82),
+                "partOfCampus": _rel(_urn("Building", "ictu-c1")),
+                "location": _geo(105.8071, 21.5854),
+            },
+        ),
+        (
+            _urn("Building", "ictu-c6"),
+            "Building",
+            {
+                "name": _prop("Tòa nhà Lab AI & IoT C6"),
+                "buildingCode": _prop("ICTU-C6"),
+                "floors": _prop(6),
+                "status": _prop("ACTIVE"),
+                "partOfCampus": _rel(_urn("Building", "ictu-c1")),
+                "location": _geo(105.8057, 21.5846),
+            },
+        ),
+        (
+            _urn("Building", "ictu-library"),
+            "Building",
+            {
+                "name": _prop("Trung tâm Số & Thư viện"),
+                "buildingCode": _prop("ICTU-LIB"),
+                "floors": _prop(4),
+                "status": _prop("ACTIVE"),
+                "partOfCampus": _rel(_urn("Building", "ictu-c1")),
+                "location": _geo(105.8069, 21.5843),
+            },
+        ),
+        (
+            _urn("Room", "room-c1-202"),
+            "Room",
+            {
+                "name": _prop("Phòng họp C1-202"),
+                "roomCode": _prop("C1-202"),
+                "capacity": _prop(40),
+                "floor": _prop("Tầng 2"),
+                "status": _prop("IN_USE"),
+                "belongsToBuilding": _rel(_urn("Building", "ictu-c1")),
+                "location": _geo(105.8065, 21.5851),
+            },
+        ),
+        (
+            _urn("Asset", "srv-gpu-c6-301"),
+            "Asset",
+            {
+                "name": _prop("Server GPU Lab C6-301"),
+                "assetCode": _prop("ICTU-GPU-A100-01"),
+                "category": _prop("AI Compute Cluster"),
+                "status": _prop("MAINTENANCE"),
+                "locatedAt": _rel(_urn("Building", "ictu-c6")),
+                "location": _geo(105.8058, 21.5847),
+            },
+        ),
+        (
+            _urn("Asset", "maxhub-c1-202"),
+            "Asset",
+            {
+                "name": _prop("Máy chiếu tương tác Maxhub 86 inch"),
+                "assetCode": _prop("ICTU-AV-MX86"),
+                "category": _prop("Smart Conferencing"),
+                "status": _prop("IN_USE"),
+                "locatedInRoom": _rel(_urn("Room", "room-c1-202")),
+                "locatedAt": _rel(_urn("Building", "ictu-c1")),
+                "location": _geo(105.8065, 21.5850),
+            },
+        ),
+        (
+            _urn("Ticket", "it-inc-gpu-301"),
+            "Ticket",
+            {
+                "title": _prop(
+                    "Ticket bảo trì IT Helpdesk: Cảnh báo nhiệt cụm GPU C6-301"
+                ),
+                "priority": _prop("P1"),
+                "status": _prop("OPEN"),
+                "escalated": _prop(True),
+                "relatedAsset": _rel(_urn("Asset", "srv-gpu-c6-301")),
+                "locatedAt": _rel(_urn("Building", "ictu-c6")),
+                "location": _geo(105.8059, 21.5848),
+            },
+        ),
+        (
+            _urn("MeetingBooking", "meet-hdkh-2026"),
+            "MeetingBooking",
+            {
+                "title": _prop("Cuộc họp Hội đồng Khoa học & Chuyển đổi số ICTU"),
+                "startTime": _prop("2026-11-25T08:30:00Z"),
+                "endTime": _prop("2026-11-25T11:30:00Z"),
+                "status": _prop("IN_PROGRESS"),
+                "heldInRoom": _rel(_urn("Room", "room-c1-202")),
+                "usesAsset": _rel(_urn("Asset", "maxhub-c1-202")),
+                "location": _geo(105.8066, 21.5851),
+            },
+        ),
+    ]
+
+    return [
+        _serialize_entity_record(
+            tenant_id=tenant_id,
+            entity_id=eid,
+            entity_type=etype,
+            payload={
+                "id": eid,
+                "type": etype,
+                **body,
+                "@context": list(ETSI_NGSI_LD_CONTEXT),
+            },
+            updated_at=now_iso,
+        )
+        for eid, etype, body in raw_specs
+    ]
+
+
+@router.get("/entities", status_code=status.HTTP_200_OK)
+async def list_context_entities(
+    type: str | None = Query(
+        default=None, description="Lọc theo NGSI-LD Entity Type (VD: Room, Asset)"
+    ),
+    q: str | None = Query(
+        default=None, description="Từ khóa tìm kiếm theo tên, mã hoặc URN"
+    ),
+    bbox: str | None = Query(
+        default=None,
+        description="Khung bản đồ dạng 'min_lon,min_lat,max_lon,max_lat' (WGS84)",
+    ),
+    include_demo_fallback: bool = Query(
+        default=True,
+        description="Hiển thị dữ liệu mẫu Khuôn viên số ICTU khi chưa có dữ liệu thực",
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
+    session: AsyncSession = Depends(get_db_readonly),
+    tenant_context: TenantContext = Depends(get_current_tenant_context),
+):
+    """Truy vấn danh sách thực thể không gian Digital Twin cô lập theo tenant (#871)."""
+    tenant_id_str = str(tenant_context.tenant_id)
+    await set_session_tenant(session, tenant_id_str)
+
+    parsed_bbox: tuple[float, float, float, float] | None = None
+    if bbox is not None and bbox.strip():
+        parsed_bbox = _parse_bbox_param(bbox.strip())
+
+    clean_type = type.strip() if type and type.strip() else None
+    clean_q = q.strip() if q and q.strip() else None
+
+    where_clauses = ["tenant_id = :tenant_id"]
+    params: dict[str, Any] = {
+        "tenant_id": tenant_context.tenant_id,
+        "limit": limit,
+    }
+    if clean_type:
+        where_clauses.append("type = :entity_type")
+        params["entity_type"] = clean_type
+    if clean_q:
+        where_clauses.append(
+            "(entity_id ILIKE :q_like OR type ILIKE :q_like "
+            "OR payload::text ILIKE :q_like)"
+        )
+        params["q_like"] = f"%{clean_q}%"
+    if parsed_bbox is not None:
+        min_lon, min_lat, max_lon, max_lat = parsed_bbox
+        where_clauses.append(
+            "location IS NOT NULL AND ST_Intersects("
+            "location::geometry, "
+            "ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)"
+            ")"
+        )
+        params.update(
+            {
+                "min_lon": min_lon,
+                "min_lat": min_lat,
+                "max_lon": max_lon,
+                "max_lat": max_lat,
+            }
+        )
+
+    where_sql = " AND ".join(where_clauses)
+    sql = text(f"""
+        SELECT
+            tenant_id,
+            entity_id,
+            type,
+            payload,
+            CASE
+                WHEN location IS NOT NULL THEN ST_AsGeoJSON(location::geometry)
+                ELSE NULL
+            END AS location,
+            updated_at
+        FROM context.entity_state
+        WHERE {where_sql}
+        ORDER BY updated_at DESC
+        LIMIT :limit;
+    """)
+
+    rows: list[Any] = []
+    db_unavailable = False
+    try:
+        res = await session.execute(sql, params)
+        rows = list(res.fetchall() or [])
+    except Exception as exc:
+        logger.warning(
+            "Spatial query on context.entity_state unavailable (fallback=%s): %s",
+            include_demo_fallback,
+            exc,
+        )
+        db_unavailable = True
+
+    if rows:
+        entities = []
+        for row in rows:
+            raw_payload = row[3]
+            if isinstance(raw_payload, str):
+                raw_payload = json.loads(raw_payload)
+            updated_val = row[5]
+            updated_iso = (
+                updated_val.isoformat()
+                if hasattr(updated_val, "isoformat")
+                else (str(updated_val) if updated_val else None)
+            )
+            entities.append(
+                _serialize_entity_record(
+                    tenant_id=str(row[0]),
+                    entity_id=str(row[1]),
+                    entity_type=str(row[2]),
+                    payload=raw_payload if isinstance(raw_payload, dict) else {},
+                    location_raw=row[4],
+                    updated_at=updated_iso,
+                )
+            )
+        return {
+            "tenant_id": tenant_id_str,
+            "source": "entity_state",
+            "center": ICTU_CAMPUS_CENTER,
+            "total": len(entities),
+            "entities": entities,
+        }
+
+    # Kiểm tra xem tenant đã có dữ liệu thật trong entity_state chưa khi có bộ lọc
+    tenant_has_existing_data = False
+    if not db_unavailable and (clean_type or clean_q or parsed_bbox is not None):
+        try:
+            exists_res = await session.execute(
+                text(
+                    "SELECT entity_id FROM context.entity_state "
+                    "WHERE tenant_id = :tenant_id LIMIT 1;"
+                ),
+                {"tenant_id": tenant_context.tenant_id},
+            )
+            tenant_has_existing_data = len(exists_res.fetchall() or []) > 0
+        except Exception:
+            tenant_has_existing_data = False
+
+    if not include_demo_fallback or tenant_has_existing_data:
+        return {
+            "tenant_id": tenant_id_str,
+            "source": "entity_state",
+            "center": ICTU_CAMPUS_CENTER,
+            "total": 0,
+            "entities": [],
+        }
+
+    demo_entities = _build_ictu_campus_demo_entities(tenant_id_str)
+    if clean_type:
+        demo_entities = [e for e in demo_entities if e["type"] == clean_type]
+    if clean_q:
+        q_lower = clean_q.lower()
+        demo_entities = [
+            e
+            for e in demo_entities
+            if q_lower in e["name"].lower()
+            or q_lower in e["entity_id"].lower()
+            or q_lower in e["type"].lower()
+            or q_lower in json.dumps(e["payload"], ensure_ascii=False).lower()
+        ]
+    if parsed_bbox is not None:
+        min_lon, min_lat, max_lon, max_lat = parsed_bbox
+        demo_entities = [
+            e
+            for e in demo_entities
+            if e["coordinates"] is not None
+            and min_lon <= e["coordinates"][0] <= max_lon
+            and min_lat <= e["coordinates"][1] <= max_lat
+        ]
+    demo_entities = demo_entities[:limit]
+
+    return {
+        "tenant_id": tenant_id_str,
+        "source": "campus_seed_preview",
+        "center": ICTU_CAMPUS_CENTER,
+        "total": len(demo_entities),
+        "entities": demo_entities,
+    }
 
 
 @router.get("/entities/{entity_id:path}")
