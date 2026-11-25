@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.models import AIMessageModel, AISessionModel
@@ -18,6 +20,30 @@ from app.infrastructure.models import AIMessageModel, AISessionModel
 class ConversationRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+        self._session = session
+
+    async def _flush_session_in_savepoint(self, row: AISessionModel) -> None:
+        """Insert AISessionModel qua SAVEPOINT; đụng PK -> PermissionError (#883)."""
+        begin_nested = getattr(self._session, "begin_nested", None)
+        try:
+            if callable(begin_nested):
+                nested = begin_nested()
+                if hasattr(nested, "__aenter__"):
+                    async with nested:
+                        self.session.add(row)
+                        await self.session.flush()
+                    return
+                if inspect.isawaitable(nested):
+                    awaited = await nested
+                    if hasattr(awaited, "__aenter__"):
+                        async with awaited:
+                            self.session.add(row)
+                            await self.session.flush()
+                        return
+            self.session.add(row)
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise PermissionError("Session belongs to another tenant") from exc
 
     async def _internal_user_id(
         self, tenant_id: uuid.UUID, user_id: uuid.UUID
@@ -64,31 +90,27 @@ class ConversationRepository:
             # phát hiện IDOR và trả 403). Giữ ID do client yêu cầu khi tạo
             # mới hợp lệ để ownership check qua return-value hoạt động.
             # Kiểm tra xem session_id có tồn tại nhưng thuộc người khác không.
-            exists_stmt = select(AISessionModel.id).where(
-                and_(
-                    AISessionModel.id == session_id,
-                    AISessionModel.deleted_at.is_(None),
-                )
-            )
-            if (
-                await self.session.execute(exists_stmt)
-            ).scalar_one_or_none() is not None:
-                # Tồn tại nhưng không thuộc user+tenant hiện tại → tạo mới
-                # với ID ngẫu nhiên để caller phát hiện mismatch → 403.
-                row = AISessionModel(tenant_id=tenant_id, user_id=internal_id)
-                self.session.add(row)
-                await self.session.flush()
-                return row.id
-            # Session hoàn toàn mới do client sinh → giữ nguyên ID yêu cầu.
+            exists_stmt = select(AISessionModel).where(AISessionModel.id == session_id)
+            existing = (await self.session.execute(exists_stmt)).scalar_one_or_none()
+            if existing is not None:
+                if str(existing.tenant_id) != str(tenant_id):
+                    raise PermissionError("Session belongs to another tenant")
+                if existing.deleted_at is not None or str(existing.user_id) != str(
+                    internal_id
+                ):
+                    raise PermissionError(
+                        "Không có quyền sử dụng session của người dùng khác."
+                    )
+                return session_id
+            # Session mới (hoặc thuộc tenant khác đang bị RLS che) ->
+            # chèn qua SAVEPOINT để bắt PK collision thành 403 thay vì 500 (#883).
             row = AISessionModel(
                 id=session_id, tenant_id=tenant_id, user_id=internal_id
             )
-            self.session.add(row)
-            await self.session.flush()
-            return row.id
+            await self._flush_session_in_savepoint(row)
+            return row.id or session_id
         row = AISessionModel(tenant_id=tenant_id, user_id=internal_id)
-        self.session.add(row)
-        await self.session.flush()
+        await self._flush_session_in_savepoint(row)
         return row.id
 
     async def assert_session_owned(
@@ -97,23 +119,22 @@ class ConversationRepository:
         user_id: uuid.UUID,
         session_id: uuid.UUID,
     ) -> None:
-        """M1: raise PermissionError nếu session tồn tại nhưng không thuộc
-        user+tenant hiện tại (IDOR). Session chưa tồn tại → cho qua (sẽ được
-        tạo mới với ID yêu cầu ở ensure_session)."""
+        """M1/#883: chặn IDOR nếu session thuộc tenant/user khác (kể cả dưới RLS)."""
         internal_id = await self._internal_user_id(tenant_id, user_id)
         from sqlalchemy import select as _select
 
-        stmt = _select(AISessionModel).where(
-            and_(
-                AISessionModel.id == session_id,
-                AISessionModel.deleted_at.is_(None),
-            )
-        )
+        stmt = _select(AISessionModel).where(AISessionModel.id == session_id)
         row = (await self.session.execute(stmt)).scalar_one_or_none()
-        if row is None:
+        if row is not None:
+            if str(row.tenant_id) != str(tenant_id):
+                raise PermissionError("Session belongs to another tenant")
+            if row.deleted_at is not None or str(row.user_id) != str(internal_id):
+                raise PermissionError(
+                    "Không có quyền sử dụng session của người dùng khác."
+                )
             return
-        if str(row.tenant_id) != str(tenant_id) or str(row.user_id) != str(internal_id):
-            raise PermissionError("Không có quyền sử dụng session của người dùng khác.")
+        probe = AISessionModel(id=session_id, tenant_id=tenant_id, user_id=internal_id)
+        await self._flush_session_in_savepoint(probe)
 
     async def list_sessions(
         self, tenant_id: uuid.UUID, user_id: uuid.UUID, limit: int = 20
