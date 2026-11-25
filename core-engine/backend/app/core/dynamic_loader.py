@@ -19,13 +19,20 @@ logger = logging.getLogger(__name__)
 class DynamicPluginLoader:
     def __init__(self, app: FastAPI):
         self.app = app
-        self._plugins_dir = Path(settings.PLUGINS_DIR)
-
-        # Đảm bảo đường dẫn tuyệt đối
-        if not self._plugins_dir.is_absolute():
-            backend_dir = Path(__file__).parent.parent.parent.parent
-            root_dir = backend_dir.parent.parent
-            self._plugins_dir = (root_dir / settings.PLUGINS_DIR).resolve()
+        # __file__ = <repo>/core-engine/backend/app/core/dynamic_loader.py
+        # parents[2] = backend, parents[3] = core-engine, parents[4] = repo root
+        repo_root = Path(__file__).resolve().parents[4]
+        raw_dir = str(settings.PLUGINS_DIR)
+        raw_path = Path(raw_dir)
+        if raw_dir.replace("\\", "/") == "/plugins":
+            if raw_path.is_absolute() and raw_path.exists():
+                self._plugins_dir = raw_path.resolve()
+            else:
+                self._plugins_dir = (repo_root / "plugins").resolve()
+        elif not raw_path.is_absolute():
+            self._plugins_dir = (repo_root / raw_dir).resolve()
+        else:
+            self._plugins_dir = raw_path.resolve()
 
         # Thêm thư mục plugins vào sys.path để có thể import
         if str(self._plugins_dir) not in sys.path:
@@ -105,42 +112,47 @@ class DynamicPluginLoader:
     def _is_plugin_trusted(self, plugin_path: Path) -> bool:
         """
         Kiểm tra xem plugin có đủ điều kiện an toàn để nạp code Python (main.py) hay không.
+        - Từ chối tuyệt đối nếu manifest có `synthesized: true` mà `reviewed` không phải `True`
+          (kể cả khi `is_official: true` hoặc có file chữ ký giả mạo).
         - Chấp nhận nếu có file ký số: `.signature` hoặc `signature.sig`.
         - Chấp nhận nếu manifest khai báo `is_official: true` hoặc `reviewed: true`.
-        - Từ chối nếu manifest có `synthesized: true` mà chưa `reviewed: true`, hoặc `reviewed: false`.
         """
-        if (plugin_path / ".signature").exists() or (
-            plugin_path / "signature.sig"
-        ).exists():
-            return True
-
         manifest_file = plugin_path / "manifest.yaml"
         if not manifest_file.exists():
             manifest_file = plugin_path / "manifest.yml"
 
+        manifest: dict | None = None
         if manifest_file.exists():
             try:
                 import yaml
 
                 with open(manifest_file, "r", encoding="utf-8") as f:
-                    manifest = yaml.safe_load(f) or {}
-
-                if manifest.get("synthesized") is True and not manifest.get("reviewed"):
-                    return False
-
-                if manifest.get("reviewed") is False:
-                    return False
-
-                if (
-                    manifest.get("is_official") is True
-                    or manifest.get("reviewed") is True
-                ):
-                    return True
+                    loaded = yaml.safe_load(f)
+                manifest = loaded if isinstance(loaded, dict) else {}
             except Exception as e:
                 logger.warning(
                     "Error checking plugin trust for %s: %s", plugin_path.name, e
                 )
                 return False
+
+            if (
+                manifest.get("synthesized") is True
+                and manifest.get("reviewed") is not True
+            ):
+                return False
+
+            if manifest.get("reviewed") is False:
+                return False
+
+        if (plugin_path / ".signature").exists() or (
+            plugin_path / "signature.sig"
+        ).exists():
+            return True
+
+        if manifest is not None and (
+            manifest.get("is_official") is True or manifest.get("reviewed") is True
+        ):
+            return True
 
         # Mặc định từ chối nạp code Python nếu không có bằng chứng đã review/ký duyệt
         return False

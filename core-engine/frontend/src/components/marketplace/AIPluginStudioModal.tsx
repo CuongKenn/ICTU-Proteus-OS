@@ -26,6 +26,7 @@ import { clsx } from "clsx";
 export interface AIPluginStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
+  canInstall?: boolean;
 }
 
 interface SynthesizedBlueprint {
@@ -46,11 +47,25 @@ function slugifyPluginCode(rawName: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const base = normalized || "custom-ops";
-  return base.endsWith("-module") ? base : `${base}-module`;
+  const nonEmpty = normalized || "custom-ops";
+  const alphaStart = /^[a-z]/.test(nonEmpty) ? nonEmpty : `mod-${nonEmpty}`;
+  const trimmed = alphaStart.slice(0, 56).replace(/-+$/g, "");
+  return trimmed.endsWith("-module") ? trimmed : `${trimmed}-module`;
 }
 
-function buildDeterministicBlueprint(
+function deriveEntityType(codeName: string): string {
+  const words = codeName
+    .split("-")
+    .filter((w) => Boolean(w) && w !== "module");
+  const effective = words.length > 0 ? words : ["Custom"];
+  return (
+    effective
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join("") + "Item"
+  );
+}
+
+export function buildDeterministicBlueprint(
   pluginTitle: string,
   businessDesc: string,
   overrideCodeName?: string,
@@ -58,21 +73,26 @@ function buildDeterministicBlueprint(
   sourceMode: "backend_ai" | "offline_instant" = "offline_instant"
 ): SynthesizedBlueprint {
   const displayName = pluginTitle.trim() || "Quản lý Thiết bị Phòng Lab";
+  const safeYamlDisplayName = displayName.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const codeName = overrideCodeName || slugifyPluginCode(displayName);
-  const prefix = codeName.split("-")[0] || "ops";
-  const tableName = `${prefix}_records`;
-  const entityType =
-    prefix.charAt(0).toUpperCase() + prefix.slice(1) + "AssetRecord";
+  const rawPrefix = codeName.split("-")[0] || "ops";
+  const prefix = /^[a-z]/.test(rawPrefix) ? rawPrefix : `mod_${rawPrefix}`;
+  const tableName = `${prefix}_items`;
+  const webhookPath = `${codeName}-items-sync`;
+  const workflowId = `wf_${prefix}_items_sync`;
+  const entityType = deriveEntityType(codeName);
   const cleanDesc =
     businessDesc.trim() ||
     `Phân hệ ${displayName} quản lý danh mục, trạng thái vận hành và luồng phê duyệt tự động.`;
+  const safeSqlDisplayName = displayName.replace(/'/g, "''");
+  const safeSqlDesc = cleanDesc.replace(/'/g, "''");
 
   const manifestYaml = `# Copyright (c) 2026 CuongKenn & ICTU Team
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Sinh tự động bởi Proteus AI Plugin Studio (Trạng thái: pending_review #689)
 
 name: "${codeName}"
-display_name: "${displayName}"
+display_name: "${safeYamlDisplayName}"
 version: "1.0.0"
 description: |
   ${cleanDesc.replace(/\n/g, "\n  ")}
@@ -82,6 +102,7 @@ category: "Operations"
 is_official: false
 tags:
   - "${prefix}"
+  - "proteus-sdk"
   - "ai-synthesized"
 credentials_schema: []
 
@@ -97,23 +118,29 @@ database:
     require_hitl_approval: true
 
 workflows:
-  - id: "wf_${prefix}_sync"
+  - id: "${workflowId}"
     file: "workflows/sample_webhook.json"
-    name: "${displayName} Webhook"
-    description: "Luồng xử lý nghiệp vụ qua n8n webhook"
+    name: "${safeYamlDisplayName} Sync Webhook"
+    description: "Luồng xử lý đồng bộ bản ghi qua n8n webhook"
     trigger: "webhook"
-    webhook_path: "${codeName}-sync"
+    webhook_path: "${webhookPath}"
 
 ui:
   external_url: "\${PLUGINS_MFE_URL}/${codeName}"
 
 roles:
   - name: "${prefix}_manager"
-    display_name: "${displayName} Manager"
-    description: "Quản trị viên phân hệ ${displayName}"
+    display_name: "${safeYamlDisplayName} Manager"
+    description: "Quản trị viên phân hệ ${safeYamlDisplayName}"
     permissions:
-      - "${prefix}:records:read"
-      - "${prefix}:records:write"
+      - "${prefix}:items:read"
+      - "${prefix}:items:write"
+      - "${prefix}:items:approve"
+  - name: "${prefix}_viewer"
+    display_name: "${safeYamlDisplayName} Viewer"
+    description: "Quyền tra cứu chỉ đọc trên phân hệ ${safeYamlDisplayName}"
+    permissions:
+      - "${prefix}:items:read"
 
 ngsi:
   entities:
@@ -121,14 +148,20 @@ ngsi:
       type: "${entityType}"
       id_pattern: "urn:ngsi-ld:${entityType}:{tenant}:{id}"
       attributes:
-        - column: "record_code"
-          target: "recordCode"
-          type: "Property"
-        - column: "title"
+        - column: "name"
           target: "name"
+          type: "Property"
+        - column: "description"
+          target: "description"
           type: "Property"
         - column: "status"
           target: "status"
+          type: "Property"
+        - column: "latitude"
+          target: "latitude"
+          type: "Property"
+        - column: "longitude"
+          target: "longitude"
           type: "Property"
       relationships: []
 `;
@@ -139,28 +172,27 @@ ngsi:
 
 CREATE TABLE IF NOT EXISTS ${tableName} (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    record_code VARCHAR(64) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT 'GENERAL',
-    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
-    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-    description TEXT,
     tenant_id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_${tableName}_tenant_code UNIQUE (tenant_id, record_code)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO ${tableName} (id, record_code, title, quantity, status, tenant_id)
+INSERT INTO ${tableName} (id, tenant_id, name, description, status, latitude, longitude)
 VALUES (
     '20000000-0000-4000-8000-000000000001',
-    '${prefix.toUpperCase()}-001',
-    'Hồ sơ khởi tạo mẫu — ${displayName}',
-    1,
+    current_setting('app.current_tenant_id')::uuid,
+    'Hồ sơ khởi tạo mẫu — ${safeSqlDisplayName}',
+    '${safeSqlDesc}',
     'ACTIVE',
-    current_setting('app.current_tenant_id')::uuid
+    21.5858,
+    105.8058
 )
-ON CONFLICT (tenant_id, record_code) DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 `;
 
   return {
@@ -180,6 +212,7 @@ type PreviewTab = "manifest" | "sql" | "cli";
 export const AIPluginStudioModal: React.FC<AIPluginStudioModalProps> = ({
   isOpen,
   onClose,
+  canInstall = true,
 }) => {
   const [pluginName, setPluginName] = useState("Quản lý Thiết bị Phòng Lab");
   const [businessPrompt, setBusinessPrompt] = useState(
@@ -230,6 +263,20 @@ curl -X POST http://localhost:3000/api/proxy/v1/plugins/reload`;
       return;
     }
 
+    if (canInstall === false) {
+      const generated = buildDeterministicBlueprint(
+        trimmedTitle,
+        trimmedPrompt,
+        undefined,
+        "Tài khoản hiện tại không có quyền cài đặt Plugin (plugins.install) trên máy chủ — AI Plugin Studio đã sinh Blueprint chuẩn Proteus SDK cục bộ để tham khảo và kiểm thử.",
+        "offline_instant"
+      );
+      setBlueprint(generated);
+      setActiveTab("manifest");
+      setIsGenerating(false);
+      return;
+    }
+
     try {
       const combinedPrompt = `Tên phân hệ: ${trimmedTitle}. Mô tả nghiệp vụ: ${trimmedPrompt}`;
       const res = await fetch("/api/proxy/v1/plugins/synthesize", {
@@ -242,6 +289,7 @@ curl -X POST http://localhost:3000/api/proxy/v1/plugins/reload`;
         const data = (await res.json()) as {
           message?: string;
           plugin_code_name?: string;
+          code_name?: string;
           status?: string;
           manifest_yaml?: string;
           seed_sql?: string;
@@ -249,7 +297,9 @@ curl -X POST http://localhost:3000/api/proxy/v1/plugins/reload`;
         const returnedCode =
           typeof data.plugin_code_name === "string" && data.plugin_code_name
             ? data.plugin_code_name
-            : slugifyPluginCode(trimmedTitle);
+            : typeof data.code_name === "string" && data.code_name
+              ? data.code_name
+              : slugifyPluginCode(trimmedTitle);
         const base = buildDeterministicBlueprint(
           trimmedTitle,
           trimmedPrompt,
@@ -262,6 +312,24 @@ curl -X POST http://localhost:3000/api/proxy/v1/plugins/reload`;
           manifestYaml: data.manifest_yaml || base.manifestYaml,
           seedSql: data.seed_sql || base.seedSql,
         });
+      } else if (res.status === 401 || res.status === 403) {
+        const fallback = buildDeterministicBlueprint(
+          trimmedTitle,
+          trimmedPrompt,
+          undefined,
+          "Tài khoản hiện tại thiếu quyền plugins.install trên máy chủ — AI Plugin Studio đã sinh Blueprint chuẩn Proteus SDK cục bộ.",
+          "offline_instant"
+        );
+        setBlueprint(fallback);
+      } else if (res.status === 429) {
+        const fallback = buildDeterministicBlueprint(
+          trimmedTitle,
+          trimmedPrompt,
+          undefined,
+          "Đã đạt giới hạn tần suất gọi AI Synthesizer trên máy chủ — đã chuyển sang sinh Blueprint chuẩn Proteus SDK cục bộ.",
+          "offline_instant"
+        );
+        setBlueprint(fallback);
       } else {
         // Fallback mượt sang chế độ Offline Blueprint khi LLM local chưa bật hoặc Read-Only FS
         const fallback = buildDeterministicBlueprint(

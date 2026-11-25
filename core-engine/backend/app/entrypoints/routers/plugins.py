@@ -1152,13 +1152,32 @@ async def synthesize_plugin(
     synthesizer = PluginSynthesizer(llm=llm)
     try:
         plugin_name = await synthesizer.synthesize(body.prompt)
-        # BẢO MẬT (Issue #689): Không tự động nạp hoặc thực thi code do LLM sinh ra vào runtime!
-        # Plugin sinh ra chỉ lưu dưới dạng artifact chờ admin review và ký số trước khi nạp.
+        blueprint = getattr(synthesizer, "last_result", None)
+        manifest_yaml = (
+            str(blueprint.get("manifest_yaml") or "")
+            if isinstance(blueprint, dict)
+            else ""
+        )
+        seed_sql = (
+            str(blueprint.get("seed_sql") or "") if isinstance(blueprint, dict) else ""
+        )
+        # BẢO MẬT (Issue #689, #880): Không tự động nạp hoặc thực thi code do LLM sinh ra vào runtime!
+        # Plugin sinh ra chỉ lưu dưới dạng blueprint khai báo chờ admin review và ký số trước khi nạp.
         return {
             "message": f"Đã sinh cấu trúc Plugin {plugin_name} thành công. Cần kiểm duyệt (review) và ký số trước khi nạp vào hệ thống.",
             "plugin_code_name": plugin_name,
             "status": "pending_review",
+            "manifest_yaml": manifest_yaml,
+            "seed_sql": seed_sql,
         }
+    except ValueError as e:
+        err_msg = str(e)
+        status_code = (
+            status.HTTP_409_CONFLICT
+            if "đã tồn tại" in err_msg.lower() or "already exists" in err_msg.lower()
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=status_code, detail=err_msg) from e
     except (PermissionError, OSError) as e:
         logger.warning("Không thể ghi file plugin do hệ thống tập tin read-only: %s", e)
         raise HTTPException(
