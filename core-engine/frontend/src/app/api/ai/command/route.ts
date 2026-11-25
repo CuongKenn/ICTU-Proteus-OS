@@ -42,7 +42,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: "Bad Request", message: "Request body không hợp lệ." },
         { status: 400 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   }
 
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
       return withRotatedCookie(
         NextResponse.json(data, { status: backendResponse.status }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       );
     }
 
@@ -92,7 +94,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: "Upstream Error", message: "Backend trả về response không hợp lệ." },
         { status: 502 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") {
@@ -101,7 +104,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           { error: "Gateway Timeout", message: "AI Service mất quá nhiều thời gian phản hồi." },
           { status: 504 }
         ),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       );
     }
 
@@ -111,7 +115,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: "Service Unavailable", message: "Không thể kết nối tới AI Service." },
         { status: 503 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   }
 }

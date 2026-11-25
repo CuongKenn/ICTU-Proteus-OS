@@ -28,7 +28,7 @@ export function Dashboard() {
           store.listDepartments(),
           store.listEmployees(),
           store.listLeaveRequests(),
-          store.listPayroll(),
+          store.listPayroll().catch(() => [] as PayrollRecord[]),
         ]);
         if (!cancelled) {
           setDepts(dp);

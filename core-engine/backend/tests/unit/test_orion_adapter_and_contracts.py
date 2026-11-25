@@ -7,13 +7,13 @@ Tham chiếu: Issue #831 [L3-304], Issue #832 [L3-305], docs/ngsi-ld-model.md.
 """
 
 from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
 from app.adapters.external.orion_adapter import (
-    OrionAdapter,
-    OrionAdapterError,
     DEFAULT_CONTEXT,
+    OrionAdapter,
 )
 
 
@@ -39,7 +39,7 @@ async def test_orion_adapter_upsert_created():
     args, kwargs = mock_client.request.call_args
     assert args[0] == "POST"
     assert args[1] == "http://mock-orion:1026/ngsi-ld/v1/entities"
-    assert kwargs["headers"]["NGSILD-Tenant"] == "ictu-tenant-uuid"
+    assert kwargs["headers"]["NGSILD-Tenant"] == "ictu_tenant_uuid"
     assert kwargs["json"]["@context"] == DEFAULT_CONTEXT
     assert kwargs["json"]["id"] == "urn:ngsi-ld:Room:ictu:room-a101"
 
@@ -65,11 +65,12 @@ async def test_orion_adapter_upsert_conflict_then_patch():
     )
     assert result is True
     assert mock_client.request.call_count == 2
-    # Verify second call was to /attrs
+    # Verify second call was to /attrs and preserves @context for application/ld+json
     patch_args, patch_kwargs = mock_client.request.call_args
     assert "attrs" in patch_args[1]
     assert patch_kwargs["json"] == {
-        "name": {"type": "Property", "value": "Room A101 Updated"}
+        "name": {"type": "Property", "value": "Room A101 Updated"},
+        "@context": DEFAULT_CONTEXT,
     }
 
 

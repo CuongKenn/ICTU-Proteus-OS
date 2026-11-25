@@ -43,10 +43,19 @@ export const ThemeToggleProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    applyTheme(t);
-    localStorage.setItem("proteus-theme", t);
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
+    applyTheme(next);
+    localStorage.setItem("proteus-theme", next);
+    if (typeof document !== "undefined") {
+      document.querySelectorAll("iframe").forEach((iframe) => {
+        try {
+          iframe.contentWindow?.postMessage({ type: "proteus-theme", theme: next }, "*");
+        } catch {
+          // Ignore cross-origin frame postMessage errors if any
+        }
+      });
+    }
   }, []);
 
   // Đồng bộ khi MFE plugin (iframe same-origin) đổi theme và postMessage lên.
@@ -57,6 +66,7 @@ export const ThemeToggleProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (d?.type === "proteus-theme" && (d.theme === "dark" || d.theme === "light")) {
         setThemeState(d.theme);
         applyTheme(d.theme);
+        localStorage.setItem("proteus-theme", d.theme);
       }
     };
     window.addEventListener("message", onMessage);

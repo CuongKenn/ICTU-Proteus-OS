@@ -3,7 +3,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import clsx from "clsx";
 import {
@@ -78,6 +78,11 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   const category = plugin.category || "Utilities";
   const developer = plugin.author || plugin.developer || "Proteus Core";
   const tags = plugin.tags ?? [];
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [plugin.iconUrl]);
 
   const renderUninstallButton = () => {
     if (!onUninstall) return null;
@@ -130,7 +135,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
       {/* Header */}
       <div className="flex items-start gap-3.5">
         <div className="plugin-icon">
-          {plugin.iconUrl ? (
+          {plugin.iconUrl && !imgError ? (
             <Image
               src={plugin.iconUrl}
               alt={plugin.name}
@@ -138,11 +143,18 @@ export const PluginCard: React.FC<PluginCardProps> = ({
               height={28}
               className="object-contain"
               unoptimized
+              onError={() => setImgError(true)}
             />
           ) : (
-            <span className="text-base font-bold font-heading text-accent">
-              {plugin.name.charAt(0)}
-            </span>
+            <div
+              className="w-full h-full flex items-center justify-center rounded-[9px] select-none"
+              style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+              aria-hidden="true"
+            >
+              <span className="text-[15px] font-bold font-heading tracking-tight uppercase">
+                {(plugin.name || plugin.codeName || "P").trim().charAt(0)}
+              </span>
+            </div>
           )}
         </div>
 

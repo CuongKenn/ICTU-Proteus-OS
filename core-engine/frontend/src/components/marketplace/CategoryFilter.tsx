@@ -15,6 +15,18 @@ export interface CategoryFilterProps {
   onSearchChange: (query: string) => void;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  All: "Tất cả",
+  HR: "Nhân sự (HR)",
+  CRM: "Khách hàng (CRM)",
+  Finance: "Tài chính",
+  IT: "CNTT (IT)",
+  Operations: "Vận hành",
+  Utilities: "Tiện ích",
+  Analytics: "Phân tích",
+  Communication: "Giao tiếp",
+};
+
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   categories,
   selectedCategory,
@@ -28,7 +40,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-hide shrink-0">
         {["All", ...categories].map((category) => {
           const isSelected = selectedCategory === category;
-          const label = category === "All" ? "Tất cả" : category;
+          const label = CATEGORY_LABELS[category] ?? category;
           return (
             <button
               key={category}

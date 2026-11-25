@@ -85,7 +85,8 @@ async function proxyHandler(
     return withCorsHeaders(
       withRotatedCookie(
         NextResponse.json({ error: "Invalid path encoding" }, { status: 400 }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );
@@ -99,7 +100,8 @@ async function proxyHandler(
     return withCorsHeaders(
       withRotatedCookie(
         NextResponse.json({ error: "Path traversal forbidden" }, { status: 400 }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );
@@ -118,7 +120,8 @@ async function proxyHandler(
           { error: "Access to internal routes is forbidden" },
           { status: 403 }
         ),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );
@@ -158,7 +161,8 @@ async function proxyHandler(
             { error: "Invalid request body format or stream interrupted" },
             { status: 400 }
           ),
-          rotatedCookieValue
+          rotatedCookieValue,
+          request
         ),
         request
       );
@@ -177,7 +181,8 @@ async function proxyHandler(
     return withCorsHeaders(
       withRotatedCookie(
         NextResponse.json({ error: "Backend unavailable" }, { status: 502 }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );
@@ -191,7 +196,8 @@ async function proxyHandler(
     return withCorsHeaders(
       withRotatedCookie(
         NextResponse.json({ error: "Unauthorized from backend", detail: txt }, { status: 401 }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       ),
       request
     );

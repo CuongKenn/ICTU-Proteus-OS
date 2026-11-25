@@ -70,50 +70,100 @@ ui:
 
 roles:
   - name: "crm_sales"
+    display_name: "Nhân viên Kinh doanh"
     description: "Nhân viên Kinh doanh"
     permissions:
-      - "crm:leads:read"
-      - "crm:leads:write"
-      - "crm:opportunities:read"
-      - "crm:opportunities:write"
-      - "crm:activities:write"
-      - "crm:customers:read"
-
-  - name: "crm_support"
-    description: "Nhân viên Hỗ trợ Khách hàng"
-    permissions:
-      - "crm:tickets:read"
-      - "crm:tickets:write"
-      - "crm:ticket_comments:write"
-      - "crm:customers:read"
-
-  - name: "crm_manager"
-    description: "Quản lý CRM"
-    permissions:
-      - "crm:leads:read"
-      - "crm:leads:write"
-      - "crm:opportunities:read"
-      - "crm:opportunities:write"
-      - "crm:activities:write"
-      - "crm:tickets:read"
-      - "crm:tickets:write"
-      - "crm:ticket_comments:write"
       - "crm:customers:read"
       - "crm:customers:write"
+      - "crm:contacts:read"
+      - "crm:contacts:write"
+      - "crm:leads:read"
+      - "crm:leads:write"
+      - "crm:opportunities:read"
+      - "crm:opportunities:write"
+      - "crm:activities:read"
+      - "crm:activities:write"
+      - "crm:tickets:read"
+      - "crm:ticket_comments:read"
+      - "crm:surveys:read"
+
+  - name: "crm_support"
+    display_name: "Nhân viên Hỗ trợ Khách hàng"
+    description: "Nhân viên Hỗ trợ Khách hàng"
+    permissions:
+      - "crm:customers:read"
+      - "crm:contacts:read"
+      - "crm:leads:read"
+      - "crm:opportunities:read"
+      - "crm:activities:read"
+      - "crm:activities:write"
+      - "crm:tickets:read"
+      - "crm:tickets:write"
+      - "crm:ticket_comments:read"
+      - "crm:ticket_comments:write"
+      - "crm:surveys:read"
+      - "crm:surveys:write"
+
+  - name: "crm_manager"
+    display_name: "Quản lý CRM"
+    description: "Quản lý CRM"
+    permissions:
+      - "crm:customers:read"
+      - "crm:customers:write"
+      - "crm:contacts:read"
+      - "crm:contacts:write"
+      - "crm:leads:read"
+      - "crm:leads:write"
+      - "crm:opportunities:read"
+      - "crm:opportunities:write"
+      - "crm:activities:read"
+      - "crm:activities:write"
+      - "crm:tickets:read"
+      - "crm:tickets:write"
+      - "crm:ticket_comments:read"
+      - "crm:ticket_comments:write"
+      - "crm:surveys:read"
+      - "crm:surveys:write"
       - "crm:reports:read"
       - "crm:assign:all"
 
   - name: "crm_viewer"
+    display_name: "Người xem CRM"
     description: "Khách / Người xem (BGĐ)"
     permissions:
       - "crm:customers:read"
+      - "crm:contacts:read"
+      - "crm:leads:read"
       - "crm:opportunities:read"
+      - "crm:activities:read"
+      - "crm:tickets:read"
+      - "crm:ticket_comments:read"
+      - "crm:surveys:read"
+      - "crm:reports:read"
 
-events:
-  consumes:
-    - "finance.contract.signed"
-    - "hr.employee.deactivated"
-  produces:
-    - "crm.customer.created"
-    - "crm.opportunity.won"
-    - "crm.ticket.resolved"
+event_subscriptions:
+  - source_plugin: "finance-module"
+    event_types:
+      - "finance.contract.signed"
+    handler_workflow: "workflows/customer_satisfaction.json"
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/ticket_assignment.json"
+
+event_publications:
+  - event_type: "crm.customer.created"
+    description: "Khi khách hàng mới được tạo"
+    payload_schema:
+      customer_id: "uuid"
+
+  - event_type: "crm.opportunity.won"
+    description: "Khi cơ hội bán hàng chốt thành công"
+    payload_schema:
+      opportunity_id: "uuid"
+      value: "number"
+
+  - event_type: "crm.ticket.resolved"
+    description: "Khi ticket hỗ trợ khách hàng được giải quyết"
+    payload_schema:
+      ticket_id: "uuid"

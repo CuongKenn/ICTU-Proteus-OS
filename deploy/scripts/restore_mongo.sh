@@ -9,12 +9,12 @@ set -eo pipefail
 BACKUP_DIR=${BACKUP_DIR:-"/backups/mongo"}
 MONGO_HOST=${MONGO_HOST:-"mongo"}
 MONGO_PORT=${MONGO_PORT:-27017}
-MONGO_USER=${MONGO_INITDB_ROOT_USERNAME:-"proteus_orion"}
-MONGO_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-"proteus_orion_secret"}
-MONGO_DB=${MONGO_INITDB_DATABASE:-"orion"}
+MONGO_USER=${MONGO_USER:-${MONGO_INITDB_ROOT_USERNAME:-""}}
+MONGO_PASSWORD=${MONGO_PASSWORD:-${MONGO_INITDB_ROOT_PASSWORD:-""}}
+MONGO_AUTH_DB=${MONGO_AUTH_DB:-"admin"}
 
 # Kiểm tra file backup
-if [ -n "$1" ]; then
+if [ -n "${1:-}" ]; then
     RESTORE_FILE="$1"
 else
     # Lấy file mới nhất
@@ -26,15 +26,21 @@ if [ -z "${RESTORE_FILE}" ] || [ ! -f "${RESTORE_FILE}" ]; then
     exit 1
 fi
 
-echo "Starting restore of MongoDB from ${RESTORE_FILE} into ${MONGO_HOST}:${MONGO_PORT}..."
+AUTH_ARGS=()
+if [ -n "${MONGO_USER}" ]; then
+    AUTH_ARGS=(
+        "--username=${MONGO_USER}"
+        "--password=${MONGO_PASSWORD}"
+        "--authenticationDatabase=${MONGO_AUTH_DB}"
+    )
+fi
+
+echo "Starting full multi-tenant MongoDB restore from ${RESTORE_FILE} into ${MONGO_HOST}:${MONGO_PORT}..."
 
 mongorestore \
     --host="${MONGO_HOST}" \
     --port="${MONGO_PORT}" \
-    --username="${MONGO_USER}" \
-    --password="${MONGO_PASSWORD}" \
-    --authenticationDatabase="admin" \
-    --nsInclude="${MONGO_DB}.*" \
+    "${AUTH_ARGS[@]}" \
     --archive="${RESTORE_FILE}" \
     --gzip \
     --drop

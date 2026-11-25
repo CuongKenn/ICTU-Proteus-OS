@@ -69,36 +69,75 @@ ui:
 
 roles:
   - name: "finance_accountant"
+    display_name: "Kế toán viên"
     description: "Kế toán viên"
     permissions:
+      - "finance:accounts:read"
+      - "finance:accounts:write"
       - "finance:transactions:read"
       - "finance:transactions:write"
+      - "finance:transactions:delete"
       - "finance:invoices:read"
       - "finance:invoices:write"
+      - "finance:invoices:delete"
+      - "finance:budgets:read"
+      - "finance:budgets:write"
+      - "finance:expense_requests:read"
+      - "finance:expense_requests:write"
       - "finance:reports:read"
 
   - name: "finance_manager"
+    display_name: "Quản lý Tài chính"
     description: "Kế toán trưởng / Quản lý tài chính"
     permissions:
+      - "finance:accounts:read"
+      - "finance:accounts:write"
       - "finance:transactions:read"
       - "finance:transactions:write"
+      - "finance:transactions:delete"
       - "finance:invoices:read"
       - "finance:invoices:write"
-      - "finance:reports:read"
+      - "finance:invoices:delete"
+      - "finance:budgets:read"
       - "finance:budgets:write"
+      - "finance:expense_requests:read"
+      - "finance:expense_requests:write"
       - "finance:expense_requests:approve"
+      - "finance:config:read"
+      - "finance:config:write"
+      - "finance:reports:read"
 
   - name: "finance_viewer"
+    display_name: "Xem Báo cáo Tài chính"
     description: "Xem báo cáo (Ban Giám đốc)"
     permissions:
+      - "finance:accounts:read"
       - "finance:transactions:read"
+      - "finance:invoices:read"
+      - "finance:budgets:read"
+      - "finance:expense_requests:read"
       - "finance:reports:read"
 
-events:
-  consumes:
-    - "hr.employee.created"
-    - "hr.employee.deactivated"
-  produces:
-    - "finance.expense_request.approved"
-    - "finance.payroll.processed"
-    - "finance.invoice.overdue"
+event_subscriptions:
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.created"
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/expense_approval.json"
+
+event_publications:
+  - event_type: "finance.expense_request.approved"
+    description: "Khi đề xuất chi phí được phê duyệt"
+    payload_schema:
+      expense_request_id: "uuid"
+      amount: "number"
+
+  - event_type: "finance.payroll.processed"
+    description: "Khi bảng lương được xử lý thanh toán"
+    payload_schema:
+      period: "string"
+
+  - event_type: "finance.invoice.overdue"
+    description: "Khi hóa đơn quá hạn thanh toán"
+    payload_schema:
+      invoice_id: "uuid"

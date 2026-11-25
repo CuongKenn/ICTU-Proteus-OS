@@ -27,8 +27,7 @@ describe("useAICommand", () => {
     const { result } = renderHook(() => useAICommand());
 
     expect(result.current.widgetState).toBe("collapsed");
-    expect(result.current.messages.length).toBe(1);
-    expect(result.current.messages[0].role).toBe("assistant");
+    expect(result.current.messages.length).toBe(0);
     expect(result.current.inputValue).toBe("");
     expect(result.current.dslPreview).toBeNull();
     // Validate RFC-4122 UUID v4 format

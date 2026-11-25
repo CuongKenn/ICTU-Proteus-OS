@@ -37,9 +37,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = 'approved', updated_at = NOW() WHERE id = $1;",
+        "query": "UPDATE {{TENANT_SCHEMA}}.procurement_purchase_orders SET status = CASE WHEN LOWER(COALESCE($2::text, 'approved')) IN ('rejected', 'reject') THEN 'rejected' ELSE 'approved' END, updated_at = NOW() WHERE id = $1::uuid RETURNING id, status;",
         "options": {
-          "queryReplacement": "={{$json.id}}"
+          "queryReplacement": "={{$json.id || $('Webhook - PO Approval').item.json.body.po_id}},={{$('Webhook - PO Approval').item.json.body.decision || 'approved'}}"
         }
       },
       "name": "Submit PO",
@@ -53,14 +53,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT mattermost_user_id FROM users WHERE mattermost_user_id IS NOT NULL LIMIT 1;",
+        "query": "SELECT mattermost_user_id FROM users WHERE ($1::text = '' OR tenant_id::text = $1::text) AND mattermost_user_id IS NOT NULL LIMIT 1;",
         "options": {
-          "queryReplacement": ""
+          "queryReplacement": "={{$('Webhook - PO Approval').item.json.body.tenant_id || ''}}"
         }
       },
       "name": "Get Approver",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.1,
+      "alwaysOutputData": true,
       "position": [
         850,
         300

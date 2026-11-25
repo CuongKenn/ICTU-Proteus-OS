@@ -162,16 +162,12 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
   const failedStep = displaySteps.find((s) => s.status === "FAILED");
   const runningStep = displaySteps.find((s) => s.status === "RUNNING");
 
-  // Chặn đóng modal khi đang chạy (backdrop/Escape/X) để user không mất
-  // tiến trình polling; hook tự reset installingId khi xong. Chỉ cho đóng
-  // khi đã terminal (failed/active) hoặc không còn isOpen.
+  // Cho phép đóng modal khi đã hoàn tất/thất bại HOẶC ẩn modal về chạy nền (#867)
   const handleClose = () => {
-    if (isBusy) return;
     onClose();
   };
 
-  // Only show if we have an active installation sequence
-  if (!isOpen && status !== "failed" && status !== "active") return null;
+  if (!isOpen) return null;
 
   const title =
     status === "uninstalling"
@@ -206,7 +202,7 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
         status === "uninstalling" ||
         status === "upgrading"
       }
-      onConfirm={onClose}
+      onConfirm={handleClose}
       maxWidth="2xl"
     >
       <div className="flex flex-col gap-6">
@@ -230,17 +226,16 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
             />
           </div>
           {isBusy && (
-            <div className="flex items-center gap-2 text-xs text-text-tertiary">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <Clock className="w-3.5 h-3.5" />
               <span>
-                Mỗi bước có delay mô phỏng 1–3s để bạn quan sát chi tiết tiến trình.
-                Vui lòng không đóng cửa sổ.
+                Quá trình đang được xử lý tự động. Bạn có thể ẩn cửa sổ này để theo dõi chạy nền.
               </span>
             </div>
           )}
         </div>
 
-        <div className="flex flex-col gap-2 bg-bg-surface-elevated p-4 rounded-xl border border-border/50 max-h-[400px] overflow-y-auto">
+        <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-border/50 max-h-[400px] overflow-y-auto">
           {steps.length === 0 && !isBusy && (
             <div className="flex items-center gap-3 text-text-secondary text-sm p-2">
               <Loader2 className="w-4 h-4 animate-spin text-brand-primary" />
@@ -263,7 +258,7 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
             return (
               <div
                 key={`${step.step}-${idx}`}
-                className="flex gap-4 items-start p-2 rounded-lg hover:bg-bg-surface-hover transition-colors"
+                className="flex gap-4 items-start p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <div className="mt-0.5 shrink-0">
                   {isDone && <CheckCircle2 className="w-5 h-5 text-success" />}
@@ -272,7 +267,7 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
                     <Loader2 className="w-5 h-5 animate-spin text-brand-primary" />
                   )}
                   {!isDone && !isFailed && !isRunning && (
-                    <Circle className="w-5 h-5 text-text-tertiary" />
+                    <Circle className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                   )}
                 </div>
 
@@ -284,14 +279,14 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
                       Bước {idx + 1}: {STEP_LABELS[step.step] || step.step.toUpperCase()}
                     </span>
                     {timeLabel && (
-                      <span className="text-[11px] text-text-tertiary shrink-0 font-mono">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 font-mono">
                         {timeLabel}
                       </span>
                     )}
                   </div>
 
                   {desc && (
-                    <span className="text-xs text-text-tertiary">{desc}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{desc}</span>
                   )}
 
                   {(step.message || isRunning) && (
@@ -320,7 +315,7 @@ export const InstallProgressModal: React.FC<InstallProgressModalProps> = ({
         )}
 
         {runningStep && isBusy && (
-          <div className="text-xs text-text-tertiary text-center">
+          <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
             Đang thực hiện: <strong>{STEP_LABELS[runningStep.step] || runningStep.step}</strong> — vui
             lòng chờ...
           </div>

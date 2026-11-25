@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ─────────────────────────────────────────────────────────────
 # CREDENTIAL SCHEMA (§3.0 — mới)
@@ -209,7 +209,8 @@ class PluginManifest(BaseModel):
     is_official: bool = False
     homepage_url: str | None = None
     category: str = "Utilities"
-    """Danh mục plugin: HR | CRM | Finance | Analytics | Communication | Utilities | IT | Operations | Legal | Other"""
+    """Danh mục plugin: HR | CRM | Finance | Analytics | Communication |
+    Utilities | IT | Operations | Legal | Other"""
     tags: list[str] = Field(default_factory=list)
     """Tags tìm kiếm (VD: ['nhân sự', 'chấm công'])."""
     screenshots: list[str] = Field(default_factory=list)
@@ -248,6 +249,111 @@ class PluginManifest(BaseModel):
 
     # ─── NGSI-LD (Lớp 3 — Context Broker & Digital Twin) ──────
     ngsi: ManifestNGSI | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_events_block(cls, values: Any) -> Any:
+        """Hỗ trợ khối `events: { consumes, produces }` trong YAML (#865.4)."""
+        if not isinstance(values, dict):
+            return values
+        events_cfg = values.get("events")
+        if not isinstance(events_cfg, dict):
+            return values
+
+        data = dict(values)
+        consumes = events_cfg.get("consumes") or []
+        produces = events_cfg.get("produces") or []
+
+        if consumes and not data.get("event_subscriptions"):
+            # Xác định handler_workflow mặc định từ workflows webhook (nếu có)
+            default_handler = ""
+            raw_workflows = data.get("workflows") or []
+            if isinstance(raw_workflows, list):
+                for wf in raw_workflows:
+                    wf_dict = (
+                        wf
+                        if isinstance(wf, dict)
+                        else (wf.model_dump() if hasattr(wf, "model_dump") else {})
+                    )
+                    if wf_dict.get("trigger") == "webhook" and wf_dict.get("file"):
+                        default_handler = str(wf_dict["file"])
+                        break
+            if not default_handler:
+                plugin_prefix = str(data.get("name") or "plugin").split("-")[0]
+                default_handler = f"{plugin_prefix}.events.handle"
+
+            grouped_by_source: dict[str, list[str]] = {}
+            subs: list[dict[str, Any]] = []
+            for item in consumes:
+                if isinstance(item, dict):
+                    src = item.get("source_plugin")
+                    ev_types = item.get("event_types")
+                    if not ev_types and item.get("event_type"):
+                        ev_types = [str(item["event_type"])]
+                    if not src and ev_types:
+                        prefix = str(ev_types[0]).split(".", 1)[0]
+                        src = (
+                            "it-helpdesk-module"
+                            if prefix == "it"
+                            else (
+                                prefix
+                                if prefix.endswith("-module")
+                                else f"{prefix}-module"
+                            )
+                        )
+                    subs.append(
+                        {
+                            "source_plugin": src or "core",
+                            "event_types": list(ev_types or []),
+                            "handler_workflow": item.get("handler_workflow")
+                            or default_handler,
+                        }
+                    )
+                elif isinstance(item, str) and item.strip():
+                    ev = item.strip()
+                    if "." in ev:
+                        prefix = ev.split(".", 1)[0]
+                        src = (
+                            "it-helpdesk-module"
+                            if prefix == "it"
+                            else (
+                                prefix
+                                if prefix.endswith("-module")
+                                else f"{prefix}-module"
+                            )
+                        )
+                    else:
+                        src = "core"
+                    grouped_by_source.setdefault(src, []).append(ev)
+
+            for src, ev_list in grouped_by_source.items():
+                subs.append(
+                    {
+                        "source_plugin": src,
+                        "event_types": ev_list,
+                        "handler_workflow": default_handler,
+                    }
+                )
+            data["event_subscriptions"] = subs
+
+        if produces and not data.get("event_publications"):
+            pubs: list[dict[str, Any]] = []
+            for item in produces:
+                if isinstance(item, dict):
+                    ev_type = item.get("event_type") or item.get("type")
+                    if ev_type:
+                        pubs.append(
+                            {
+                                "event_type": str(ev_type),
+                                "description": item.get("description"),
+                                "payload_schema": item.get("payload_schema") or {},
+                            }
+                        )
+                elif isinstance(item, str) and item.strip():
+                    pubs.append({"event_type": item.strip()})
+            data["event_publications"] = pubs
+
+        return data
 
     def get_credentials_schema_as_dict(self) -> list[dict[str, Any]]:
         """Trả về credentials_schema dưới dạng list[dict] để lưu vào DB (JSONB)."""

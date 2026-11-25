@@ -3,9 +3,7 @@
 #
 # Core Domain — Plugin Uninstall Use Case (6-step reverse)
 
-import asyncio
 import logging
-import random
 import re
 import uuid
 from typing import Any
@@ -275,27 +273,122 @@ class PluginUninstallUseCase:
             )
 
         if getattr(manifest, "ngsi", None) and manifest.ngsi.entities:
+            import inspect
+
+            from app.adapters.external.orion_adapter import OrionAdapter
+
+            async def _extract_sub_ids(res: Any) -> list[str]:
+                if res is None:
+                    return []
+                rows: Any = None
+                if hasattr(res, "fetchall"):
+                    cand = res.fetchall()
+                    if inspect.isawaitable(cand):
+                        cand = await cand
+                    if isinstance(cand, list | tuple):
+                        rows = cand
+                if rows is None and hasattr(res, "all"):
+                    cand = res.all()
+                    if inspect.isawaitable(cand):
+                        cand = await cand
+                    if isinstance(cand, list | tuple):
+                        rows = cand
+                if rows is None and isinstance(res, list | tuple):
+                    rows = res
+                if not rows:
+                    return []
+                out: list[str] = []
+                for r in rows:
+                    if isinstance(r, str) and r:
+                        out.append(r)
+                    elif isinstance(r, dict) and r.get("subscription_id"):
+                        out.append(str(r["subscription_id"]))
+                    elif hasattr(r, "subscription_id") and isinstance(
+                        r.subscription_id, str
+                    ):
+                        out.append(r.subscription_id)
+                    else:
+                        try:
+                            first_col = r[0]
+                            if first_col is not None and isinstance(
+                                first_col, str | uuid.UUID
+                            ):
+                                out.append(str(first_col))
+                        except Exception:
+                            pass
+                return out
+
+            orion = OrionAdapter()
             try:
-                from sqlalchemy import text
-
-                from app.infrastructure.database import AsyncSessionLocal
-
-                async with AsyncSessionLocal() as session:
-                    for ent in manifest.ngsi.entities:
-                        await session.execute(
-                            text(
-                                "DELETE FROM context.subscriptions "
-                                "WHERE tenant_id = :tid AND entity_type = :etype;"
-                            ),
-                            {"tid": context.tenant_id, "etype": ent.type},
+                if self.session is not None:
+                    await self.session.execute(text("SAVEPOINT sp_uninstall_ngsi"))
+                    try:
+                        for ent in manifest.ngsi.entities:
+                            params = {"tid": context.tenant_id, "etype": ent.type}
+                            res = await self.session.execute(
+                                text(
+                                    "SELECT subscription_id FROM context.subscriptions "
+                                    "WHERE tenant_id = :tid AND entity_type = :etype;"
+                                ),
+                                params,
+                            )
+                            sub_ids = await _extract_sub_ids(res)
+                            for sub_id in sub_ids:
+                                try:
+                                    await orion.delete_subscription(
+                                        sub_id, tenant_id=str(context.tenant_id)
+                                    )
+                                except Exception as orion_err:
+                                    logger.warning(
+                                        "Could not delete Orion-LD subscription "
+                                        "%s for plugin %s: %s",
+                                        sub_id,
+                                        plugin_code_name,
+                                        orion_err,
+                                    )
+                            await self.session.execute(
+                                text(
+                                    "DELETE FROM context.subscriptions "
+                                    "WHERE tenant_id = :tid AND entity_type = :etype;"
+                                ),
+                                params,
+                            )
+                            await self.session.execute(
+                                text(
+                                    "DELETE FROM context.entity_state "
+                                    "WHERE tenant_id = :tid AND type = :etype;"
+                                ),
+                                params,
+                            )
+                            await self.session.execute(
+                                text(
+                                    "DELETE FROM context.context_outbox "
+                                    "WHERE tenant_id = :tid AND entity_type = :etype;"
+                                ),
+                                params,
+                            )
+                        await self.session.execute(
+                            text("RELEASE SAVEPOINT sp_uninstall_ngsi")
                         )
-                    await session.commit()
+                    except Exception as inner_err:
+                        try:
+                            await self.session.execute(
+                                text("ROLLBACK TO SAVEPOINT sp_uninstall_ngsi")
+                            )
+                        except Exception:
+                            pass
+                        raise inner_err
             except Exception as e:
                 logger.warning(
-                    "Could not clean context subscriptions for plugin %s: %s",
+                    "Could not clean context subscriptions/state for plugin %s: %s",
                     plugin_code_name,
                     e,
                 )
+            finally:
+                try:
+                    await orion.aclose()
+                except Exception:
+                    pass
 
     async def _step_2_keycloak(
         self,
@@ -457,8 +550,6 @@ class PluginUninstallUseCase:
     async def _persist_steps(
         self, context: TenantContext, plugin_id: uuid.UUID
     ) -> None:
-        import json
-
         await self.plugin_repo.update_install_steps_log(
             tenant_id=context.tenant_id,
             plugin_id=plugin_id,

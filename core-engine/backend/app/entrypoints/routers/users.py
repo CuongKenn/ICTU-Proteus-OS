@@ -87,6 +87,29 @@ class InviteUserRequest(BaseModel):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
+async def _resolve_keycloak_realm(
+    context: TenantContext, db: AsyncSession | None = None
+) -> str:
+    """Resolve đúng Keycloak realm cho tenant hiện tại (#865.2).
+
+    Thứ tự ưu tiên: context.keycloak_realm -> tenant.keycloak_realm (DB) ->
+    settings.KEYCLOAK_REALM.
+    """
+    ctx_realm = getattr(context, "keycloak_realm", None)
+    if isinstance(ctx_realm, str) and ctx_realm.strip():
+        return ctx_realm.strip()
+    if db is not None:
+        try:
+            tenant_repo = SQLAlchemyTenantRepository(session=db)
+            tenant = await tenant_repo.get_by_id(context.tenant_id)
+            t_realm = getattr(tenant, "keycloak_realm", None) if tenant else None
+            if isinstance(t_realm, str) and t_realm.strip():
+                return t_realm.strip()
+        except Exception:  # noqa: BLE001
+            pass
+    return settings.KEYCLOAK_REALM
+
+
 def _sanitize_mm_username(raw: str) -> str:
     """M17: sanitize Mattermost username về ^[a-z0-9._-]+$ (MM yêu cầu).
 
@@ -193,10 +216,13 @@ async def list_users(
         for u in users
         if not u.is_active and u.last_login_at is None and u.keycloak_id
     ][:50]
+    realm = await _resolve_keycloak_realm(context, db) if pending else None
     reconciled = False
     for u in pending:
         try:
-            kc_user = await keycloak.get_user("proteus", str(u.keycloak_id))
+            kc_user = await keycloak.get_user(
+                realm or settings.KEYCLOAK_REALM, str(u.keycloak_id)
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("Không đọc được trạng thái Keycloak của %s: %s", u.email, e)
             continue
@@ -247,7 +273,15 @@ async def invite_user(
     tenant = await tenant_repo.get_by_id(context.tenant_id)
     if not tenant:
         raise HTTPException(status_code=500, detail="Tenant không tồn tại")
-    realm = getattr(tenant, "keycloak_realm", None) or settings.KEYCLOAK_REALM
+    ctx_realm = getattr(context, "keycloak_realm", None)
+    t_realm = getattr(tenant, "keycloak_realm", None)
+    clean_ctx = (
+        ctx_realm.strip() if isinstance(ctx_realm, str) and ctx_realm.strip() else None
+    )
+    clean_tenant = (
+        t_realm.strip() if isinstance(t_realm, str) and t_realm.strip() else None
+    )
+    realm = clean_ctx or clean_tenant or settings.KEYCLOAK_REALM
 
     # 1. Tạo user trên Keycloak (enabled nhưng chưa có password — yêu cầu actions)
     name_parts = payload.full_name.strip().split(" ", 1)
@@ -426,12 +460,13 @@ async def resend_invite(
             detail="Nhân viên đã kích hoạt tài khoản, không cần gửi lại lời mời.",
         )
 
+    realm = await _resolve_keycloak_realm(context, db)
     email_sent = True
     email_warning: str | None = None
     try:
         redirect_uri = _invite_redirect_uri(request)
         await keycloak.send_invite_email(
-            realm=getattr(context, "keycloak_realm", None) or settings.KEYCLOAK_REALM,
+            realm=realm,
             user_id=str(target.keycloak_id),
             redirect_uri=redirect_uri,
             client_id=settings.KEYCLOAK_CLIENT_ID,
@@ -494,18 +529,17 @@ async def deactivate_user(
 
     # Disable trên Keycloak trước và logout session
     if target.keycloak_id:
+        realm = await _resolve_keycloak_realm(context, db)
         try:
             await keycloak.disable_user(
-                realm=getattr(context, "keycloak_realm", None)
-                or settings.KEYCLOAK_REALM,
+                realm=realm,
                 user_id=str(target.keycloak_id),
             )
         except Exception as e:
             logger.error(f"Không thể disable user trên Keycloak: {e}")
         try:
             await keycloak.logout_user(
-                realm=getattr(context, "keycloak_realm", None)
-                or settings.KEYCLOAK_REALM,
+                realm=realm,
                 user_id=str(target.keycloak_id),
             )
         except Exception as e:

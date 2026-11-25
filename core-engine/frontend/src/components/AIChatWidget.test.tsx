@@ -14,7 +14,8 @@ vi.mock('@/hooks/useAICommand', () => ({
 
 describe('AIChatWidget', () => {
   const mockOpenWidget = vi.fn();
-  const mockCloseWidget = vi.fn();
+  const mockMinimizeWidget = vi.fn();
+  const mockResetAndClose = vi.fn();
   const mockSendCommand = vi.fn();
   const mockSetInputValue = vi.fn();
   const mockOpenMattermostApproval = vi.fn();
@@ -28,7 +29,8 @@ describe('AIChatWidget', () => {
     sessionId: 'test-session',
     setInputValue: mockSetInputValue,
     openWidget: mockOpenWidget,
-    closeWidget: mockCloseWidget,
+    minimizeWidget: mockMinimizeWidget,
+    resetAndClose: mockResetAndClose,
     sendCommand: mockSendCommand,
     openMattermostApproval: mockOpenMattermostApproval,
     cancelApproval: mockCancelApproval,
@@ -53,6 +55,37 @@ describe('AIChatWidget', () => {
     const fab = screen.getByRole('button', { name: /Mở Proteus AI/i });
     fireEvent.click(fab);
     expect(mockOpenWidget).toHaveBeenCalled();
+  });
+
+  it('calls minimizeWidget (not resetAndClose) when fab is clicked in expanded state (#866)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'expanded',
+    });
+
+    render(<AIChatWidget />);
+    const fab = screen.getByRole('button', { name: /Thu nhỏ Proteus AI/i });
+    fireEvent.click(fab);
+    expect(mockMinimizeWidget).toHaveBeenCalled();
+    expect(mockResetAndClose).not.toHaveBeenCalled();
+  });
+
+  it('renders fallback deadline text when approval_deadline is missing or invalid (#866)', () => {
+    (useAICommand as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...defaultMockReturn,
+      widgetState: 'awaiting_approval',
+      dslPreview: {
+        command_id: 'cmd-no-deadline',
+        action: 'hr.leave.approve',
+        effect: 'write',
+        approval_message: 'Cần duyệt đơn',
+        approval_deadline: undefined,
+      },
+    });
+
+    render(<AIChatWidget />);
+    expect(screen.getByText(/30 phút/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument();
   });
 
   it('shows input and messages when expanded', () => {

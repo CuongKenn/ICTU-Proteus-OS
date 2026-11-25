@@ -5,14 +5,15 @@
 
 import importlib.util
 from pathlib import Path
+
 import pytest
 
 from app.core.domain.geo_utils import (
-    to_geojson_point,
-    to_wkt_point,
-    to_ngsi_ld_geoproperty,
-    parse_ngsi_ld_geoproperty,
     haversine_distance_meters,
+    parse_ngsi_ld_geoproperty,
+    to_geojson_point,
+    to_ngsi_ld_geoproperty,
+    to_wkt_point,
 )
 
 

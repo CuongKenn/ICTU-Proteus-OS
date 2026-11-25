@@ -169,10 +169,10 @@ export function LandingPage() {
             </div>
 
             {/* Right Controls */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5">
               <LanguageToggle />
               <ThemeToggle />
-              <Link href="/login" className="btn-ghost hidden sm:inline-flex">
+              <Link href="/login" className="btn-ghost px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-[13px]">
                 {t("nav.login")}
               </Link>
               <Link href="/signup" className="btn-accent hidden sm:inline-flex">

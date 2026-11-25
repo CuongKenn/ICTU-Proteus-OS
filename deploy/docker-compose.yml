@@ -592,6 +592,10 @@ services:
       KNOWLEDGE_SYNC_CONNECTOR: ${KNOWLEDGE_SYNC_CONNECTOR:-}
       KNOWLEDGE_SYNC_URL: ${KNOWLEDGE_SYNC_URL:-}
       KNOWLEDGE_SYNC_COLLECTION_ID: ${KNOWLEDGE_SYNC_COLLECTION_ID:-}
+      BACKEND_URL: http://backend:8000
+      LAYER3_ENABLED: ${LAYER3_ENABLED:-false}
+      ORION_URL: http://orion-ld:1026
+      ORION_WEBHOOK_SECRET: ${ORION_WEBHOOK_SECRET:-}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
@@ -760,7 +764,7 @@ services:
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
-      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url": "${KEYCLOAK_URL:-http://keycloak:8080}/realms/${KEYCLOAK_REALM:-proteus}/protocol/openid-connect/certs", "claims_format": "relative"}'
+      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url": "http://keycloak:8080/realms/proteus/protocol/openid-connect/certs", "claims_namespace_path": "$"}'
     networks:
       - proteus-net
     healthcheck:
@@ -778,8 +782,9 @@ services:
   context-sync-worker:
     profiles: ["layer3"]
     build:
-      context: ../core-engine/backend
+      context: ../core-engine
       dockerfile: Dockerfile
+      target: backend
     container_name: proteus-context-sync-worker
     restart: unless-stopped
     command: python -m app.workers.context_sync_worker
@@ -797,6 +802,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-proteus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-proteus}
       REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379
       ORION_URL: http://orion-ld:1026
+      ORION_WEBHOOK_SECRET: ${ORION_WEBHOOK_SECRET:-}
       LAYER3_ENABLED: "true"
       CONTEXT_SYNC_BATCH_SIZE: ${CONTEXT_SYNC_BATCH_SIZE:-100}
       CONTEXT_SYNC_POLL_INTERVAL: ${CONTEXT_SYNC_POLL_INTERVAL:-1.0}

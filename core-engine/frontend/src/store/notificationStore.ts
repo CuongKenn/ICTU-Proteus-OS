@@ -11,6 +11,7 @@ export interface ToastMessage {
   type: ToastType;
   message: string;
   title?: string;
+  duration?: number;
 }
 
 export interface NotificationItem extends ToastMessage {
@@ -43,7 +44,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       const newNotif: NotificationItem = { id, type, message: safeMessage, title, createdAt: new Date(), isRead: false };
       const updatedNotifications = [newNotif, ...state.notifications].slice(0, 50); // Keep last 50
       return {
-        toasts: [...state.toasts, { id, type, message: safeMessage, title }],
+        toasts: [...state.toasts, { id, type, message: safeMessage, title, duration }],
         notifications: updatedNotifications,
         unreadCount: updatedNotifications.filter(n => !n.isRead).length
       };

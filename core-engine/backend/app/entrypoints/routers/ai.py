@@ -138,7 +138,8 @@ async def submit_ai_command(
 ) -> AICommandResponse:
     """
     Nhận DX-DSL command từ AI Layer, validate và xử lý.
-    Nếu client gửi natural_language_input mà không có action/effect, tự động forward sang chat_use_case.
+    Nếu client gửi natural_language_input mà không có action/effect,
+    tự động forward sang chat_use_case.
 
     - Nếu effect = read: thực thi ngay, trả về kết quả.
     - Nếu effect = write/critical: gửi xin phê duyệt qua Mattermost,
@@ -585,6 +586,26 @@ async def sync_knowledge(
     from app.core.use_cases.knowledge_sync import KnowledgeSyncUseCase
 
     payload = body or {}
+    raw_coll = payload.get("collection_id")
+    req_collection_id = (
+        str(raw_coll).strip()
+        if raw_coll is not None and str(raw_coll).strip()
+        else None
+    )
+    tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
+        ctx.tenant_id
+    )
+    if (
+        req_collection_id
+        and req_collection_id != tenant_collection
+        and "superadmin" not in (ctx.roles or [])
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Không có quyền thao tác trên collection của tổ chức khác.",
+        )
+    target_collection = req_collection_id or tenant_collection
+
     connector_name = str(payload.get("connector") or "http_feed")
     connector_cls = get_connector(connector_name)
     if connector_cls is None:
@@ -597,7 +618,7 @@ async def sync_knowledge(
     use_case = KnowledgeSyncUseCase(connector=connector, document_source=source)
     result = await use_case.execute(
         config=payload.get("config") or {},
-        collection_id=payload.get("collection_id"),
+        collection_id=target_collection,
         publish=bool(payload.get("publish", True)),
     )
     return result
@@ -627,6 +648,23 @@ async def upload_knowledge(
         UnsupportedFileError,
     )
 
+    req_collection_id = (
+        collection_id.strip() if collection_id and collection_id.strip() else None
+    )
+    tenant_collection = getattr(ctx, "outline_collection_id", None) or str(
+        ctx.tenant_id
+    )
+    if (
+        req_collection_id
+        and req_collection_id != tenant_collection
+        and "superadmin" not in (ctx.roles or [])
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Không có quyền thao tác trên collection của tổ chức khác.",
+        )
+    target_collection = req_collection_id or tenant_collection
+
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -639,7 +677,7 @@ async def upload_knowledge(
         return await use_case.execute(
             filename=file.filename or "tai-lieu",
             content=content,
-            collection_id=collection_id,
+            collection_id=target_collection,
         )
     except UnsupportedFileError as e:
         raise HTTPException(

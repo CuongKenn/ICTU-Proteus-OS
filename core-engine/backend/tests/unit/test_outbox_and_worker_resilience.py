@@ -1,14 +1,14 @@
 # Copyright (c) 2026 CuongKenn & ICTU Team
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Tests for Transactional Outbox, ContextSyncWorker, Redis Streams, Idempotency, and DLQ.
+"""Tests for Outbox, ContextSyncWorker, Redis Streams, Idempotency, and DLQ.
 
 Tham chiếu: Issue #834, #835, #836, #837, #839.
 """
 
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,8 +71,8 @@ async def test_outbox_worker_process_batch_success():
         status="PENDING",
         retry_count=0,
         idempotency_key="key-1",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     record2 = OutboxRecord(
         id=uuid.uuid4(),
@@ -84,8 +84,8 @@ async def test_outbox_worker_process_batch_success():
         status="PENDING",
         retry_count=0,
         idempotency_key="key-2",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
     mock_session = AsyncMock()
@@ -155,7 +155,7 @@ async def test_outbox_worker_process_batch_success():
 
 @pytest.mark.asyncio
 async def test_worker_crash_and_dlq_on_repeated_failures():
-    """Verify that if processing fails, retry_count is incremented and marked DLQ on threshold."""
+    """Verify retry_count is incremented and marked DLQ on threshold."""
     tid = uuid.uuid4()
     bad_record = OutboxRecord(
         id=uuid.uuid4(),
@@ -167,8 +167,8 @@ async def test_worker_crash_and_dlq_on_repeated_failures():
         status="PENDING",
         retry_count=4,  # Next failure hits max_retries = 5 -> DLQ
         idempotency_key="key-bad",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
     mock_session = AsyncMock()
@@ -241,7 +241,7 @@ async def test_outbox_repository_replay_dlq():
 
 @pytest.mark.asyncio
 async def test_outbox_worker_crash_recovery_idempotency():
-    """Kiểm thử worker crash giữa chừng và chạy lại đảm bảo at-least-once & idempotency (#839)."""
+    """Kiểm thử worker crash giữa chừng và chạy lại đảm bảo idempotency (#839)."""
     tid = uuid.uuid4()
     record_id = uuid.uuid4()
     record = OutboxRecord(
@@ -254,8 +254,8 @@ async def test_outbox_worker_crash_recovery_idempotency():
         status="PENDING",
         retry_count=1,
         idempotency_key="idemp-key-123",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
     mock_session = AsyncMock()

@@ -325,7 +325,7 @@ export const RolesTab = () => {
                             const isChecked = (formPermissions[mod.id] || []).includes(action);
                             return (
                               <label key={action} className="flex items-center gap-2.5 cursor-pointer group select-none">
-                                <div className={`relative flex items-center justify-center w-5 h-5 rounded-[6px] border transition-all duration-200 ${isChecked ? 'bg-primary border-primary text-white shadow-[0_0_8px_rgba(168,85,247,0.4)]' : 'bg-bg-surface border-border group-hover:border-primary/50'}`}>
+                                <div className={`relative flex items-center justify-center w-5 h-5 rounded-[6px] border transition-all duration-200 ${isChecked ? 'bg-primary border-primary text-white' : 'bg-bg-surface border-border group-hover:border-primary/50'}`}>
                                   {isChecked && (
                                     <svg viewBox="0 0 14 14" fill="none" className="w-3.5 h-3.5" style={{ strokeDasharray: 10, strokeDashoffset: 0 }}>
                                       <path d="M3 7.5L5.5 10L11 4.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />

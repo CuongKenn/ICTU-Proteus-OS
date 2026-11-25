@@ -41,22 +41,34 @@ def to_ngsi_ld_geoproperty(longitude: float, latitude: float) -> dict[str, Any]:
     }
 
 
-def parse_ngsi_ld_geoproperty(geo_prop: dict[str, Any]) -> tuple[float, float]:
-    """Extract (longitude, latitude) tuple from an NGSI-LD GeoProperty."""
+def parse_ngsi_ld_geoproperty(geo_prop: Any) -> tuple[float, float] | None:
+    """Extract (lon, lat) tuple from an NGSI-LD GeoProperty, or None if invalid."""
     if not isinstance(geo_prop, dict):
-        raise ValueError("Invalid GeoProperty: must be a dict.")
+        return None
 
-    val = geo_prop.get("value", {})
-    if val.get("type") != "Point":
-        raise ValueError(
-            f"Unsupported geometry type: {val.get('type')}. Expected Point."
-        )
+    val = geo_prop.get("value")
+    if not isinstance(val, dict) or val.get("type") != "Point":
+        return None
 
     coords = val.get("coordinates")
-    if not coords or len(coords) < 2:
-        raise ValueError("Coordinates must contain at least [longitude, latitude].")
+    if not isinstance(coords, list | tuple) or len(coords) < 2:
+        return None
 
-    lon, lat = float(coords[0]), float(coords[1])
+    raw_lon, raw_lat = coords[0], coords[1]
+    if (
+        isinstance(raw_lon, bool)
+        or isinstance(raw_lat, bool)
+        or not isinstance(raw_lon, int | float)
+        or not isinstance(raw_lat, int | float)
+    ):
+        return None
+
+    lon, lat = float(raw_lon), float(raw_lat)
+    if not (math.isfinite(lon) and math.isfinite(lat)):
+        return None
+    if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+        return None
+
     return lon, lat
 
 

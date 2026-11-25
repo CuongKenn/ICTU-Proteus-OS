@@ -10,6 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import httpx
+import redis.asyncio as aioredis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,6 +76,9 @@ async def lifespan(app: FastAPI):
     app.state.http_client = httpx.AsyncClient(timeout=10.0)
     app.state.qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
     app.state.redis_event_bus = RedisEventBusPublisher()
+    app.state.redis_client = aioredis.from_url(
+        settings.REDIS_URL, decode_responses=True
+    )
 
     # Khởi tạo scheduler
     scheduler = AsyncIOScheduler()
@@ -139,7 +143,7 @@ async def lifespan(app: FastAPI):
                 pass
 
     async def sync_marketplace_plugins() -> None:
-        """Scan local plugins directory, validate manifest and upsert into plugins table."""
+        """Scan local plugins directory, validate manifest and upsert into DB."""
         try:
             from app.core.use_cases.manifest_validator import ManifestValidator
 
@@ -387,6 +391,7 @@ async def lifespan(app: FastAPI):
     await app.state.http_client.aclose()
     await app.state.qdrant_client.close()
     await app.state.redis_event_bus.aclose()
+    await app.state.redis_client.aclose()
     logger.info("Proteus OS Backend shutting down")
 
 

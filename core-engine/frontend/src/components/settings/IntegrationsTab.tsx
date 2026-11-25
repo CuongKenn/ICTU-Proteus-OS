@@ -19,6 +19,28 @@ interface IntegrationData {
   is_system?: boolean;
 }
 
+const SENSITIVE_CONFIG_KEY_RE = /(key|secret|token|password)/i;
+
+function maskSensitiveConfig(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(maskSensitiveConfig);
+  }
+  if (value && typeof value === "object") {
+    const masked: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v && typeof v === "object") {
+        masked[k] = maskSensitiveConfig(v);
+      } else if (SENSITIVE_CONFIG_KEY_RE.test(k) && v !== null && v !== undefined && v !== "") {
+        masked[k] = "••••••••";
+      } else {
+        masked[k] = v;
+      }
+    }
+    return masked;
+  }
+  return value;
+}
+
 export const IntegrationsTab: React.FC = () => {
   const { data: session } = useSession();
   const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
@@ -234,7 +256,7 @@ export const IntegrationsTab: React.FC = () => {
                 </div>
                 <div className="mt-2 bg-bg-base/50 p-3 rounded-lg overflow-x-auto">
                   <pre className="text-xs text-text-secondary font-mono">
-                    {JSON.stringify(integration.config, null, 2)}
+                    {JSON.stringify(maskSensitiveConfig(integration.config), null, 2)}
                   </pre>
                 </div>
               </div>

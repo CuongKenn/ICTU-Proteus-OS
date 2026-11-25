@@ -20,11 +20,10 @@ describe('useAICommand', () => {
     });
   });
 
-  it('initializes with collapsed state and a welcome message', () => {
+  it('initializes with collapsed state and empty messages for SSR hydration safety', () => {
     const { result } = renderHook(() => useAICommand());
     expect(result.current.widgetState).toBe('collapsed');
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0].role).toBe('assistant');
+    expect(result.current.messages).toHaveLength(0);
   });
 
   it('can open and close the widget', () => {

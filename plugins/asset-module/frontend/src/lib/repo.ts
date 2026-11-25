@@ -316,6 +316,8 @@ export function createLiveStore(client: BffClient): AssetStore {
           asset_id,
           asset_type: item?.code.split('-')[0] ?? item?.code ?? '',
           requester_id: user_name,
+          requester_name: user_name,
+          dept_name,
           description: notes || `Cấp phát ${item?.code ?? asset_id} cho ${user_name} (${dept_name})`,
           priority: 'P3',
         },

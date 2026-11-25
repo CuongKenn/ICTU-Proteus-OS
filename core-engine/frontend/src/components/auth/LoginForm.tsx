@@ -16,20 +16,27 @@ import Link from "next/link";
 export const LoginForm: React.FC = () => {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const signupSuccess = searchParams.get("signup_success");
+  const expired = searchParams.get("expired");
   const callbackUrl = searchParams.get("callbackUrl") || "/launchpad";
   const [isLoading, setIsLoading] = useState(false);
   const addToast = useNotificationStore((state) => state.addToast);
   const { t } = useLang();
 
   React.useEffect(() => {
+    if (signupSuccess === "1") {
+      addToast("success", "Đăng ký tổ chức thành công! Vui lòng đăng nhập.");
+    }
     if (error === "RefreshAccessTokenError") {
       addToast("error", "Phiên làm việc hết hạn. Vui lòng đăng nhập lại.", 10000);
+    } else if (expired === "true") {
+      addToast("warning", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.");
     } else if (error === "InvalidEmailDomain") {
       addToast("error", "Đăng nhập thất bại. Vui lòng sử dụng email @ictu.edu.vn.", 10000);
     } else if (error) {
       addToast("error", "Đăng nhập không thành công. Vui lòng thử lại.");
     }
-  }, [error, addToast]);
+  }, [error, signupSuccess, expired, addToast]);
 
   const handleLogin = async () => {
     setIsLoading(true);

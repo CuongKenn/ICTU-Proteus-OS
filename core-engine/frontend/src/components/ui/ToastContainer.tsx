@@ -12,13 +12,14 @@ export const ToastContainer: React.FC = () => {
   const removeToast = useNotificationStore((state) => state.removeToast);
 
   return (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-4 right-4 z-[250] flex flex-col gap-2 pointer-events-none">
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
           <Toast
             type={toast.type}
             message={toast.message}
             title={toast.title}
+            duration={toast.duration}
             onClose={() => removeToast(toast.id)}
           />
         </div>

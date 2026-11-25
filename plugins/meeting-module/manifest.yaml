@@ -70,40 +70,78 @@ ui:
 
 roles:
   - name: "meeting_organizer"
+    display_name: "Người Tổ chức Cuộc họp"
     description: "Người Tổ chức Cuộc họp"
     permissions:
+      - "meeting:rooms:read"
       - "meeting:bookings:read"
       - "meeting:bookings:write"
       - "meeting:bookings:cancel"
-      - "meeting:rooms:read"
+      - "meeting:attendees:read"
+      - "meeting:attendees:write"
+      - "meeting:agendas:read"
+      - "meeting:agendas:write"
+      - "meeting:minutes:read"
       - "meeting:minutes:write"
+      - "meeting:action_items:read"
       - "meeting:action_items:write"
+      - "meeting:action_items:delete"
 
   - name: "meeting_admin"
+    display_name: "Quản trị Phòng họp"
     description: "Quản trị Phòng họp"
     permissions:
+      - "meeting:rooms:read"
+      - "meeting:rooms:write"
+      - "meeting:bookings:read"
       - "meeting:bookings:read_all"
       - "meeting:bookings:write"
       - "meeting:bookings:cancel"
-      - "meeting:rooms:read"
-      - "meeting:rooms:write"
+      - "meeting:attendees:read"
+      - "meeting:attendees:write"
+      - "meeting:agendas:read"
+      - "meeting:agendas:write"
+      - "meeting:minutes:read"
       - "meeting:minutes:write"
+      - "meeting:action_items:read"
       - "meeting:action_items:write"
+      - "meeting:action_items:delete"
       - "meeting:reports:read"
 
   - name: "meeting_viewer"
+    display_name: "Người Tham dự Cuộc họp"
     description: "Người Tham dự Cuộc họp"
     permissions:
-      - "meeting:bookings:read"
       - "meeting:rooms:read"
+      - "meeting:bookings:read"
+      - "meeting:attendees:read"
+      - "meeting:agendas:read"
+      - "meeting:minutes:read"
+      - "meeting:action_items:read"
 
-events:
-  consumes:
-    - "hr.employee.deactivated"
-  produces:
-    - "meeting.booking.created"
-    - "meeting.action_item.created"
-    - "meeting.booking.cancelled"
+event_subscriptions:
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/meeting_booking.json"
+
+event_publications:
+  - event_type: "meeting.booking.created"
+    description: "Khi lịch đặt phòng họp mới được tạo"
+    payload_schema:
+      booking_id: "uuid"
+      room_id: "uuid"
+
+  - event_type: "meeting.action_item.created"
+    description: "Khi việc cần làm sau cuộc họp được tạo"
+    payload_schema:
+      action_item_id: "uuid"
+      booking_id: "uuid"
+
+  - event_type: "meeting.booking.cancelled"
+    description: "Khi lịch đặt phòng họp bị hủy"
+    payload_schema:
+      booking_id: "uuid"
 
 ngsi:
   entities:

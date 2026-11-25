@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
         { error: "Thiếu tham số dashboard_id" },
         { status: 400 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   }
   if (!/^\d+$/.test(dashboardId)) {
@@ -56,7 +57,8 @@ export async function GET(request: NextRequest) {
         { error: "dashboard_id không hợp lệ (phải là số nguyên dương)" },
         { status: 400 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   }
 
@@ -77,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     if (response.ok) {
       const data = await response.json();
-      return withRotatedCookie(NextResponse.json(data), rotatedCookieValue);
+      return withRotatedCookie(NextResponse.json(data), rotatedCookieValue, request);
     }
     
     // Nếu Backend trả về lỗi (có thể do chưa implement), throw để chuyển sang luồng Mock
@@ -95,7 +97,8 @@ export async function GET(request: NextRequest) {
         NextResponse.json({
           url: `${mockMetabaseUrl}/embed/dashboard/${mockToken}#bordered=true&titled=false`,
         }),
-        rotatedCookieValue
+        rotatedCookieValue,
+        request
       );
     }
 
@@ -105,7 +108,8 @@ export async function GET(request: NextRequest) {
         { error: "Không thể kết nối đến hệ thống báo cáo (Backend Error)" },
         { status: 500 }
       ),
-      rotatedCookieValue
+      rotatedCookieValue,
+      request
     );
   }
 }

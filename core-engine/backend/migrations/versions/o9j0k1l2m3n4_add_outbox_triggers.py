@@ -11,7 +11,6 @@ Create Date: 2026-11-23
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "o9j0k1l2m3n4"
@@ -22,47 +21,68 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE OR REPLACE FUNCTION context.fn_generic_outbox_notify()
-        RETURNS TRIGGER AS $$
-        DECLARE
-          v_tenant_id uuid;
-          v_entity_id varchar;
-          v_payload jsonb;
-          v_entity_type varchar;
-          v_op varchar;
-        BEGIN
-          v_entity_type := TG_ARGV[0];
-          IF (TG_OP = 'DELETE') THEN
-            v_op := 'DELETE';
-            v_entity_id := OLD.id::varchar;
-            v_payload := to_jsonb(OLD);
-            BEGIN
-              v_tenant_id := OLD.tenant_id;
-            EXCEPTION WHEN OTHERS THEN
-              v_tenant_id := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
-            END;
-          ELSE
-            v_op := 'UPSERT';
-            v_entity_id := NEW.id::varchar;
-            v_payload := to_jsonb(NEW);
-            BEGIN
-              v_tenant_id := NEW.tenant_id;
-            EXCEPTION WHEN OTHERS THEN
-              v_tenant_id := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
-            END;
-          END IF;
+CREATE OR REPLACE FUNCTION context.fn_generic_outbox_notify()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_tenant_id uuid;
+  v_entity_id varchar;
+  v_payload jsonb;
+  v_entity_type varchar;
+  v_op varchar;
+BEGIN
+  v_entity_type := TG_ARGV[0];
+  IF (TG_OP = 'DELETE') THEN
+    v_op := 'DELETE';
+    v_entity_id := OLD.id::varchar;
+    v_payload := to_jsonb(OLD);
+  ELSE
+    v_op := 'UPSERT';
+    v_entity_id := NEW.id::varchar;
+    v_payload := to_jsonb(NEW);
+  END IF;
 
-          IF v_tenant_id IS NOT NULL THEN
-            INSERT INTO context.context_outbox (
-              tenant_id, entity_type, entity_id, op, payload, status, created_at, updated_at
-            ) VALUES (
-              v_tenant_id, v_entity_type, v_entity_id, v_op, v_payload, 'PENDING', clock_timestamp(), clock_timestamp()
-            );
-          END IF;
+  BEGIN
+    v_tenant_id := (v_payload->>'tenant_id')::uuid;
+  EXCEPTION WHEN OTHERS THEN
+    v_tenant_id := NULL;
+  END;
 
-          RETURN NULL;
-        END;
-        $$ LANGUAGE plpgsql;
+  IF v_tenant_id IS NULL THEN
+    BEGIN
+      v_tenant_id := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
+    EXCEPTION WHEN OTHERS THEN
+      v_tenant_id := NULL;
+    END;
+  END IF;
+
+  IF v_tenant_id IS NULL AND TG_TABLE_SCHEMA LIKE 'tenant_%' THEN
+    BEGIN
+      v_tenant_id := replace(substr(TG_TABLE_SCHEMA, 8), '_', '-')::uuid;
+    EXCEPTION WHEN OTHERS THEN
+      v_tenant_id := NULL;
+    END;
+  END IF;
+
+  v_payload := v_payload - ARRAY[
+    'password','password_hash','hashed_password','secret','api_key','token',
+    'ssn','cccd','cmnd','national_id','identity_card','tax_id',
+    'salary','base_salary','net_salary','gross_salary','bonus','allowance',
+    'bank_account','bank_number','iban','credit_card'
+  ];
+
+  IF v_tenant_id IS NOT NULL THEN
+    INSERT INTO context.context_outbox (
+      tenant_id, entity_type, entity_id, op, payload, status,
+      created_at, updated_at
+    ) VALUES (
+      v_tenant_id, v_entity_type, v_entity_id, v_op, v_payload, 'PENDING',
+      clock_timestamp(), clock_timestamp()
+    );
+  END IF;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
         """)
 
 
