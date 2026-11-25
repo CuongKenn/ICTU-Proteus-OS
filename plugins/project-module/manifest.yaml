@@ -70,33 +70,73 @@ ui:
 
 roles:
   - name: "project_manager"
+    display_name: "Quản lý dự án"
     description: "Quản lý dự án"
     permissions:
       - "project:projects:read"
       - "project:projects:write"
+      - "project:projects:delete"
+      - "project:milestones:read"
+      - "project:milestones:write"
+      - "project:milestones:delete"
       - "project:tasks:read"
       - "project:tasks:write"
+      - "project:tasks:delete"
       - "project:tasks:assign"
-      - "project:milestones:write"
+      - "project:task_comments:read"
+      - "project:task_comments:write"
+      - "project:time_logs:read"
+      - "project:time_logs:write"
+      - "project:members:read"
+      - "project:members:write"
       - "project:reports:read"
 
   - name: "project_member"
+    display_name: "Thành viên dự án"
     description: "Thành viên dự án"
     permissions:
+      - "project:projects:read"
+      - "project:milestones:read"
       - "project:tasks:read"
       - "project:tasks:write"
+      - "project:task_comments:read"
+      - "project:task_comments:write"
+      - "project:time_logs:read"
       - "project:time_logs:write"
+      - "project:members:read"
 
   - name: "project_viewer"
+    display_name: "Người xem dự án"
     description: "Khách / Người xem"
     permissions:
       - "project:projects:read"
+      - "project:milestones:read"
       - "project:tasks:read"
+      - "project:task_comments:read"
+      - "project:time_logs:read"
+      - "project:members:read"
+      - "project:reports:read"
 
-events:
-  consumes:
-    - "hr.employee.deactivated"
-  produces:
-    - "project.task.completed"
-    - "project.project.completed"
-    - "project.milestone.reached"
+event_subscriptions:
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/task_assignment.json"
+
+event_publications:
+  - event_type: "project.task.completed"
+    description: "Khi công việc trong dự án hoàn thành"
+    payload_schema:
+      task_id: "uuid"
+      project_id: "uuid"
+
+  - event_type: "project.project.completed"
+    description: "Khi dự án hoàn thành"
+    payload_schema:
+      project_id: "uuid"
+
+  - event_type: "project.milestone.reached"
+    description: "Khi đạt cột mốc dự án"
+    payload_schema:
+      milestone_id: "uuid"
+      project_id: "uuid"

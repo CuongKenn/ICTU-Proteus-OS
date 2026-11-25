@@ -72,36 +72,84 @@ ui:
 
 roles:
   - name: "asset_admin"
+    display_name: "Quản trị Tài sản"
     description: "Quản trị Tài sản"
     permissions:
+      - "asset:categories:read"
+      - "asset:categories:write"
       - "asset:items:read"
       - "asset:items:write"
       - "asset:items:delete"
+      - "asset:assignments:read"
       - "asset:assignments:write"
+      - "asset:maintenance_logs:read"
+      - "asset:maintenance_logs:write"
       - "asset:maintenance:write"
+      - "asset:depreciation:read"
+      - "asset:depreciation:write"
+      - "asset:disposal_requests:read"
+      - "asset:disposal_requests:write"
       - "asset:disposal:approve"
+      - "asset:requests:read"
+      - "asset:requests:write"
+      - "asset:inventory_snapshots:read"
+      - "asset:inventory_snapshots:write"
       - "asset:reports:read"
 
   - name: "asset_user"
+    display_name: "Nhân viên sử dụng"
     description: "Nhân viên sử dụng"
     permissions:
+      - "asset:categories:read"
       - "asset:items:read"
+      - "asset:assignments:read"
+      - "asset:maintenance_logs:read"
+      - "asset:disposal_requests:read"
+      - "asset:disposal_requests:write"
+      - "asset:requests:read"
       - "asset:requests:write"
 
   - name: "asset_viewer"
+    display_name: "Xem Tài sản"
     description: "Xem Tài sản"
     permissions:
+      - "asset:categories:read"
       - "asset:items:read"
       - "asset:assignments:read"
+      - "asset:maintenance_logs:read"
+      - "asset:depreciation:read"
+      - "asset:disposal_requests:read"
+      - "asset:requests:read"
+      - "asset:inventory_snapshots:read"
+      - "asset:reports:read"
 
-events:
-  consumes:
-    - "hr.employee.deactivated"
-    - "finance.expense_request.approved"
-  produces:
-    - "asset.assignment.created"
-    - "asset.maintenance.due"
-    - "asset.disposal.approved"
+event_subscriptions:
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/asset_request.json"
+  - source_plugin: "finance-module"
+    event_types:
+      - "finance.expense_request.approved"
+    handler_workflow: "workflows/asset_request.json"
+
+event_publications:
+  - event_type: "asset.assignment.created"
+    description: "Khi tài sản được cấp phát cho nhân sự"
+    payload_schema:
+      assignment_id: "uuid"
+      asset_id: "uuid"
+
+  - event_type: "asset.maintenance.due"
+    description: "Khi tài sản đến hạn bảo trì định kỳ"
+    payload_schema:
+      asset_id: "uuid"
+
+  - event_type: "asset.disposal.approved"
+    description: "Khi đề xuất thanh lý tài sản được duyệt"
+    payload_schema:
+      disposal_id: "uuid"
+      asset_id: "uuid"
 
 ngsi:
   entities:

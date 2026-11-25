@@ -70,38 +70,73 @@ ui:
 
 roles:
   - name: "it_staff"
+    display_name: "Nhân viên IT"
     description: "Nhân viên IT"
     permissions:
+      - "it:categories:read"
+      - "it:sla_policies:read"
       - "it:tickets:read"
       - "it:tickets:write"
       - "it:tickets:resolve"
+      - "it:ticket_updates:read"
+      - "it:ticket_updates:write"
       - "it:knowledge_base:read"
       - "it:knowledge_base:write"
 
   - name: "it_manager"
+    display_name: "Quản lý IT"
     description: "Quản lý IT"
     permissions:
+      - "it:categories:read"
+      - "it:categories:write"
+      - "it:sla_policies:read"
+      - "it:sla_policies:write"
+      - "it:tickets:read"
       - "it:tickets:read_all"
       - "it:tickets:write"
       - "it:tickets:resolve"
-      - "it:sla_policies:write"
+      - "it:ticket_updates:read"
+      - "it:ticket_updates:write"
       - "it:knowledge_base:read"
       - "it:knowledge_base:write"
+      - "it:knowledge_base:delete"
+      - "it:config:read"
+      - "it:config:write"
       - "it:reports:read"
       - "it:assign:all"
 
   - name: "it_requester"
+    display_name: "Người dùng CNTT"
     description: "Người dùng (Nhân viên)"
     permissions:
+      - "it:categories:read"
+      - "it:sla_policies:read"
       - "it:tickets:read"
       - "it:tickets:write"
+      - "it:ticket_updates:read"
+      - "it:ticket_updates:write"
       - "it:knowledge_base:read"
 
-events:
-  consumes:
-    - "hr.employee.created"
-    - "hr.employee.deactivated"
-  produces:
-    - "it.ticket.created"
-    - "it.ticket.resolved"
-    - "it.sla.violated"
+event_subscriptions:
+  - source_plugin: "hr-module"
+    event_types:
+      - "hr.employee.created"
+      - "hr.employee.deactivated"
+    handler_workflow: "workflows/ticket_create.json"
+
+event_publications:
+  - event_type: "it.ticket.created"
+    description: "Khi ticket hỗ trợ CNTT mới được tạo"
+    payload_schema:
+      ticket_id: "uuid"
+      priority: "string"
+
+  - event_type: "it.ticket.resolved"
+    description: "Khi ticket hỗ trợ CNTT được giải quyết"
+    payload_schema:
+      ticket_id: "uuid"
+
+  - event_type: "it.sla.violated"
+    description: "Khi ticket vi phạm thời hạn cam kết SLA"
+    payload_schema:
+      ticket_id: "uuid"

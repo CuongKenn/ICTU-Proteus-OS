@@ -82,6 +82,12 @@ roles:
       - "procurement:requests:read"
       - "procurement:requests:write"
       - "procurement:vendors:read"
+      - "procurement:vendors:write"
+      - "procurement:contracts:read"
+      - "procurement:purchase_orders:read"
+      - "procurement:purchase_orders:write"
+      - "procurement:deliveries:read"
+      - "procurement:deliveries:write"
 
   - name: "procurement_manager"
     display_name: "Procurement Manager"
@@ -89,9 +95,18 @@ roles:
     permissions:
       - "procurement:requests:read"
       - "procurement:requests:write"
-      - "procurement:vendors:read"
       - "procurement:requests:approve"
+      - "procurement:vendors:read"
+      - "procurement:vendors:write"
+      - "procurement:vendors:delete"
+      - "procurement:contracts:read"
       - "procurement:contracts:write"
+      - "procurement:purchase_orders:read"
+      - "procurement:purchase_orders:write"
+      - "procurement:deliveries:read"
+      - "procurement:deliveries:write"
+      - "procurement:config:read"
+      - "procurement:config:write"
       - "procurement:po:approve"
 
   - name: "procurement_viewer"
@@ -99,7 +114,10 @@ roles:
     description: "Người xem thông tin mua sắm"
     permissions:
       - "procurement:requests:read"
+      - "procurement:vendors:read"
       - "procurement:contracts:read"
+      - "procurement:purchase_orders:read"
+      - "procurement:deliveries:read"
 
 event_subscriptions:
   - source_plugin: "finance-module"
