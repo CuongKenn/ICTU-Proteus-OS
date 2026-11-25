@@ -3,7 +3,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useRBAC } from "@/hooks/useRBAC";
 import { PluginCard, type PluginData, type PluginStatus } from "@/components/marketplace/PluginCard";
@@ -17,13 +17,20 @@ import { usePlugins } from "@/hooks/usePlugins";
 import { PackageOpen, AlertTriangle } from "lucide-react";
 import type { CredentialFieldSchema, CredentialInput } from "@/types";
 
-const CATEGORIES = ["HR", "CRM", "Finance", "Utilities", "Analytics", "Communication"];
+const CATEGORIES = ["HR", "CRM", "Finance", "IT", "Operations", "Utilities", "Analytics", "Communication"];
 
 export const MarketplaceClient: React.FC = () => {
   useSession();
   const { hasPermission } = useRBAC();
   const canInstall = hasPermission("plugins:install");
 
+  const {
+    plugins: installedPlugins,
+    isLoading: isLoadingInstalled,
+    refetch: refetchInstalled,
+    enable,
+    upgrade,
+  } = usePlugins();
   const {
     plugins: availablePlugins,
     isLoading: isLoadingAvailable,
@@ -33,22 +40,23 @@ export const MarketplaceClient: React.FC = () => {
     installSteps,
     installPlugin,
     uninstallPlugin,
-  } = useMarketplace();
-  const {
-    plugins: installedPlugins,
-    isLoading: isLoadingInstalled,
-    refetch: refetchInstalled,
-    enable,
-    upgrade,
-  } = usePlugins();
+    closeProgress,
+  } = useMarketplace(refetchInstalled);
 
   const [previewPlugin, setPreviewPlugin] = useState<PluginData | null>(null);
   const [previewCredSchema, setPreviewCredSchema] = useState<CredentialFieldSchema[]>([]);
   const [isInstallPreviewOpen, setIsInstallPreviewOpen] = useState(false);
+  const [isProgressModalHidden, setIsProgressModalHidden] = useState(false);
 
   const [uninstallPluginData, setUninstallPluginData] = useState<{ id: string; name: string } | null>(null);
   const [isUninstallConfirmOpen, setIsUninstallConfirmOpen] = useState(false);
   const [isUninstalling, setIsUninstalling] = useState(false);
+
+  useEffect(() => {
+    if (installingId) {
+      setIsProgressModalHidden(false);
+    }
+  }, [installingId]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -62,10 +70,12 @@ export const MarketplaceClient: React.FC = () => {
     }> = [];
 
     installedPlugins.forEach((p) => {
+      if (p.status === "DELETED") return;
       let uiStatus: PluginStatus = "active";
       if (p.status === "FAILED_DIRTY") uiStatus = "failed";
       else if (p.status === "DISABLED") uiStatus = "disabled";
       else if (p.status === "INSTALLING") uiStatus = "installing";
+      else if (p.status === "UNINSTALLING") uiStatus = "uninstalling";
       else if (p.status === "PENDING_CREDENTIALS") uiStatus = "failed";
 
       list.push({
@@ -188,14 +198,23 @@ export const MarketplaceClient: React.FC = () => {
   };
 
   const handleConfirmUninstall = async () => {
-    if (uninstallPluginData && canInstall) {
-      setIsUninstalling(true);
+    if (!uninstallPluginData || !canInstall) return;
+    setIsUninstalling(true);
+    try {
       await uninstallPlugin(uninstallPluginData.id, uninstallPluginData.name);
-      setIsUninstalling(false);
       setIsUninstallConfirmOpen(false);
       setUninstallPluginData(null);
-      setTimeout(() => refetchInstalled(), 1000);
+      refetchInstalled();
+    } catch {
+      // Toast thông báo lỗi đã hiển thị trong hook; giữ modal ổn định không kẹt loading
+    } finally {
+      setIsUninstalling(false);
     }
+  };
+
+  const handleCloseProgressModal = () => {
+    setIsProgressModalHidden(true);
+    closeProgress?.();
   };
 
   return (
@@ -316,12 +335,12 @@ export const MarketplaceClient: React.FC = () => {
 
       {/* Install Progress Modal */}
       <InstallProgressModal
-        isOpen={Boolean(installingId)}
+        isOpen={Boolean(installingId) && !isProgressModalHidden}
         pluginName={allPlugins.find((p) => p.data.id === installingId)?.data.name}
         steps={installSteps || []}
         overallProgress={installProgress}
         status={installStatus}
-        onClose={() => {}}
+        onClose={handleCloseProgressModal}
       />
 
       {/* Uninstall Confirm Modal */}

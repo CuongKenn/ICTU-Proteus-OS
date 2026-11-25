@@ -107,7 +107,9 @@ export interface AICommandResponse {
 
 export type InstallTaskOverallStatus =
   | "INSTALLING"
+  | "UNINSTALLING"
   | "ACTIVE"
+  | "DELETED"
   | "FAILED_DIRTY"
   | "PENDING"
   | "IN_PROGRESS"
